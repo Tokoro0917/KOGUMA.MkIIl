@@ -9,8 +9,8 @@
 #define INC_DEFINE_H_
 
 /* ゴールは迷路中央の2x2区画(標準ルール)。MAZE_SIZEを変えたらここも中央に追従させる */
-#define MAZE_GOOL_X (MAZE_SIZE / 2 - 1)
-#define MAZE_GOOL_Y (MAZE_SIZE / 2 - 1)
+#define MAZE_GOOL_X 1
+#define MAZE_GOOL_Y 0
 
 /* 迷路の1辺のマス数。16 <-> 32 の切り替えはここ1箇所でOK
  * (壁ビット幅・ノード配列サイズ・キュー容量は全てここから導出される)

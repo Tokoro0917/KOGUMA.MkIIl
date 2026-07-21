@@ -556,14 +556,14 @@ int main(void) {
 					HAL_Delay(500);
 					Encorder_count_reset();
 				}
-			} else if (Encorder_number_out() == 3) {
+			} else if (Encorder_number_out() == 3) {//dijk
 				if (Sensor_Enter() == 1) {
 					Buzzer_Enter();
 					Sensor_Start();
 
 					Motor_Setup();
 					Motor_Stop();
-					Short_NANAME_Move2000(6000, 23000);
+					Short_Dijkstra_Move2000(6000, 20000);
 					Motor_Free();
 					LED_Reset();
 					HAL_Delay(500);

@@ -145,6 +145,8 @@ NODE_T node_Column[MAZE_SIZE + 1][MAZE_SIZE + 1];
 int g_queue_node_push_count = 0;
 int g_queue_node_max_occupancy = 0;
 int g_queue_node_overflow_count = 0;
+int g_dijkstra_backtrace_hops = 0;
+int g_bfs_outer_hops = 0;
 #endif
 
 void pushQueue_walk_node(Queue_T *queue, NODE_T *input) {
@@ -805,10 +807,20 @@ void Maze_Shortest_Calculation() {
 		G_Short_Pass[i] = 0;
 	}
 	G_Short_Pass[0] = -1;
+#ifdef SIM_DEBUG
+	g_bfs_outer_hops = 0;
+#endif
 	while ((G_MAZE_Explored[G_Gool_X][G_Gool_Y] == 0)
 			|| (G_MAZE_Explored[G_Gool_X][G_Gool_Y] == 0)
 			|| (G_MAZE_Explored[G_Gool_X][G_Gool_Y] == 0)
 			|| (G_MAZE_Explored[G_Gool_X][G_Gool_Y] == 0)) {
+#ifdef SIM_DEBUG
+		g_bfs_outer_hops++;
+		if (g_bfs_outer_hops > 2000) {
+			printf("[dbg] Maze_Shortest_Calculation aborting after 2000 iterations\n");
+			break;
+		}
+#endif
 		Step = G_Step_Map[Short_MAZE_X][Short_MAZE_Y];
 		if (G_Robot_Direction % 4 == 0) { //北向き
 			Short_MAZE_X += 0;
@@ -1015,10 +1027,31 @@ void Maze_Dijkstra_Calculation() {
 		}
 	}
 
-	node_Row[G_Gool_X][G_Gool_Y + 1].cost = 0;
-	node_Row[G_Gool_X][G_Gool_Y + 1].inQueue = 1;
-
-	pushQueue_walk_node(&queue_node, &node_Row[G_Gool_X][G_Gool_Y + 1]);
+	/* ゴールは2x2区画。Maze_Shortest_Calculation(普通の最短)と同じく、
+	 * どの面から入ってもゴール区画に入った時点で経路生成を止めたい。
+	 * 大会ルール上どの面が開口になっているか事前には分からないため、
+	 * 2x2区画を囲む8本の「外から侵入する境界」全てをコスト0の
+	 * マルチソースにする(壁で塞がれている境界は起点にしない) */
+	{
+		int gx = G_Gool_X;
+		int gy = G_Gool_Y;
+		NODE_T *goal_entries[8] = { &node_Row[gx][gy], //(gx,gy)   南から
+				&node_Row[gx + 1][gy], //(gx+1,gy) 南から
+				&node_Row[gx][gy + 2], //(gx,gy+1)   北から
+				&node_Row[gx + 1][gy + 2], //(gx+1,gy+1) 北から
+				&node_Column[gx][gy], //(gx,gy)   西から
+				&node_Column[gx][gy + 1], //(gx,gy+1) 西から
+				&node_Column[gx + 2][gy], //(gx+1,gy)   東から
+				&node_Column[gx + 2][gy + 1], //(gx+1,gy+1) 東から
+				};
+		for (int k = 0; k < 8; k++) {
+			if (goal_entries[k]->cost != DIJK_WALLCOST) {
+				goal_entries[k]->cost = 0;
+				goal_entries[k]->inQueue = 1;
+				pushQueue_walk_node(&queue_node, goal_entries[k]);
+			}
+		}
+	}
 
 	while (1) {
 		NODE_T *popNode;
@@ -1383,8 +1416,13 @@ void Maze_Dijkstra_Calculation() {
 	G_Short_Pass[0] -= 1;
 	//N++;
 
-
+#ifdef SIM_DEBUG
+	int dbg_backtrace_hops = 0;
+#endif
 	while (1) {
+#ifdef SIM_DEBUG
+		dbg_backtrace_hops++;
+#endif
 		if (short_node->isRow == 1) {
 			short_node = &node_Row[short_node->x][short_node->y];
 		} else {
@@ -1472,16 +1510,26 @@ void Maze_Dijkstra_Calculation() {
 	if (G_Short_Pass[0] == 0) {
 		G_Short_Pass[0] = -1;
 	}
+#ifdef SIM_DEBUG
+	g_dijkstra_backtrace_hops = dbg_backtrace_hops;
+#endif
 }
 
 void Shortest_Pass_Compression() {
 	for (i = 0; G_Short_Pass[i] != 0; i++) {
 		G_Short_Pass_CP[i] = G_Short_Pass[i];
 	}
+	/* iは実経路長。末尾コーナーの先読み判定用に一時的に1を置くが、
+	 * これを0終端の代わりに使ってしまうと下流(この関数の2つ目のループや
+	 * Shortest_Pass_Compression_NANAME)が「!= 0の間スキャン」で終端を見失い、
+	 * 前回実行時にG_Short_Pass_CP/NANAMEへ残っていた古いデータをそのまま
+	 * 読み進めてしまう(短い経路の直後に前回の残骸が繋がって実行される)。
+	 * ループ自体は実経路長term_idxで打ち切り、終端は最後にきちんと0へ戻す */
+	int term_idx = i;
 	G_Short_Pass[i] = 1;
 	G_Short_Pass_CP[i] = 1;
 	G_Short_Pass_CP[0] = 1;
-	for (i = 0; G_Short_Pass_CP[i] != 0; i++) {
+	for (i = 0; i < term_idx; i++) {
 		if (G_Short_Pass_CP[i] == -2) {
 			if (G_Short_Pass_CP[i - 1] > 0) {
 				if (G_Short_Pass[i + 1] > 0) { //左９０おおまわり
@@ -1526,13 +1574,24 @@ void Shortest_Pass_Compression() {
 
 	}
 
+	/* 先読み用に1を置いていた終端を正式に0へ戻す。これをやらないと
+	 * 次にこの配列を読む側(このすぐ下のNANAME圧縮や、次回このループを
+	 * 呼んだ時)が終端を見失い、前回の残骸を読み進めてしまう */
+	G_Short_Pass[term_idx] = 0;
+	G_Short_Pass_CP[term_idx] = 0;
 }
 
 void Shortest_Pass_Compression_NANAME() {
 	for (i = 0; G_Short_Pass_CP[i] != 0; i++) {
 		G_Short_Pass_NANAME[i] = G_Short_Pass_CP[i];
 	}
-	for (i = 0; G_Short_Pass_NANAME[i] != 0; i++) {
+	/* G_Short_Pass_CPの終端(0)自体はコピーされないので、この位置の
+	 * G_Short_Pass_NANAMEは前回実行時の値が残ったまま。末尾コーナー判定の
+	 * 先読み用に1を置き(CP側と同じ手法)、処理後に必ず0へ戻す。
+	 * これをしないと下のループが終端を見失い前回の残骸を読み進めてしまう */
+	int naname_term_idx = i;
+	G_Short_Pass_NANAME[i] = 1;
+	for (i = 0; i < naname_term_idx; i++) {
 		if ((G_Short_Pass_NANAME[i] == -2) || (G_Short_Pass_NANAME[i] == -3)) {
 			if (G_Short_Pass_NANAME[i - 1] > 0) { //斜め入り
 				if (G_Short_Pass_NANAME[i] == -2) { //左
@@ -1642,7 +1701,7 @@ void Shortest_Pass_Compression_NANAME() {
 			}
 		}
 	}
-	for (i = 0; G_Short_Pass_NANAME[i] != 0; i++) {
+	for (i = 0; i < naname_term_idx; i++) {
 		if (G_Short_Pass_NANAME[i] == -50) {
 			for (int j = 1; G_Short_Pass_NANAME[i + j] == -50; j++) {
 				G_Short_Pass_NANAME[i + j] = -1;
@@ -1651,6 +1710,8 @@ void Shortest_Pass_Compression_NANAME() {
 		}
 	}
 
+	/* 先読み用の1を正式な0終端に戻す */
+	G_Short_Pass_NANAME[naname_term_idx] = 0;
 }
 
 void Maze_Wall_fill() {
