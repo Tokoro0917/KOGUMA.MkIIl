@@ -1,0 +1,19 @@
+# STM32CubeIDE build outputs
+Debug/
+Release/
+KOGUMA.MkII/Debug/
+KOGUMA.MkII/Release/
+
+# Per-object build metadata that STM32CubeIDE scatters next to sources
+*.o
+*.d
+*.su
+*.cyclo
+*.list
+*.map
+*.elf
+*.bin
+*.hex
+
+# Eclipse/IDE local state
+.metadata/
