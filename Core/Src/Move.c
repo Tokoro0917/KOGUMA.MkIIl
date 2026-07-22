@@ -202,6 +202,11 @@ void Robot_Maze_Pass_Action() {
 				Motor_Sula_ST(1000, 1000, 1000, 5000, 20);
 				Motor_Sula_COS(1000, -90, 1630, 60000);
 				Motor_trapezoid_PID(1000, 1000, 1000, 5000, 48);
+			} else if (G_Known_Pass[i] == -8) {			//行き止まりUターン
+				Motor_trapezoid(1000, 1000, 0, 10000, 75);
+				Motor_Stop();
+				Robot_adjustment();
+				Motor_trapezoid_PID(0, 1000, 1000, 10000, 90);
 			} else if (G_Known_Pass[i] == -4) {			//左大廻９０
 				Motor_Wallcut_ST(1000, 50, 0);
 				Motor_Sula_COS(1000, 90, 750, 20000);

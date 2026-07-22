@@ -489,6 +489,9 @@ void Known_Pass_Generation() {
 	}
 	G_Known_Pass[0] = -1;
 	while (1) {
+		if (N >= MAX_STEP - 2) {	//配列オーバーフロー防止(異常系フェイルセーフ)
+			break;
+		}
 		int Known_X = G_Robot_MAZE_X;
 		int Known_Y = G_Robot_MAZE_Y;
 		if (G_Robot_Direction % 4 == 0) {
@@ -524,9 +527,10 @@ void Known_Pass_Generation() {
 			N++;
 			G_Known_Pass[N] = -3;
 			G_Robot_Direction += 1;
-		} else {
+		} else {			//Uターン(行き止まり) ※-1は先頭センチネルと衝突するため-8を使用
 			N++;
-			G_Known_Pass[N] = -1;
+			G_Known_Pass[N] = -8;
+			G_Robot_Direction += 2;
 		}
 
 	}
