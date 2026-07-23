@@ -223,49 +223,55 @@ void Robot_Maze_Pass_Action() {
 				Motor_Wallcut_ST(1000, 40, 1);
 				Motor_Sula_COS(1000, -180, 680, 13000);
 				Motor_Wallcut_END(1000, 70, 1);
-			}/* else if (G_Known_Pass[i] == -51) {			//入り　左４５
+			}
+			// 斜め(NANAME)区間の実行は未実装・未チューニングのためコメントアウトのまま。
+			// 有効化する際は (1) このforループの走査対象をG_Known_Pass[]ではなく
+			// Known_Pass_NANAME[]に切り替え、(2) 下記の速度・距離・角度の各定数を
+			// 実機で再チューニングすること。生成側はKnown_Pass_Compression_NANAME()
+			// (Maze.c)で既にKnown_Pass_NANAME[]として計算済み。
+			/* else if (Known_Pass_NANAME[i] == -51) {			//入り　左４５
 			 Motor_Wallcut_ST(600, 35, 0);
 			 Motor_Sula_COS(600, 45, 450, 8000);
 			 Motor_NANAME_PID(600, 600, 600, 5000, 67);
-			 } else if (G_Known_Pass[i] == -52) {			//入り　左１３５
+			 } else if (Known_Pass_NANAME[i] == -52) {			//入り　左１３５
 			 Motor_Wallcut_ST(600, 80, 0);
 			 Motor_Sula_COS(600, 135, 550, 8000);
 			 Motor_NANAME_PID(600, 600, 600, 5000, 78);
-			 } else if (G_Known_Pass[i] == -53) {			//入り　右４５
+			 } else if (Known_Pass_NANAME[i] == -53) {			//入り　右４５
 			 Motor_Wallcut_ST(600, 35, 1);
 			 Motor_Sula_COS(600, -45, 450, 8000);
 			 Motor_NANAME_PID(600, 600, 600, 5000, 67);
-			 } else if (G_Known_Pass[i] == -54) {			//入り　右１３５
+			 } else if (Known_Pass_NANAME[i] == -54) {			//入り　右１３５
 			 Motor_Wallcut_ST(600, 80, 1);
 			 Motor_Sula_COS(600, -135, 550, 8000);
 			 Motor_NANAME_PID(600, 600, 600, 5000, 78);
-			 } else if (G_Known_Pass[i] == -61) {			//出　左４５
+			 } else if (Known_Pass_NANAME[i] == -61) {			//出　左４５
 			 Motor_Wallcut_ST_NANAME(600, 65, 0);
 			 Motor_Sula_COS(600, 45, 600, 10000);
 			 Motor_Wallcut_END(600, 43, 0);
-			 } else if (G_Known_Pass[i] == -62) {			//出　左１３５
+			 } else if (Known_Pass_NANAME[i] == -62) {			//出　左１３５
 			 Motor_Wallcut_ST_NANAME(600, 45, 0);
 			 Motor_Sula_COS(600, 135, 500, 8000);
 			 Motor_Wallcut_END(600, 85, 0);
-			 } else if (G_Known_Pass[i] == -63) {			//出　右４５
+			 } else if (Known_Pass_NANAME[i] == -63) {			//出　右４５
 			 Motor_Wallcut_ST_NANAME(600, 65, 1);
 			 Motor_Sula_COS(600, -45, 600, 10000);
 			 Motor_Wallcut_END(600, 43, 1);
-			 } else if (G_Known_Pass[i] == -64) {			//出　右１３５
+			 } else if (Known_Pass_NANAME[i] == -64) {			//出　右１３５
 			 Motor_Wallcut_ST_NANAME(600, 45, 1);
 			 Motor_Sula_COS(600, -135, 500, 8000);
 			 Motor_Wallcut_END(600, 85, 1);
-			 } else if (G_Known_Pass[i] == -65) {			//V90左
+			 } else if (Known_Pass_NANAME[i] == -65) {			//V90左
 			 Motor_Wallcut_ST_NANAME(600, 30, 0);
 			 Motor_Sula_COS(600, 90, 600, 10000);
 			 Motor_NANAME_PID(600, 600, 600, 5000, 53);
-			 } else if (G_Known_Pass[i] == -66) {			//V90右
+			 } else if (Known_Pass_NANAME[i] == -66) {			//V90右
 			 Motor_Wallcut_ST_NANAME(600, 30, 1);
 			 Motor_Sula_COS(600, -90, 600, 10000);
 			 Motor_NANAME_PID(600, 600, 600, 5000, 53);
-			 } else if (G_Known_Pass[i] % 50 == 0) {			//直線
+			 } else if (Known_Pass_NANAME[i] % 50 == 0) {			//直線
 			 Motor_NANAME_PID(600, 1000, 600, 5000,
-			 127.3 * G_Known_Pass[i] / -50);
+			 127.3 * Known_Pass_NANAME[i] / -50);
 
 			 }*/
 		}

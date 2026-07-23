@@ -52,6 +52,7 @@ extern int16_t G_Short_Pass_CP[MAX_STEP];
 extern int16_t G_Short_Pass_NANAME[MAX_STEP];
 
 extern int16_t G_Known_Pass[MAX_STEP];
+extern int16_t Known_Pass_NANAME[MAX_STEP];
 
 void pushQueue_walk(QUEUE_T*, unsigned short);
 unsigned short popQueue_walk(QUEUE_T*);
@@ -71,6 +72,7 @@ void Maze_Gool_Setting(int );
 void Maze_Step_Calculate();
 
 void Known_Pass_Generation();
+void Known_Pass_Compression_NANAME();
 
 void Maze_Mapping();
 void Maze_Save();

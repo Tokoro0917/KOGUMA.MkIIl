@@ -53,6 +53,7 @@ int16_t G_Short_Pass_NANAME[MAX_STEP];
 
 int16_t G_Known_Pass[MAX_STEP];
 int16_t Known_Pass_CP[MAX_STEP];
+int16_t Known_Pass_NANAME[MAX_STEP];
 
 int NANAME_Flag = 0;
 int Known_Flag = 0;
@@ -538,7 +539,15 @@ void Known_Pass_Generation() {
 	for (i = 0; G_Known_Pass[i] != 0; i++) {
 		Known_Pass_CP[i] = G_Known_Pass[i];
 	}
-	for (i = 0; Known_Pass_CP[i] != 0; i++) {
+	/* G_Known_Passの終端(0)自体はコピーされないので、この位置のKnown_Pass_CPは
+	 * 前回実行時の値が残ったまま。末尾コーナー判定の先読み用に1を置き、
+	 * 処理後に必ず0へ戻す(Shortest_Pass_Compression()と同じ手法)。
+	 * これをしないと下のループが終端を見失い前回の残骸を読み進めてしまう */
+	int term_idx = i;
+	G_Known_Pass[i] = 1;
+	Known_Pass_CP[i] = 1;
+	Known_Pass_CP[0] = 1;
+	for (i = 0; i < term_idx; i++) {
 		if (Known_Pass_CP[i] == -2) {
 			if (Known_Pass_CP[i - 1] > 0) {
 				if (Known_Pass_CP[i + 1] > 0) { //左９０おおまわり
@@ -583,125 +592,148 @@ void Known_Pass_Generation() {
 
 	}
 
-//	for (i = 0; Known_Pass_CP[i] != 0; i++) {
-//		if ((Known_Pass_CP[i] == -2) || (Known_Pass_CP[i] == -3)) {
-//			if (Known_Pass_CP[i - 1] > 0) { //斜め入り
-//				if (Known_Pass_CP[i] == -2) { //左
-//
-//					if (Known_Pass_CP[i + 1] == -3) {
-//						//入り４５
-//						Known_Pass_CP[i - 1] -= 1;
-//						Known_Pass_CP[i] = -51;
-//						NANAME_Flag = 1;
-//						Pass_zero_act();
-//					} else if (Known_Pass_CP[i + 1] == -2) {
-//						//入り135
-//						Known_Pass_CP[i - 1] -= 1;
-//						Known_Pass_CP[i] = -52;
-//						Known_Pass_CP[i + 1] = -1;
-//						//G_Short_Pass_NANAME[i + 2] = -1;
-//						NANAME_Flag = 1;
-//						Pass_zero_act();
-//					}
-//				} else if (Known_Pass_CP[i] == -3) { //右
-//
-//					if (Known_Pass_CP[i + 1] == -2) {
-//						//入り４５
-//						Known_Pass_CP[i - 1] -= 1;
-//						Known_Pass_CP[i] = -53;
-//						NANAME_Flag = 1;
-//						Pass_zero_act();
-//					} else if (Known_Pass_CP[i + 1] == -3) {
-//						//入り135
-//						Known_Pass_CP[i - 1] -= 1;
-//						Known_Pass_CP[i] = -54;
-//						Known_Pass_CP[i + 1] = -1;
-//						//G_Short_Pass_NANAME[i + 2] = -1;
-//						NANAME_Flag = 1;
-//						Pass_zero_act();
-//					}
-//				}
-//			} else if ((Known_Pass_CP[i + 1] >= 0) && (NANAME_Flag == 1)) { //斜め出 45
-//				if (Known_Pass_CP[i] == -3) {
-//					//右４５
-//					//G_Short_Pass_NANAME[i - 1] = -1;
-//					Known_Pass_CP[i] = -63;
-//					Known_Pass_CP[i + 1] -= 1;
-//					Pass_zero_act();
-//				} else if (Known_Pass_CP[i] == -2) {
-//					//左４５
-//					//G_Short_Pass_NANAME[i - 1] = -1;
-//					Known_Pass_CP[i] = -61;
-//					Known_Pass_CP[i + 1] -= 1;
-//					Pass_zero_act();
-//				}
-//				NANAME_Flag = 0;
-//			} else if ((Known_Pass_CP[i + 2] >= 0) && (NANAME_Flag == 1)) {
-//				if (Known_Pass_CP[i] == Known_Pass_CP[i + 1]) {
-//					if (Known_Pass_CP[i] == -3) {
-//						//右135
-//						Known_Pass_CP[i] = -64;
-//						Known_Pass_CP[i + 1] = -1;
-//						Known_Pass_CP[i + 2] -= 1;
-//						Pass_zero_act();
-//					} else if (Known_Pass_CP[i] == -2) {
-//						//左135
-//						Known_Pass_CP[i] = -62;
-//						Known_Pass_CP[i + 1] = -1;
-//						Known_Pass_CP[i + 2] -= 1;
-//						Pass_zero_act();
-//					}
-//					NANAME_Flag = 0;
-//				} else {
-//					if ((Known_Pass_CP[i] == -2) || (Known_Pass_CP[i] == -3)) {
-//						if (Known_Pass_CP[i] == Known_Pass_CP[i + 1]) {
-//							if (Known_Pass_CP[i] == -2) {
-//								Known_Pass_CP[i] = -65;
-//								Known_Pass_CP[i + 1] = -1;
-//							} else {
-//								Known_Pass_CP[i] = -66;
-//								Known_Pass_CP[i + 1] = -1;
-//							}
-//
-//						} else {
-//							Known_Pass_CP[i] = -50;
-//							//G_Short_Pass_NANAME[i + 1] = -1;
-//						}
-//					}
-//				}
-//			} else if (NANAME_Flag == 1) {
-//				if ((Known_Pass_CP[i] == -2) || (Known_Pass_CP[i] == -3)) {
-//					if (Known_Pass_CP[i] == Known_Pass_CP[i + 1]) {
-//						if (Known_Pass_CP[i] == -2) {
-//							Known_Pass_CP[i] = -65;
-//							Known_Pass_CP[i + 1] = -1;
-//						} else {
-//							Known_Pass_CP[i] = -66;
-//							Known_Pass_CP[i + 1] = -1;
-//						}
-//
-//					} else {
-//						Known_Pass_CP[i] = -50;
-//						//G_Short_Pass_NANAME[i + 1] = -1;
-//					}
-//				}
-//			}
-//		}
-//	}
-//
-//	for (i = 0; Known_Pass_CP[i] != 0; i++) {
-//		if (Known_Pass_CP[i] == -50) {
-//			for (int j = 1; Known_Pass_CP[i + j] == -50; j++) {
-//				Known_Pass_CP[i + j] = -1;
-//				Known_Pass_CP[i] -= 50;
-//			}
-//		}
-//	}
+	/* 先読み用に置いていた終端を正式な0へ戻す */
+	G_Known_Pass[term_idx] = 0;
+	Known_Pass_CP[term_idx] = 0;
+
+	Known_Pass_Compression_NANAME();
 
 	for (i = 0; G_Known_Pass[i] != 0; i++) {
 		G_Known_Pass[i] = Known_Pass_CP[i];
 	}
 	Known_Flag = 0;
+}
+
+/* 既知区間加速バーストの斜め(NANAME)圧縮パス。Known_Pass_CP[]の大廻り圧縮結果
+ * (-4/-5/-6/-7)を Known_Pass_NANAME[]へコピーし、さらに斜め入り(-51〜-54)・
+ * 斜め出(-61〜-64)・V90(-65/-66)・斜め直線(-50連結)へ圧縮する。
+ * Shortest_Pass_Compression_NANAME()と同一ロジックの既知区間版。
+ * ※Move.c側のモーター実行(Robot_Maze_Pass_Action())はまだ実機未調整のため
+ *   Known_Pass_NANAME[]を消費しない(有効化するにはMove.cの対応ブロックの
+ *   コメントアウトを外し、実行ループの参照先をKnown_Pass_NANAMEへ切り替える必要がある)。
+ */
+void Known_Pass_Compression_NANAME() {
+	NANAME_Flag = 0;
+
+	for (i = 0; Known_Pass_CP[i] != 0; i++) {
+		Known_Pass_NANAME[i] = Known_Pass_CP[i];
+	}
+	/* Known_Pass_CPの終端(0)自体はコピーされないので、この位置の
+	 * Known_Pass_NANAMEは前回実行時の値が残ったまま。末尾コーナー判定の
+	 * 先読み用に1を置き(CP側と同じ手法)、処理後に必ず0へ戻す。
+	 * これをしないと下のループが終端を見失い前回の残骸を読み進めてしまう */
+	int naname_term_idx = i;
+	Known_Pass_NANAME[i] = 1;
+	for (i = 0; i < naname_term_idx; i++) {
+		if ((Known_Pass_NANAME[i] == -2) || (Known_Pass_NANAME[i] == -3)) {
+			if (Known_Pass_NANAME[i - 1] > 0) { //斜め入り
+				if (Known_Pass_NANAME[i] == -2) { //左
+
+					if (Known_Pass_NANAME[i + 1] == -3) {
+						//入り４５
+						Known_Pass_NANAME[i - 1] -= 1;
+						Known_Pass_NANAME[i] = -51;
+						NANAME_Flag = 1;
+						Pass_zero_act();
+					} else if (Known_Pass_NANAME[i + 1] == -2) {
+						//入り135
+						Known_Pass_NANAME[i - 1] -= 1;
+						Known_Pass_NANAME[i] = -52;
+						Known_Pass_NANAME[i + 1] = -1;
+						NANAME_Flag = 1;
+						Pass_zero_act();
+					}
+				} else if (Known_Pass_NANAME[i] == -3) { //右
+
+					if (Known_Pass_NANAME[i + 1] == -2) {
+						//入り４５
+						Known_Pass_NANAME[i - 1] -= 1;
+						Known_Pass_NANAME[i] = -53;
+						NANAME_Flag = 1;
+						Pass_zero_act();
+					} else if (Known_Pass_NANAME[i + 1] == -3) {
+						//入り135
+						Known_Pass_NANAME[i - 1] -= 1;
+						Known_Pass_NANAME[i] = -54;
+						Known_Pass_NANAME[i + 1] = -1;
+						NANAME_Flag = 1;
+						Pass_zero_act();
+					}
+				}
+			} else if ((Known_Pass_NANAME[i + 1] >= 0) && (NANAME_Flag == 1)) { //斜め出 45
+				if (Known_Pass_NANAME[i] == -3) {
+					//右４５
+					Known_Pass_NANAME[i] = -63;
+					Known_Pass_NANAME[i + 1] -= 1;
+					Pass_zero_act();
+				} else if (Known_Pass_NANAME[i] == -2) {
+					//左４５
+					Known_Pass_NANAME[i] = -61;
+					Known_Pass_NANAME[i + 1] -= 1;
+					Pass_zero_act();
+				}
+				NANAME_Flag = 0;
+			} else if ((Known_Pass_NANAME[i + 2] >= 0) && (NANAME_Flag == 1)) {
+				if (Known_Pass_NANAME[i] == Known_Pass_NANAME[i + 1]) {
+					if (Known_Pass_NANAME[i] == -3) {
+						//右135
+						Known_Pass_NANAME[i] = -64;
+						Known_Pass_NANAME[i + 1] = -1;
+						Known_Pass_NANAME[i + 2] -= 1;
+						Pass_zero_act();
+					} else if (Known_Pass_NANAME[i] == -2) {
+						//左135
+						Known_Pass_NANAME[i] = -62;
+						Known_Pass_NANAME[i + 1] = -1;
+						Known_Pass_NANAME[i + 2] -= 1;
+						Pass_zero_act();
+					}
+					NANAME_Flag = 0;
+				} else {
+					if ((Known_Pass_NANAME[i] == -2) || (Known_Pass_NANAME[i] == -3)) {
+						if (Known_Pass_NANAME[i] == Known_Pass_NANAME[i + 1]) {
+							if (Known_Pass_NANAME[i] == -2) {
+								Known_Pass_NANAME[i] = -65;
+								Known_Pass_NANAME[i + 1] = -1;
+							} else {
+								Known_Pass_NANAME[i] = -66;
+								Known_Pass_NANAME[i + 1] = -1;
+							}
+
+						} else {
+							Known_Pass_NANAME[i] = -50;
+						}
+					}
+				}
+			} else if (NANAME_Flag == 1) {
+				if ((Known_Pass_NANAME[i] == -2) || (Known_Pass_NANAME[i] == -3)) {
+					if (Known_Pass_NANAME[i] == Known_Pass_NANAME[i + 1]) {
+						if (Known_Pass_NANAME[i] == -2) {
+							Known_Pass_NANAME[i] = -65;
+							Known_Pass_NANAME[i + 1] = -1;
+						} else {
+							Known_Pass_NANAME[i] = -66;
+							Known_Pass_NANAME[i + 1] = -1;
+						}
+
+					} else {
+						Known_Pass_NANAME[i] = -50;
+					}
+				}
+			}
+		}
+	}
+	for (i = 0; i < naname_term_idx; i++) {
+		if (Known_Pass_NANAME[i] == -50) {
+			for (int j = 1; Known_Pass_NANAME[i + j] == -50; j++) {
+				Known_Pass_NANAME[i + j] = -1;
+				Known_Pass_NANAME[i] -= 50;
+			}
+		}
+	}
+
+	/* 先読み用の1を正式な0終端に戻す */
+	Known_Pass_NANAME[naname_term_idx] = 0;
 }
 
 void Maze_Unkown_ALL_ModeSet() {
@@ -1856,14 +1888,14 @@ void Pass_zero_act() {
 		G_Short_Pass_NANAME[i + 2] = -1;
 	}
 
-	if (Known_Pass_CP[i - 1] == 0) {
-		Known_Pass_CP[i - 1] = -1;
+	if (Known_Pass_NANAME[i - 1] == 0) {
+		Known_Pass_NANAME[i - 1] = -1;
 	}
-	if (Known_Pass_CP[i + 1] == 0) {
-		Known_Pass_CP[i + 1] = -1;
+	if (Known_Pass_NANAME[i + 1] == 0) {
+		Known_Pass_NANAME[i + 1] = -1;
 	}
-	if (Known_Pass_CP[i + 2] == 0) {
-		Known_Pass_CP[i + 2] = -1;
+	if (Known_Pass_NANAME[i + 2] == 0) {
+		Known_Pass_NANAME[i + 2] = -1;
 	}
 }
 
