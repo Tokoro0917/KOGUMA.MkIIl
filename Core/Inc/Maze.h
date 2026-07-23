@@ -54,6 +54,14 @@ extern int16_t G_Short_Pass_NANAME[MAX_STEP];
 extern int16_t G_Known_Pass[MAX_STEP];
 extern int16_t Known_Pass_NANAME[MAX_STEP];
 
+extern int16_t G_Dijk_Path_X[MAX_STEP];
+extern int16_t G_Dijk_Path_Y[MAX_STEP];
+extern uint8_t G_Dijk_Path_WallUnknown[MAX_STEP];
+extern int G_Dijk_Path_Len;
+
+extern int G_Unknown_Target_X;
+extern int G_Unknown_Target_Y;
+
 void pushQueue_walk(QUEUE_T*, unsigned short);
 unsigned short popQueue_walk(QUEUE_T*);
 
@@ -71,6 +79,10 @@ int Maze_All_MODE_Check();
 void Maze_Gool_Setting(int );
 void Maze_Step_Calculate();
 
+int Maze_Unknown_Wall_Scan(void);
+int Maze_Unknown_Wall_Still_Unknown(void);
+void Maze_Unknown_Target_ModeSet(int, int);
+
 void Known_Pass_Generation();
 void Known_Pass_Compression_NANAME();
 
@@ -85,5 +97,5 @@ void Shortest_Pass_Compression_NANAME();
 void Pass_zero_act();
 
 
-void  Maze_Dijkstra_Calculation();
+void  Maze_Dijkstra_Calculation(int direction);
 void Maze_Dijkstra_Mapping();

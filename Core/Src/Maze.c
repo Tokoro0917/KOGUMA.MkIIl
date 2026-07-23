@@ -60,6 +60,27 @@ int Known_Flag = 0;
 
 int ALL_MODE = 0;
 
+/* Dijkstraバックトレースが通過した経路上のセル列(足立法風シャトル探索用)。
+ * インデックスkの区間はセル(G_Dijk_Path_X[k],G_Dijk_Path_Y[k])に入るために
+ * 通過した壁(G_Dijk_Path_WallIsRow/I/J[k])に対応し、その壁がまだ
+ * Maze_Row_Look/Maze_Column_Lookで確認されていなければWallUnknown=1 */
+int16_t G_Dijk_Path_X[MAX_STEP];
+int16_t G_Dijk_Path_Y[MAX_STEP];
+uint8_t G_Dijk_Path_WallUnknown[MAX_STEP];
+uint8_t G_Dijk_Path_WallIsRow[MAX_STEP];
+int16_t G_Dijk_Path_WallI[MAX_STEP];
+int16_t G_Dijk_Path_WallJ[MAX_STEP];
+int G_Dijk_Path_Len = 0;
+
+/* Maze_Unknown_Wall_Scan()が見つけた「経路上で最初に見つかった未知壁」の
+ * 手前側セル座標(Maze_Gool_Setting()のmode==2で目標地点として使う)と、
+ * その壁自体の識別子(Maze_Unknown_Wall_Still_Unknown()での再確認用) */
+int G_Unknown_Target_X = 0;
+int G_Unknown_Target_Y = 0;
+uint8_t G_Unknown_Wall_IsRow = 0;
+int16_t G_Unknown_Wall_I = 0;
+int16_t G_Unknown_Wall_J = 0;
+
 void pushQueue_walk(QUEUE_T *queue, unsigned short input) {
 	/* データをデータの最後尾の１つ後ろに格納*/
 	queue->data[queue->tail] = input;
@@ -765,6 +786,8 @@ void Maze_Gool_Setting(int mode) {
 		if (N == 0) {
 			ALL_MODE = 0;
 		}
+	} else if (mode == 2) {
+		G_Step_Map[G_Unknown_Target_X][G_Unknown_Target_Y] = 0;
 	} else {
 		G_Step_Map[G_Gool_X][G_Gool_Y] = 0;
 	}
@@ -792,8 +815,13 @@ void Maze_Step_Calculate() {
 		}
 	}
 	Maze_Gool_Setting(ALL_MODE);
-	pushQueue_walk(&queue_x, G_Gool_X);
-	pushQueue_walk(&queue_y, G_Gool_Y);
+	if (ALL_MODE == 2) {
+		pushQueue_walk(&queue_x, G_Unknown_Target_X);
+		pushQueue_walk(&queue_y, G_Unknown_Target_Y);
+	} else {
+		pushQueue_walk(&queue_x, G_Gool_X);
+		pushQueue_walk(&queue_y, G_Gool_Y);
+	}
 	while (Step_N < MAX_STEP) {
 		X = popQueue_walk(&queue_x);
 		Y = popQueue_walk(&queue_y);
@@ -1030,7 +1058,11 @@ void Maze_Shortest_Calculation() {
 	}
 }
 
-void Maze_Dijkstra_Calculation() {
+/* direction: 0=DIJK_TO_GOOL(スタート→ゴール、既存動作), 1=DIJK_TO_START(ゴール→スタート、
+ * 足立法風シャトル探索の復路用)。どちらもgoal_entries(ゴール2x2区画の8境界ノード)と
+ * node_Row[0][1](スタート唯一の開口=北面)を使うが、どちらをマルチソースの起点にし、
+ * どちらをバックトレースの開始アンカーにするかが入れ替わるだけ */
+void Maze_Dijkstra_Calculation(int direction) {
 	/* MAZE_SIZE=32だとdata[]がMAX_QUEUE_NODE_NUM(=ノード総数)分あり、スタックに
 	 * 置くとスタックオーバーフローの危険があるためstatic(.bss)に置く */
 	static Queue_T queue_node;
@@ -1066,20 +1098,23 @@ void Maze_Dijkstra_Calculation() {
 	/* ゴールは2x2区画。Maze_Shortest_Calculation(普通の最短)と同じく、
 	 * どの面から入ってもゴール区画に入った時点で経路生成を止めたい。
 	 * 大会ルール上どの面が開口になっているか事前には分からないため、
-	 * 2x2区画を囲む8本の「外から侵入する境界」全てをコスト0の
-	 * マルチソースにする(壁で塞がれている境界は起点にしない) */
-	{
-		int gx = G_Gool_X;
-		int gy = G_Gool_Y;
-		NODE_T *goal_entries[8] = { &node_Row[gx][gy], //(gx,gy)   南から
-				&node_Row[gx + 1][gy], //(gx+1,gy) 南から
-				&node_Row[gx][gy + 2], //(gx,gy+1)   北から
-				&node_Row[gx + 1][gy + 2], //(gx+1,gy+1) 北から
-				&node_Column[gx][gy], //(gx,gy)   西から
-				&node_Column[gx][gy + 1], //(gx,gy+1) 西から
-				&node_Column[gx + 2][gy], //(gx+1,gy)   東から
-				&node_Column[gx + 2][gy + 1], //(gx+1,gy+1) 東から
-				};
+	 * 2x2区画を囲む8本の「外から侵入する境界」を列挙しておく(壁で塞がれている
+	 * 境界は起点/アンカーどちらの用途でも除外する)。direction==0では起点として、
+	 * direction==1ではリラクゼーション後の最小コスト探索(バックトレースの
+	 * アンカー選び)として、緩和処理より後でも再利用するため関数スコープに置く */
+	int gx = G_Gool_X;
+	int gy = G_Gool_Y;
+	NODE_T *goal_entries[8] = { &node_Row[gx][gy], //(gx,gy)   南から
+			&node_Row[gx + 1][gy], //(gx+1,gy) 南から
+			&node_Row[gx][gy + 2], //(gx,gy+1)   北から
+			&node_Row[gx + 1][gy + 2], //(gx+1,gy+1) 北から
+			&node_Column[gx][gy], //(gx,gy)   西から
+			&node_Column[gx][gy + 1], //(gx,gy+1) 西から
+			&node_Column[gx + 2][gy], //(gx+1,gy)   東から
+			&node_Column[gx + 2][gy + 1], //(gx+1,gy+1) 東から
+			};
+
+	if (direction == 0) {
 		for (int k = 0; k < 8; k++) {
 			if (goal_entries[k]->cost != DIJK_WALLCOST) {
 				goal_entries[k]->cost = 0;
@@ -1087,6 +1122,12 @@ void Maze_Dijkstra_Calculation() {
 				pushQueue_walk_node(&queue_node, goal_entries[k]);
 			}
 		}
+	} else {
+		/* スタート(0,0)は北面(node_Row[0][1])以外の3面が常に壁で塞がれている
+		 * (Maze_Initialization()参照)ため、単一始点でよい */
+		node_Row[0][1].cost = 0;
+		node_Row[0][1].inQueue = 1;
+		pushQueue_walk_node(&queue_node, &node_Row[0][1]);
 	}
 
 	while (1) {
@@ -1441,12 +1482,28 @@ void Maze_Dijkstra_Calculation() {
 	int N = 0;
 
 	NODE_T *short_node;
-	short_node = &node_Row[0][1]; //&node_Row[0][1];
+	if (direction == 0) {
+		short_node = &node_Row[0][1]; //&node_Row[0][1];
+	} else {
+		/* ゴール2x2区画の8境界のうち、壁で塞がれていないものの中で
+		 * 最小コストのものをバックトレース開始アンカーにする
+		 * (どの面から出てもよいので、実際に最短だった面から辿る) */
+		NODE_T *best = NULL;
+		for (int k = 0; k < 8; k++) {
+			if (goal_entries[k]->cost != DIJK_WALLCOST) {
+				if (best == NULL || goal_entries[k]->cost < best->cost) {
+					best = goal_entries[k];
+				}
+			}
+		}
+		short_node = best;
+	}
 	toGool_direction = (short_node->direction + 4) % 8; //
 
 	for (int i = 0; i < 255; i++) {
 		G_Short_Pass[i] = 0;
 	}
+	G_Dijk_Path_Len = 0;
 
 
 	G_Short_Pass[0] -= 1;
@@ -1455,10 +1512,14 @@ void Maze_Dijkstra_Calculation() {
 #ifdef SIM_DEBUG
 	int dbg_backtrace_hops = 0;
 #endif
+	int dijk_backtrace_guard = 0;
 	while (1) {
 #ifdef SIM_DEBUG
 		dbg_backtrace_hops++;
 #endif
+		if (++dijk_backtrace_guard > MAX_QUEUE_NODE_NUM) {	//異常系フェイルセーフ(通常は経路長で先に止まる)
+			break;
+		}
 		if (short_node->isRow == 1) {
 			short_node = &node_Row[short_node->x][short_node->y];
 		} else {
@@ -1471,6 +1532,47 @@ void Maze_Dijkstra_Calculation() {
 
 		toGool_direction = (short_node->direction + 4) % 8;
 		printf("%d direction\r\n", toGool_direction);
+
+		/* 足立法風シャトル探索用: このホップが通る壁(short_node自身)が
+		 * 実際に通過するセルはtoGool_directionの向きで決まる(進行方向側のセル)。
+		 * Row型ノードはtoGool_directionが{0,1,7}なら北側セル、{3,4,5}なら南側セル。
+		 * Column型ノードは{1,2,3}なら東側セル、{5,6,7}なら西側セルになる
+		 * (このグラフではRow型ノードにdirection 2/6が、Column型ノードに
+		 * direction 0/4が現れることはないので、この2分岐で網羅できる) */
+		if (G_Dijk_Path_Len < MAX_STEP - 1) {
+			int wallKnown;
+			int16_t cellX, cellY;
+			if (short_node->isRow) {
+				wallKnown = (Maze_Row_Look[short_node->y] >> short_node->x) & 1u;
+				if (toGool_direction == 0 || toGool_direction == 1
+						|| toGool_direction == 7) {
+					cellX = short_node->x;
+					cellY = short_node->y;
+				} else {
+					cellX = short_node->x;
+					cellY = short_node->y - 1;
+				}
+			} else {
+				wallKnown = (Maze_Column_Look[short_node->x] >> short_node->y)
+						& 1u;
+				if (toGool_direction == 2 || toGool_direction == 1
+						|| toGool_direction == 3) {
+					cellX = short_node->x;
+					cellY = short_node->y;
+				} else {
+					cellX = short_node->x - 1;
+					cellY = short_node->y;
+				}
+			}
+			G_Dijk_Path_X[G_Dijk_Path_Len] = cellX;
+			G_Dijk_Path_Y[G_Dijk_Path_Len] = cellY;
+			G_Dijk_Path_WallUnknown[G_Dijk_Path_Len] = (wallKnown == 0) ? 1 : 0;
+			G_Dijk_Path_WallIsRow[G_Dijk_Path_Len] = short_node->isRow;
+			G_Dijk_Path_WallI[G_Dijk_Path_Len] = short_node->x;
+			G_Dijk_Path_WallJ[G_Dijk_Path_Len] = short_node->y;
+			G_Dijk_Path_Len++;
+		}
+
 		if (toGool_direction == 0) {
 			if (G_Short_Pass[N] < 0) {
 				N++;
@@ -1549,6 +1651,45 @@ void Maze_Dijkstra_Calculation() {
 #ifdef SIM_DEBUG
 	g_dijkstra_backtrace_hops = dbg_backtrace_hops;
 #endif
+}
+
+/* 直近のMaze_Dijkstra_Calculation()が記録した経路(G_Dijk_Path_*)を先頭から
+ * 走査し、最初に見つかった未確認の壁をG_Unknown_Target_X/Yとその壁自体の
+ * 識別子(G_Unknown_Wall_*)に記録する。戻り値1=見つかった、0=経路上の壁は
+ * 全て確認済み(足立法風シャトル探索の終了条件) */
+int Maze_Unknown_Wall_Scan(void) {
+	for (int k = 0; k < G_Dijk_Path_Len; k++) {
+		if (G_Dijk_Path_WallUnknown[k]) {
+			G_Unknown_Target_X = G_Dijk_Path_X[k];
+			G_Unknown_Target_Y = G_Dijk_Path_Y[k];
+			G_Unknown_Wall_IsRow = G_Dijk_Path_WallIsRow[k];
+			G_Unknown_Wall_I = G_Dijk_Path_WallI[k];
+			G_Unknown_Wall_J = G_Dijk_Path_WallJ[k];
+			return 1;
+		}
+	}
+	return 0;
+}
+
+/* Maze_Unknown_Wall_Scan()が最後に見つけた壁が、今もまだ未確認かどうかを
+ * O(1)で再確認する。目標セルへ到達済みかどうか(G_MAZE_Explored)ではなく
+ * 壁のLookビットそのものを見るのは、既に立ったことのあるセルでも
+ * (その壁面を通らずに入った場合は)壁が未確認のままのことがあるため */
+int Maze_Unknown_Wall_Still_Unknown(void) {
+	if (G_Unknown_Wall_IsRow) {
+		return ((Maze_Row_Look[G_Unknown_Wall_J] >> G_Unknown_Wall_I) & 1u) == 0;
+	} else {
+		return ((Maze_Column_Look[G_Unknown_Wall_I] >> G_Unknown_Wall_J) & 1u)
+				== 0;
+	}
+}
+
+/* Maze_Unknown_Wall_Scan()が見つけた目標セルを、Maze_Gool_Setting()のmode==2で
+ * BFSの目標地点として使うようセットする。Maze_Unkown_ALL_ModeSet()の兄弟関数 */
+void Maze_Unknown_Target_ModeSet(int x, int y) {
+	G_Unknown_Target_X = x;
+	G_Unknown_Target_Y = y;
+	ALL_MODE = 2;
 }
 
 void Shortest_Pass_Compression() {
