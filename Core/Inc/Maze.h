@@ -33,6 +33,7 @@ extern uint32_t G_Maze_Column[MAZE_SIZE+1];
 
 extern int G_Robot_Direction;
 extern int G_Robot_Lastaction;
+extern int G_Just_UTurned;
 
 extern uint16_t G_Maze_Flont;
 extern uint16_t G_Maze_Back;
@@ -56,7 +57,6 @@ extern int16_t Known_Pass_NANAME[MAX_STEP];
 
 extern int16_t G_Dijk_Path_X[MAX_STEP];
 extern int16_t G_Dijk_Path_Y[MAX_STEP];
-extern uint8_t G_Dijk_Path_WallUnknown[MAX_STEP];
 extern int G_Dijk_Path_Len;
 
 extern int G_Unknown_Target_X;

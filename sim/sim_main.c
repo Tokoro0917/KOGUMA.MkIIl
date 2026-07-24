@@ -2,8 +2,8 @@
  * sim_main.c
  *
  * PCネイティブ(gccのみ、ARM/HALクロスコンパイル不要)で動くシミュレータハーネス。
- * Core/Src/Maze.c は一切改変せずそのままリンクし、実際の探索・BFS・Dijkstra・
- * シャトル探索ロジックを動かして、ブラウザ可視化用のステップ列をJSON(NDJSON、
+ * Core/Src/Maze.c は一切改変せずそのままリンクし、実際の探索・BFS・Dijkstra
+ * ロジックを動かして、ブラウザ可視化用のステップ列をJSON(NDJSON、
  * 1行1ステップ)として標準出力に書き出す。
  *
  * モーター・センサーのハードウェア呼び出し(Move.c/motor.c/Wallsensor.c)は
@@ -121,6 +121,7 @@ static void sim_step(void) {
 		G_Robot_Direction += 1;
 	} else {
 		G_Robot_Direction += 2;
+		G_Just_UTurned = 1;
 	}
 }
 
@@ -207,21 +208,25 @@ static void run_to_cell(const char *scenario, const char *phase, int dest_x,
 	}
 }
 
-/* main.c のシャトルループでは、狙っている未知壁が実際にまだ未確認である間
- * だけ移動を続ける (G_MAZE_Explored[target]==0 ではない — 既に別の面から
- * 立ったことのあるセルでも、その壁面自体はまだ未確認のことがあるため) */
-static void run_until_wall_known(const char *scenario, const char *phase) {
-	long guard = 0;
-	while (Maze_Unknown_Wall_Still_Unknown() == 1) {
-		if (guard++ > MAX_STEP) {
-			fprintf(stderr, "[sim] %s/%s: exceeded step guard chasing unknown wall\n",
-					scenario, phase);
-			exit(1);
-		}
+/* main.cのDijkstra誘導 未知壁探索ループでは、狙っている未知壁が実際にまだ
+ * 未確認である間だけ移動を続ける (G_MAZE_Explored[target]==0 ではない —
+ * 既に別の面から立ったことのあるセルでも、その壁面自体はまだ未確認の
+ * ことがあるため)。戻り値: Uターンした、または目標に辿り着けなかった
+ * (main.cと同じくステップ上限で打ち切り)場合は1、壁を確認できた場合は0
+ * — main.cの「need_recompute」と同じ意味 */
+static int run_until_wall_known(const char *scenario, const char *phase) {
+	G_Just_UTurned = 0;
+	int sub_steps = 0;
+	while ((Maze_Unknown_Wall_Still_Unknown() == 1) && (sub_steps < MAX_STEP)) {
 		sim_step();
 		G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
 		emit_trace(scenario, phase);
+		sub_steps++;
+		if (G_Just_UTurned == 1) {
+			break;
+		}
 	}
+	return (G_Just_UTurned == 1) || (sub_steps >= MAX_STEP);
 }
 
 /* ---- シナリオA: エセ全面探索 (main.c: Encorder_number_out()==1 相当) ---- */
@@ -254,8 +259,9 @@ static void run_scenario_a(void) {
 }
 
 /* ---- シナリオB: Dijkstra誘導 未知壁探索 (main.c: ==7 相当) ----
- * スタート→ゴール固定方向でDijkstra経路を計算し、経路上の未確認の壁が
- * なくなるまで、ロボットの現在位置から直接その壁を見に行く。
+ * スタート→ゴール固定方向でDijkstra経路を計算し、経路上の未確認の壁を
+ * 現在位置から直接見に行く。Dijkstraの再計算はゴール到達直後とUターン
+ * 発生時だけ行い、それ以外は同じ経路データのまま次の未知壁を探す。
  * ゴールやスタートまで戻る「シャトル」構造は使わない(往路の後、
  * 全ての壁が確認できたら一度だけスタートに戻って最終走行する) */
 static void run_scenario_b(void) {
@@ -271,6 +277,7 @@ static void run_scenario_b(void) {
 
 	run_to_cell("B", "outbound", SIM_GOAL_X, SIM_GOAL_Y);
 
+	int need_recompute = 1;
 	long guard = 0;
 	for (;;) {
 		if (guard++ > MAX_STEP) {
@@ -278,9 +285,13 @@ static void run_scenario_b(void) {
 			exit(1);
 		}
 
-		G_Gool_X = SIM_GOAL_X;
-		G_Gool_Y = SIM_GOAL_Y;
-		Maze_Dijkstra_Calculation();
+		if (need_recompute == 1) {
+			G_Gool_X = SIM_GOAL_X;
+			G_Gool_Y = SIM_GOAL_Y;
+			Maze_Dijkstra_Calculation();
+			need_recompute = 0;
+		}
+
 		int found = Maze_Unknown_Wall_Scan();
 		if (found == 0) {
 			break;
@@ -288,7 +299,7 @@ static void run_scenario_b(void) {
 
 		Maze_Unknown_Target_ModeSet(G_Unknown_Target_X, G_Unknown_Target_Y);
 		Maze_Step_Calculate();
-		run_until_wall_known("B", "check_unknown_wall");
+		need_recompute = run_until_wall_known("B", "check_unknown_wall");
 		Maze_Unkown_ALL_ModeOFF();
 	}
 

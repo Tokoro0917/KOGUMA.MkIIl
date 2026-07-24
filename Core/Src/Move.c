@@ -143,6 +143,7 @@ void Robot_Maze_Suction_Action() {
 			Suction_change(20);
 			G_Robot_Direction += 2;
 			G_Robot_Lastaction = 2;
+			G_Just_UTurned = 1;
 			Robot_adjustment();
 			Motor_Back();
 			Motor_Stop();
@@ -155,6 +156,7 @@ void Robot_Maze_Suction_Action() {
 			Motor_Stop();
 			G_Robot_Direction += 2;
 			G_Robot_Lastaction = 2;
+			G_Just_UTurned = 1;
 			Robot_adjustment();
 			Motor_trapezoid_PID(0, 1000, 1000, 10000, 90);
 		}
@@ -163,6 +165,7 @@ void Robot_Maze_Suction_Action() {
 		Motor_Stop();
 		G_Robot_Direction += 2;
 		G_Robot_Lastaction = 2;
+		G_Just_UTurned = 1;
 		Robot_adjustment();
 		Motor_trapezoid_PID(0, 1000, 1000, 10000, 90);
 	}
@@ -205,6 +208,7 @@ void Robot_Maze_Pass_Action() {
 			} else if (G_Known_Pass[i] == -8) {			//行き止まりUターン
 				Motor_trapezoid(1000, 1000, 0, 10000, 75);
 				Motor_Stop();
+				G_Just_UTurned = 1;
 				Robot_adjustment();
 				Motor_trapezoid_PID(0, 1000, 1000, 10000, 90);
 			} else if (G_Known_Pass[i] == -4) {			//左大廻９０

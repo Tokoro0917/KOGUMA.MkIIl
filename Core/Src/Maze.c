@@ -39,6 +39,11 @@ uint32_t Maze_Column_Look_Save[MAZE_SIZE + 1];
 int G_Robot_Direction = 4; //0~3　前　右　後ろ　左　%4
 int G_Robot_Lastaction = 5; //0~3 直進　右　後ろ　左
 
+/* Uターン(行き止まり)が実行された直後にMove.c側からセットされるフラグ。
+ * Dijkstra誘導 未知壁探索(main.c)が「Uターンした時だけ経路を再計算する」
+ * ための検出に使う。呼び出し側が使い終わったら自分で0に戻すこと */
+int G_Just_UTurned = 0;
+
 uint16_t G_Maze_Flont;
 uint16_t G_Maze_Back;
 uint16_t G_Maze_Left;
@@ -60,13 +65,13 @@ int Known_Flag = 0;
 
 int ALL_MODE = 0;
 
-/* Dijkstraバックトレースが通過した経路上のセル列(足立法風シャトル探索用)。
+/* Dijkstraバックトレースが通過した経路上のセル列(Dijkstra誘導 未知壁探索用)。
  * インデックスkの区間はセル(G_Dijk_Path_X[k],G_Dijk_Path_Y[k])に入るために
- * 通過した壁(G_Dijk_Path_WallIsRow/I/J[k])に対応し、その壁がまだ
- * Maze_Row_Look/Maze_Column_Lookで確認されていなければWallUnknown=1 */
+ * 通過した壁(G_Dijk_Path_WallIsRow/I/J[k])に対応する。その壁が現時点で
+ * 未知かどうかはMaze_Unknown_Wall_Scan()がその都度ライブ判定するので、
+ * ここではスナップショットは持たない */
 int16_t G_Dijk_Path_X[MAX_STEP];
 int16_t G_Dijk_Path_Y[MAX_STEP];
-uint8_t G_Dijk_Path_WallUnknown[MAX_STEP];
 uint8_t G_Dijk_Path_WallIsRow[MAX_STEP];
 int16_t G_Dijk_Path_WallI[MAX_STEP];
 int16_t G_Dijk_Path_WallJ[MAX_STEP];
@@ -1499,10 +1504,8 @@ void Maze_Dijkstra_Calculation() {
 		 * (このグラフではRow型ノードにdirection 2/6が、Column型ノードに
 		 * direction 0/4が現れることはないので、この2分岐で網羅できる) */
 		if (G_Dijk_Path_Len < MAX_STEP - 1) {
-			int wallKnown;
 			int16_t cellX, cellY;
 			if (short_node->isRow) {
-				wallKnown = (Maze_Row_Look[short_node->y] >> short_node->x) & 1u;
 				if (toGool_direction == 0 || toGool_direction == 1
 						|| toGool_direction == 7) {
 					cellX = short_node->x;
@@ -1512,8 +1515,6 @@ void Maze_Dijkstra_Calculation() {
 					cellY = short_node->y - 1;
 				}
 			} else {
-				wallKnown = (Maze_Column_Look[short_node->x] >> short_node->y)
-						& 1u;
 				if (toGool_direction == 2 || toGool_direction == 1
 						|| toGool_direction == 3) {
 					cellX = short_node->x;
@@ -1523,9 +1524,12 @@ void Maze_Dijkstra_Calculation() {
 					cellY = short_node->y;
 				}
 			}
+			/* この壁が現時点で既知か未知かは記録時点のスナップショットにせず、
+			 * Maze_Unknown_Wall_Scan()が呼ばれる都度Maze_Row_Look/Column_Lookを
+			 * 直接見てライブ判定する(同じ経路データを使い回して複数回スキャン
+			 * できるようにするため。詳しくはMaze_Unknown_Wall_Scan()参照) */
 			G_Dijk_Path_X[G_Dijk_Path_Len] = cellX;
 			G_Dijk_Path_Y[G_Dijk_Path_Len] = cellY;
-			G_Dijk_Path_WallUnknown[G_Dijk_Path_Len] = (wallKnown == 0) ? 1 : 0;
 			G_Dijk_Path_WallIsRow[G_Dijk_Path_Len] = short_node->isRow;
 			G_Dijk_Path_WallI[G_Dijk_Path_Len] = short_node->x;
 			G_Dijk_Path_WallJ[G_Dijk_Path_Len] = short_node->y;
@@ -1613,12 +1617,24 @@ void Maze_Dijkstra_Calculation() {
 }
 
 /* 直近のMaze_Dijkstra_Calculation()が記録した経路(G_Dijk_Path_*)を先頭から
- * 走査し、最初に見つかった未確認の壁をG_Unknown_Target_X/Yとその壁自体の
- * 識別子(G_Unknown_Wall_*)に記録する。戻り値1=見つかった、0=経路上の壁は
- * 全て確認済み(足立法風シャトル探索の終了条件) */
+ * 走査し、まだ未確認の壁をG_Unknown_Target_X/Yとその壁自体の識別子
+ * (G_Unknown_Wall_*)に記録する。戻り値1=見つかった、0=経路上の壁は全て確認済み
+ * (Dijkstra再計算タイミングをゴール到達直後とUターン発生時に絞るため、
+ * 各壁が現時点で未知かどうかはMaze_Row_Look/Maze_Column_Lookをその都度
+ * ライブで見て判定する。これにより、同じ経路データに対してこの関数を
+ * 複数回呼び、既に確認済みになった壁を自然に読み飛ばして次の未知壁を
+ * 見つけられる — Dijkstraを毎回再計算し直す必要がない) */
 int Maze_Unknown_Wall_Scan(void) {
 	for (int k = 0; k < G_Dijk_Path_Len; k++) {
-		if (G_Dijk_Path_WallUnknown[k]) {
+		int wallUnknown;
+		if (G_Dijk_Path_WallIsRow[k]) {
+			wallUnknown = ((Maze_Row_Look[G_Dijk_Path_WallJ[k]]
+					>> G_Dijk_Path_WallI[k]) & 1u) == 0;
+		} else {
+			wallUnknown = ((Maze_Column_Look[G_Dijk_Path_WallI[k]]
+					>> G_Dijk_Path_WallJ[k]) & 1u) == 0;
+		}
+		if (wallUnknown) {
 			G_Unknown_Target_X = G_Dijk_Path_X[k];
 			G_Unknown_Target_Y = G_Dijk_Path_Y[k];
 			G_Unknown_Wall_IsRow = G_Dijk_Path_WallIsRow[k];

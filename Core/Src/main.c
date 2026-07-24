@@ -558,14 +558,22 @@ int main(void) {
 						Maze_Save();
 					}
 
-					/* スタート→ゴール固定方向でDijkstra経路を計算し、経路上に
-					 * 未確認の壁が残っている間は、ロボットの現在位置から
-					 * 直接その壁を見に行く(スタートやゴールまで戻る必要はない)。
-					 * 経路上の壁が全て確認済みになったら終了 */
+					/* スタート→ゴール固定方向でDijkstra経路を計算し、経路上の
+					 * 未確認の壁を現在位置から直接見に行く。Dijkstraの再計算は
+					 * 毎回ではなく、ゴール到達直後(この時点)とUターンが
+					 * 発生した時だけ行う。1つの壁を確認できてUターンもして
+					 * いなければ、同じ経路データのまま次の未知壁を探す
+					 * (Maze_Unknown_Wall_Scan()は壁の確認状況をその都度
+					 * ライブ判定するので、再計算しなくても正しく次を返せる) */
+					int need_recompute = 1;
 					while (Failsafe_Flag() == 0) {
-						G_Gool_X = MAZE_GOOL_X;
-						G_Gool_Y = MAZE_GOOL_Y;
-						Maze_Dijkstra_Calculation();
+						if (need_recompute == 1) {
+							G_Gool_X = MAZE_GOOL_X;
+							G_Gool_Y = MAZE_GOOL_Y;
+							Maze_Dijkstra_Calculation();
+							need_recompute = 0;
+						}
+
 						int found = Maze_Unknown_Wall_Scan();
 						if (found == 0) {
 							break;
@@ -574,6 +582,7 @@ int main(void) {
 						Maze_Unknown_Target_ModeSet(G_Unknown_Target_X,
 								G_Unknown_Target_Y);
 						Maze_Step_Calculate();
+						G_Just_UTurned = 0;
 						int sub_steps = 0;
 						while ((Maze_Unknown_Wall_Still_Unknown() == 1)
 								&& (sub_steps < MAX_STEP)) {
@@ -583,6 +592,14 @@ int main(void) {
 							Robot_Maze_Pass_Action();
 							G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
 							sub_steps++;
+							if (G_Just_UTurned == 1) {
+								break;
+							}
+						}
+						if ((G_Just_UTurned == 1) || (sub_steps >= MAX_STEP)) {
+							//Uターンした、または目標に辿り着けなかった場合は
+							//次のループ先頭で経路を再計算する
+							need_recompute = 1;
 						}
 						Maze_Unkown_ALL_ModeOFF();
 						if (Failsafe_Flag() == 0) {
