@@ -756,8 +756,28 @@ void Maze_Step_Calculate() {
 		}
 	}
 	Maze_Gool_Setting(ALL_MODE);
-	pushQueue_walk(&queue_x, G_Gool_X);
-	pushQueue_walk(&queue_y, G_Gool_Y);
+	/* ALL_MODE中に未探索マスが尽きるとMaze_Gool_Setting()内でALL_MODEが
+	 * OFFになるが、そのタイミングではまだ「通常モードの目標セル
+	 * (G_Gool_X,Y)を歩数0にする」処理(elseブランチ)が走っていない
+	 * (呼び出し時点のmode==1のまま実行されているため)。ここで補う */
+	if (ALL_MODE == 0 && G_Step_Map[G_Gool_X][G_Gool_Y] != 0) {
+		G_Step_Map[G_Gool_X][G_Gool_Y] = 0;
+	}
+	/* ALL_MODE時はMaze_Gool_Setting()が未探索マスを全部歩数0にするが、
+	 * BFSはキューに積んだマスからしか伝播しないので、歩数0のマス全部を
+	 * 起点としてキューに積まないと多点始点BFSにならない。
+	 * G_Gool_X/Yだけを特別扱いして先に積むと、ALL_MODE中はスタート
+	 * (歩数100、本来は起点ではない)がFIFOの先頭に来て先に展開されてしまい、
+	 * 近くのマスを誤って「スタートからの距離」で埋めてしまう。
+	 * 歩数が実際に0のマスだけを均等に積むことでこれを避ける */
+	for (i = 0; i < MAZE_SIZE; i++) {
+		for (j = 0; j < MAZE_SIZE; j++) {
+			if (G_Step_Map[i][j] == 0) {
+				pushQueue_walk(&queue_x, i);
+				pushQueue_walk(&queue_y, j);
+			}
+		}
+	}
 	while (Step_N < MAX_STEP) {
 		X = popQueue_walk(&queue_x);
 		Y = popQueue_walk(&queue_y);
@@ -789,6 +809,19 @@ void Maze_Step_Calculate() {
 			pushQueue_walk(&queue_y, Y - 1);
 		}
 		Step_N++;
+	}
+
+	/* 大会ルール上、壁で完全に閉じられていて到達不可能なマスが
+	 * 存在し得る。ALL_MODE中にそういうマスだけが未探索として残ると
+	 * Maze_Gool_Setting()のN(未探索マス数)が0にならずALL_MODEが
+	 * 永遠にOFFにならない。その場合、今いる場所からはどの未探索マスにも
+	 * 到達できず歩数マップが更新されない(=自分のマスがMAX_STEPのまま)
+	 * ので、それを検知したら全面探索を打ち切ってスタートへ戻るモードに
+	 * 切り替え、歩数マップを作り直す */
+	if (ALL_MODE == 1
+			&& G_Step_Map[G_Robot_MAZE_X][G_Robot_MAZE_Y] == MAX_STEP) {
+		ALL_MODE = 0;
+		Maze_Step_Calculate();
 	}
 }
 
