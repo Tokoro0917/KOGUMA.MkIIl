@@ -297,11 +297,6 @@ void Short_NANAME_Move1000(int MAX, int AC) {
 	Maze_Shortest_Calculation();
 	Shortest_Pass_Compression();
 	Shortest_Pass_Compression_NANAME();
-	Maze_Mapping();
-	for (int i = 0; i < MAX_STEP; i++) {
-		printf("%d:::%d___NANAME:::%d\n\r", i, G_Short_Pass[i],
-				G_Short_Pass_NANAME[i]);
-	}
 
 	Motor_Setup_Voltage();
 	Suction_Start(15);
@@ -423,11 +418,6 @@ void Short_NANAME_Move2000(int MAX, int AC) {
 
 	Shortest_Pass_Compression();
 	Shortest_Pass_Compression_NANAME();
-	Maze_Mapping();
-	for (int i = 0; i < MAX_STEP; i++) {
-		printf("%d:::%d___NANAME:::%d\n\r", i, G_Short_Pass[i],
-				G_Short_Pass_NANAME[i]);
-	}
 	Suction_Start(50);
 	HAL_Delay(500);
 
@@ -543,11 +533,6 @@ void Short_NANAME_Move2400(int MAX, int AC) {
 	Maze_Shortest_Calculation();
 	Shortest_Pass_Compression();
 	Shortest_Pass_Compression_NANAME();
-	Maze_Mapping();
-	for (int i = 0; i < MAX_STEP; i++) {
-		printf("%d:::%d___NANAME:::%d\n\r", i, G_Short_Pass[i],
-				G_Short_Pass_NANAME[i]);
-	}
 	Suction_Start(70);
 	HAL_Delay(500);
 
@@ -662,11 +647,6 @@ void Short_NANAME_Move2700(int MAX, int AC) {
 	Maze_Shortest_Calculation();
 	Shortest_Pass_Compression();
 	Shortest_Pass_Compression_NANAME();
-	Maze_Mapping();
-	for (int i = 0; i < MAX_STEP; i++) {
-		printf("%d:::%d___NANAME:::%d\n\r", i, G_Short_Pass[i],
-				G_Short_Pass_NANAME[i]);
-	}
 	Suction_Start(85);
 	HAL_Delay(500);
 
@@ -782,11 +762,6 @@ void Short_Dijkstra_Move2000(int MAX, int AC) {
 
 	Shortest_Pass_Compression();
 	Shortest_Pass_Compression_NANAME();
-	Maze_Dijkstra_Mapping();
-	for (int i = 0; i < MAX_STEP; i++) {
-		printf("%d:::%d___NANAME:::%d\n\r", i, G_Short_Pass[i],
-				G_Short_Pass_NANAME[i]);
-	}
 	Suction_Start(50);
 	HAL_Delay(500);
 

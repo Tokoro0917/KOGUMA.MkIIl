@@ -905,7 +905,6 @@ void Maze_Shortest_Calculation() {
 						G_Robot_Direction += 0;
 						break;
 					}
-					printf("1____WHILE\n\r");
 				}
 				if (Maze_Wall_Left == 0) {
 					if (G_Step_Map[Short_MAZE_X - 1][Short_MAZE_Y]
@@ -915,7 +914,6 @@ void Maze_Shortest_Calculation() {
 						G_Robot_Direction += 3;
 						break;
 					}
-					printf("2____WHILE\n\r");
 				}
 				if (Maze_Wall_Right == 0) {
 					if (G_Step_Map[Short_MAZE_X + 1][Short_MAZE_Y]
@@ -925,7 +923,6 @@ void Maze_Shortest_Calculation() {
 						G_Robot_Direction += 1;
 						break;
 					}
-					printf("3____WHILE\n\r");
 				}
 			}
 
@@ -947,7 +944,6 @@ void Maze_Shortest_Calculation() {
 						G_Robot_Direction += 0;
 						break;
 					}
-					printf("4____WHILE\n\r");
 				}
 				if (Maze_Wall_Left == 0) {
 					if (G_Step_Map[Short_MAZE_X][Short_MAZE_Y + 1]
@@ -957,7 +953,6 @@ void Maze_Shortest_Calculation() {
 						G_Robot_Direction += 3;
 						break;
 					}
-					printf("5____WHILE\n\r");
 				}
 				if (Maze_Wall_Right == 0) {
 					if (G_Step_Map[Short_MAZE_X][Short_MAZE_Y - 1]
@@ -967,7 +962,6 @@ void Maze_Shortest_Calculation() {
 						G_Robot_Direction += 1;
 						break;
 					}
-					printf("6____WHILE\n\r");
 				}
 
 			}
@@ -989,7 +983,6 @@ void Maze_Shortest_Calculation() {
 						G_Robot_Direction += 0;
 						break;
 					}
-					printf("7____WHILE\n\r");
 				}
 				if (Maze_Wall_Left == 0) {
 					if (G_Step_Map[Short_MAZE_X + 1][Short_MAZE_Y]
@@ -999,7 +992,6 @@ void Maze_Shortest_Calculation() {
 						G_Robot_Direction += 3;
 						break;
 					}
-					printf("8____WHILE\n\r");
 				}
 				if (Maze_Wall_Right == 0) {
 					if (G_Step_Map[Short_MAZE_X - 1][Short_MAZE_Y]
@@ -1009,7 +1001,6 @@ void Maze_Shortest_Calculation() {
 						G_Robot_Direction += 1;
 						break;
 					}
-					printf("9____WHILE\n\r");
 				}
 			}
 		} else if (G_Robot_Direction % 4 == 3) { //西
@@ -1030,7 +1021,6 @@ void Maze_Shortest_Calculation() {
 						G_Robot_Direction += 0;
 						break;
 					}
-					printf("10____WHILE\n\r");
 				}
 				if (Maze_Wall_Left == 0) {
 					if (G_Step_Map[Short_MAZE_X][Short_MAZE_Y - 1]
@@ -1040,7 +1030,6 @@ void Maze_Shortest_Calculation() {
 						G_Robot_Direction += 3;
 						break;
 					}
-					printf("11____WHILE\n\r");
 				}
 				if (Maze_Wall_Right == 0) {
 					if (G_Step_Map[Short_MAZE_X][Short_MAZE_Y + 1]
@@ -1050,7 +1039,6 @@ void Maze_Shortest_Calculation() {
 						G_Robot_Direction += 1;
 						break;
 					}
-					printf("12____WHILE\n\r");
 				}
 			}
 		}
@@ -1503,9 +1491,8 @@ void Maze_Dijkstra_Calculation() {
 		}
 
 		toGool_direction = (short_node->direction + 4) % 8;
-		printf("%d direction\r\n", toGool_direction);
 
-		/* 足立法風シャトル探索用: このホップが通る壁(short_node自身)が
+		/* Dijkstra誘導 未知壁探索用: このホップが通る壁(short_node自身)が
 		 * 実際に通過するセルはtoGool_directionの向きで決まる(進行方向側のセル)。
 		 * Row型ノードはtoGool_directionが{0,1,7}なら北側セル、{3,4,5}なら南側セル。
 		 * Column型ノードは{1,2,3}なら東側セル、{5,6,7}なら西側セルになる
