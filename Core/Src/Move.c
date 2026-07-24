@@ -419,7 +419,7 @@ void Short_NANAME_Move2000(int MAX, int AC) {
 	Maze_Step_Calculate();
 
 	Maze_Shortest_Calculation();
-	//Maze_Dijkstra_Calculation(0);
+	//Maze_Dijkstra_Calculation();
 
 	Shortest_Pass_Compression();
 	Shortest_Pass_Compression_NANAME();
@@ -778,7 +778,7 @@ void Short_Dijkstra_Move2000(int MAX, int AC) {
 	Maze_Step_Calculate();
 
 	//Maze_Shortest_Calculation();
-	Maze_Dijkstra_Calculation(0);	//0=DIJK_TO_GOOL(スタート→ゴール)
+	Maze_Dijkstra_Calculation();
 
 	Shortest_Pass_Compression();
 	Shortest_Pass_Compression_NANAME();

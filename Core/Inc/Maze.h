@@ -97,5 +97,5 @@ void Shortest_Pass_Compression_NANAME();
 void Pass_zero_act();
 
 
-void  Maze_Dijkstra_Calculation(int direction);
+void  Maze_Dijkstra_Calculation();
 void Maze_Dijkstra_Mapping();

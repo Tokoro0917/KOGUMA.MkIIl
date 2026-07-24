@@ -528,7 +528,7 @@ int main(void) {
 					Encorder_count_reset();
 
 				}
-			} else if (Encorder_number_out() == 7) {		//Dijkstra誘導 未知壁シャトル探索(足立法風)
+			} else if (Encorder_number_out() == 7) {		//Dijkstra誘導 未知壁探索
 				if (Sensor_Enter() == 1) {
 					Buzzer_Enter();
 					Sensor_Start();
@@ -558,76 +558,51 @@ int main(void) {
 						Maze_Save();
 					}
 
-					/* シャトル: ゴール<->スタートを往復しながら、その都度Dijkstraで
-					 * 現在知っている情報での最短経路を計算し、経路上に未確認の壁が
-					 * あればまずそこだけを見に行ってから目的地へ向かう。スタートに
-					 * 戻った時点で経路上の壁が全て確認済みなら探索終了(往復回数の
-					 * 上限は設けず、確認が取れるまで続ける) */
-					int at_start = 0; //0=現在ゴール(次はスタートへ) 1=現在スタート(次はゴールへ)
-					int shuttle_done = 0;
-
-					while ((shuttle_done == 0) && (Failsafe_Flag() == 0)) {
-						int dest_x, dest_y, dijk_dir;
-						if (at_start == 0) {
-							dest_x = 0;
-							dest_y = 0;
-							dijk_dir = 1; //ゴール→スタート
-						} else {
-							dest_x = MAZE_GOOL_X;
-							dest_y = MAZE_GOOL_Y;
-							dijk_dir = 0; //スタート→ゴール
-						}
-
+					/* スタート→ゴール固定方向でDijkstra経路を計算し、経路上に
+					 * 未確認の壁が残っている間は、ロボットの現在位置から
+					 * 直接その壁を見に行く(スタートやゴールまで戻る必要はない)。
+					 * 経路上の壁が全て確認済みになったら終了 */
+					while (Failsafe_Flag() == 0) {
 						G_Gool_X = MAZE_GOOL_X;
 						G_Gool_Y = MAZE_GOOL_Y;
-						Maze_Dijkstra_Calculation(dijk_dir);
+						Maze_Dijkstra_Calculation();
 						int found = Maze_Unknown_Wall_Scan();
-
-						if ((found == 0) && (at_start == 1)) {
-							//スタートに戻ってきた時点で経路上の壁が全て確認済み
-							shuttle_done = 1;
+						if (found == 0) {
 							break;
 						}
 
-						if (found == 1) {
-							Maze_Unknown_Target_ModeSet(G_Unknown_Target_X,
-									G_Unknown_Target_Y);
-							Maze_Step_Calculate();
-							int sub_steps = 0;
-							while ((Maze_Unknown_Wall_Still_Unknown() == 1)
-									&& (sub_steps < MAX_STEP)) {
-								if (Failsafe_Flag() == 1) {
-									break;
-								}
-								Robot_Maze_Pass_Action();
-								G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] =
-										1;
-								sub_steps++;
-							}
-							Maze_Unkown_ALL_ModeOFF();
+						Maze_Unknown_Target_ModeSet(G_Unknown_Target_X,
+								G_Unknown_Target_Y);
+						Maze_Step_Calculate();
+						int sub_steps = 0;
+						while ((Maze_Unknown_Wall_Still_Unknown() == 1)
+								&& (sub_steps < MAX_STEP)) {
 							if (Failsafe_Flag() == 1) {
 								break;
 							}
+							Robot_Maze_Pass_Action();
+							G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
+							sub_steps++;
 						}
+						Maze_Unkown_ALL_ModeOFF();
+						if (Failsafe_Flag() == 0) {
+							Maze_Save();
+						}
+					}
 
-						G_Gool_X = dest_x;
-						G_Gool_Y = dest_y;
-						G_MAZE_Explored[dest_x][dest_y] = 0;
+					//確定後: スタートへ戻る
+					if (Failsafe_Flag() == 0) {
+						G_Gool_X = 0;
+						G_Gool_Y = 0;
+						G_MAZE_Explored[0][0] = 0;
 						Maze_Step_Calculate();
-						while (G_MAZE_Explored[dest_x][dest_y] == 0) {
+						while (G_MAZE_Explored[0][0] == 0) {
 							if (Failsafe_Flag() == 1) {
 								break;
 							}
 							Robot_Maze_Pass_Action();
 							G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
 						}
-						if (Failsafe_Flag() == 0) {
-							Maze_Save();
-						} else {
-							break;
-						}
-
-						at_start = !at_start;
 					}
 
 					Motor_Stop();

@@ -1058,11 +1058,7 @@ void Maze_Shortest_Calculation() {
 	}
 }
 
-/* direction: 0=DIJK_TO_GOOL(スタート→ゴール、既存動作), 1=DIJK_TO_START(ゴール→スタート、
- * 足立法風シャトル探索の復路用)。どちらもgoal_entries(ゴール2x2区画の8境界ノード)と
- * node_Row[0][1](スタート唯一の開口=北面)を使うが、どちらをマルチソースの起点にし、
- * どちらをバックトレースの開始アンカーにするかが入れ替わるだけ */
-void Maze_Dijkstra_Calculation(int direction) {
+void Maze_Dijkstra_Calculation() {
 	/* MAZE_SIZE=32だとdata[]がMAX_QUEUE_NODE_NUM(=ノード総数)分あり、スタックに
 	 * 置くとスタックオーバーフローの危険があるためstatic(.bss)に置く */
 	static Queue_T queue_node;
@@ -1098,23 +1094,20 @@ void Maze_Dijkstra_Calculation(int direction) {
 	/* ゴールは2x2区画。Maze_Shortest_Calculation(普通の最短)と同じく、
 	 * どの面から入ってもゴール区画に入った時点で経路生成を止めたい。
 	 * 大会ルール上どの面が開口になっているか事前には分からないため、
-	 * 2x2区画を囲む8本の「外から侵入する境界」を列挙しておく(壁で塞がれている
-	 * 境界は起点/アンカーどちらの用途でも除外する)。direction==0では起点として、
-	 * direction==1ではリラクゼーション後の最小コスト探索(バックトレースの
-	 * アンカー選び)として、緩和処理より後でも再利用するため関数スコープに置く */
-	int gx = G_Gool_X;
-	int gy = G_Gool_Y;
-	NODE_T *goal_entries[8] = { &node_Row[gx][gy], //(gx,gy)   南から
-			&node_Row[gx + 1][gy], //(gx+1,gy) 南から
-			&node_Row[gx][gy + 2], //(gx,gy+1)   北から
-			&node_Row[gx + 1][gy + 2], //(gx+1,gy+1) 北から
-			&node_Column[gx][gy], //(gx,gy)   西から
-			&node_Column[gx][gy + 1], //(gx,gy+1) 西から
-			&node_Column[gx + 2][gy], //(gx+1,gy)   東から
-			&node_Column[gx + 2][gy + 1], //(gx+1,gy+1) 東から
-			};
-
-	if (direction == 0) {
+	 * 2x2区画を囲む8本の「外から侵入する境界」全てをコスト0の
+	 * マルチソースにする(壁で塞がれている境界は起点にしない) */
+	{
+		int gx = G_Gool_X;
+		int gy = G_Gool_Y;
+		NODE_T *goal_entries[8] = { &node_Row[gx][gy], //(gx,gy)   南から
+				&node_Row[gx + 1][gy], //(gx+1,gy) 南から
+				&node_Row[gx][gy + 2], //(gx,gy+1)   北から
+				&node_Row[gx + 1][gy + 2], //(gx+1,gy+1) 北から
+				&node_Column[gx][gy], //(gx,gy)   西から
+				&node_Column[gx][gy + 1], //(gx,gy+1) 西から
+				&node_Column[gx + 2][gy], //(gx+1,gy)   東から
+				&node_Column[gx + 2][gy + 1], //(gx+1,gy+1) 東から
+				};
 		for (int k = 0; k < 8; k++) {
 			if (goal_entries[k]->cost != DIJK_WALLCOST) {
 				goal_entries[k]->cost = 0;
@@ -1122,12 +1115,6 @@ void Maze_Dijkstra_Calculation(int direction) {
 				pushQueue_walk_node(&queue_node, goal_entries[k]);
 			}
 		}
-	} else {
-		/* スタート(0,0)は北面(node_Row[0][1])以外の3面が常に壁で塞がれている
-		 * (Maze_Initialization()参照)ため、単一始点でよい */
-		node_Row[0][1].cost = 0;
-		node_Row[0][1].inQueue = 1;
-		pushQueue_walk_node(&queue_node, &node_Row[0][1]);
 	}
 
 	while (1) {
@@ -1482,22 +1469,7 @@ void Maze_Dijkstra_Calculation(int direction) {
 	int N = 0;
 
 	NODE_T *short_node;
-	if (direction == 0) {
-		short_node = &node_Row[0][1]; //&node_Row[0][1];
-	} else {
-		/* ゴール2x2区画の8境界のうち、壁で塞がれていないものの中で
-		 * 最小コストのものをバックトレース開始アンカーにする
-		 * (どの面から出てもよいので、実際に最短だった面から辿る) */
-		NODE_T *best = NULL;
-		for (int k = 0; k < 8; k++) {
-			if (goal_entries[k]->cost != DIJK_WALLCOST) {
-				if (best == NULL || goal_entries[k]->cost < best->cost) {
-					best = goal_entries[k];
-				}
-			}
-		}
-		short_node = best;
-	}
+	short_node = &node_Row[0][1]; //&node_Row[0][1];
 	toGool_direction = (short_node->direction + 4) % 8; //
 
 	for (int i = 0; i < 255; i++) {
