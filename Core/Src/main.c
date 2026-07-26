@@ -589,7 +589,7 @@ int main(void) {
 
 					Motor_Setup();
 					Motor_Stop();
-					Short_NANAME_Move2000(6000, 30000);
+					Short_Dijkstra_Move2000(6000, 25000);
 					Motor_Free();
 					LED_Reset();
 					HAL_Delay(500);
@@ -602,7 +602,7 @@ int main(void) {
 
 					Motor_Setup();
 					Motor_Stop();
-					Short_NANAME_Move2400(6000, 15000);
+					Short_NANAME_Move2400(6000, 20000);
 					Motor_Free();
 					LED_Reset();
 					HAL_Delay(500);
@@ -615,7 +615,7 @@ int main(void) {
 
 					Motor_Setup();
 					Motor_Stop();
-					Short_NANAME_Move2400(6000, 20000);
+					Short_Dijkstra_Move2400(6000, 20000);
 					Motor_Free();
 					LED_Reset();
 					HAL_Delay(500);
@@ -725,7 +725,7 @@ int main(void) {
 					//Motor_Multistage_PID(0, 7000, 0, 25000, 180 * 9);
 					//Motor_trapezoid_PID(0, 3000, 0, 20000, 180 * 9);
 					//Motor_trapezoid_Asymmetric_PID(0, 4000, 0, 23000, 180 * 9);
-					Motor_trapezoid_PID(0, 3000, 0, 10000, 180*8);
+					Motor_trapezoid_PID(0, 2000, 0, 10000, 180*15);
 					Motor_Stop();
 					Motor_Stop();
 					Motor_Stop();

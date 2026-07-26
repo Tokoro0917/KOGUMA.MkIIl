@@ -792,69 +792,71 @@ void Short_Dijkstra_Move2000(int MAX, int AC) {
 			break;
 		}
 		if (G_Short_Pass_NANAME[i] > 0) {			//区間前進
-			Motor_trapezoid_PID(2000, MAX, 2000, AC,
+			//Suction_change(30);
+			Motor_trapezoid_Asymmetric_PID(2000, MAX, 2000, AC,
 					90 * G_Short_Pass_NANAME[i]);
+			//Suction_change(50);
 		} else if ((G_Short_Pass_NANAME[i] <= -4)
 				&& (G_Short_Pass_NANAME[i] > -50)) {
-			if (G_Short_Pass_CP[i] == -4) {			//左大廻９０
-				Motor_Wallcut_ST(2000, 15, 0);
-				Motor_Sula_COS(2000, 88.5, 1200, 30000);
-				Motor_Wallcut_END(2000, 35, 0);
-			} else if (G_Short_Pass_CP[i] == -6) {			//右大廻９０
-				Motor_Wallcut_ST(2000, 15, 1);
-				Motor_Sula_COS(2000, -88.5, 1200, 30000);
-				Motor_Wallcut_END(2000, 35, 1);
-			} else if (G_Short_Pass_CP[i] == -5) {			//左大廻１８０
-				Motor_Wallcut_ST(2000, 30, 0);
-				Motor_Sula_COS(2000, 178, 1280, 30000);
-				Motor_Wallcut_END(2000, 60, 0);
-			} else if (G_Short_Pass_CP[i] == -7) {			//右大廻１８０
-				Motor_Wallcut_ST(2000, 30, 1);
-				Motor_Sula_COS(2000, -178, 1280, 30000);
-				Motor_Wallcut_END(2000, 60, 1);
+			if (G_Short_Pass_NANAME[i] == -4) {			//左大廻９０
+				Motor_Wallcut_ST(2000, 10, 0);
+				Motor_Sula_COS(2000, 90, 2000, 40000);
+				Motor_Wallcut_END(2000, 75, 0);
+			} else if (G_Short_Pass_NANAME[i] == -6) {			//右大廻９０
+				Motor_Wallcut_ST(2000, 10, 1);
+				Motor_Sula_COS(2000, -90, 2000, 40000);
+				Motor_Wallcut_END(2000, 75, 1);
+			} else if (G_Short_Pass_NANAME[i] == -5) {			//左大廻１８０
+				Motor_Wallcut_ST(2000, 5, 0);
+				Motor_Sula_COS(2000, 180, 1220, 40000);
+				Motor_Wallcut_END(2000, 73, 0);
+			} else if (G_Short_Pass_NANAME[i] == -7) {			//右大廻１８０
+				Motor_Wallcut_ST(2000, 5, 1);
+				Motor_Sula_COS(2000, -180, 1220, 40000);
+				Motor_Wallcut_END(2000, 73, 1);
 
 			}
 		} else if (G_Short_Pass_NANAME[i] <= -50) {			//斜め
 			if (G_Short_Pass_NANAME[i] == -51) {			//入り　左４５
-				Motor_Wallcut_ST(2000, 8, 0);
-				Motor_Sula_COS(2000, 43, 1600, 55000);
-				Motor_Wallcut_END_NANAME(2000, 55, 0);
+				Motor_Wallcut_ST(2000, 5, 0);
+				Motor_Sula_COS(2000, 45, 1900, 120000);
+				Motor_Wallcut_END_NANAME(2000, 112, 0);
 			} else if (G_Short_Pass_NANAME[i] == -52) {			//入り　左１３５
-				Motor_Wallcut_ST(2000, 10, 0);
-				Motor_Sula_COS(2000, 134, 1300, 50000);
-				Motor_Wallcut_END_NANAME(2000, 9, 0);
+				Motor_Wallcut_ST(2000, 31, 0);
+				Motor_Sula_COS(2000, 135, 1500, 80000);
+				Motor_Wallcut_END_NANAME(2000, 98, 0);
 			} else if (G_Short_Pass_NANAME[i] == -53) {			//入り　右４５
-				Motor_Wallcut_ST(2000, 8, 1);
-				Motor_Sula_COS(2000, -43, 1600, 55000);
-				Motor_Wallcut_END_NANAME(2000, 55, 1);
+				Motor_Wallcut_ST(2000, 5, 1);
+				Motor_Sula_COS(2000, -45, 1900, 120000);
+				Motor_Wallcut_END_NANAME(2000, 112, 1);
 			} else if (G_Short_Pass_NANAME[i] == -54) {			//入り　右１３５
-				Motor_Wallcut_ST(2000, 10, 1);
-				Motor_Sula_COS(2000, -134, 1300, 50000);
-				Motor_Wallcut_END_NANAME(2000, 9, 1);
+				Motor_Wallcut_ST(2000, 31, 1);
+				Motor_Sula_COS(2000, -135, 1500, 80000);
+				Motor_Wallcut_END_NANAME(2000, 98, 1);
 			} else if (G_Short_Pass_NANAME[i] == -61) {			//出　左４５
-				Motor_Wallcut_ST_NANAME(2000, 22, 0);
-				Motor_Sula_COS(2000, 42, 1500, 40000);
-				Motor_Wallcut_END(2000, 21, 0);
+				Motor_Wallcut_ST_NANAME(2000, 13, 0);
+				Motor_Sula_COS(2000, 45, 1500, 40000);
+				Motor_Wallcut_END(2000, 25, 0);
 			} else if (G_Short_Pass_NANAME[i] == -62) {			//出　左１３５
-				Motor_Wallcut_ST_NANAME(2000, 8, 0);
-				Motor_Sula_COS(2000, 131.5, 1700, 50000);
-				Motor_Wallcut_END(2000, 70, 0);
+				Motor_Wallcut_ST_NANAME(2000, 10, 0);
+				Motor_Sula_COS(2000, 135, 1350, 70000);
+				Motor_Wallcut_END(2000, 90, 0);
 			} else if (G_Short_Pass_NANAME[i] == -63) {			//出　右４５
-				Motor_Wallcut_ST_NANAME(2000, 22, 1);
-				Motor_Sula_COS(2000, -42, 1500, 40000);
-				Motor_Wallcut_END(2000, 21, 1);
+				Motor_Wallcut_ST_NANAME(2000, 13, 1);
+				Motor_Sula_COS(2000, -45, 1500, 40000);
+				Motor_Wallcut_END(2000, 25, 1);
 			} else if (G_Short_Pass_NANAME[i] == -64) {			//出　右１３５
-				Motor_Wallcut_ST_NANAME(2000, 8, 1);
-				Motor_Sula_COS(2000, -131.5, 1700, 50000);
-				Motor_Wallcut_END(2000, 70, 1);
+				Motor_Wallcut_ST_NANAME(2000, 10, 1);
+				Motor_Sula_COS(2000, -135, 1350, 70000);
+				Motor_Wallcut_END(2000, 90, 1);
 			} else if (G_Short_Pass_NANAME[i] == -65) {			//V90左
-				Motor_Wallcut_ST_NANAME(2000, 7, 0);
-				Motor_Sula_COS(2000, 84, 2000, 80000);
-				Motor_Wallcut_END_NANAME(2000, 35, 0);
+				Motor_Wallcut_ST_NANAME(2000, 13, 0);
+				Motor_Sula_COS(2000, 90, 2000, 130000);
+				Motor_Wallcut_END_NANAME(2000, 80, 0);
 			} else if (G_Short_Pass_NANAME[i] == -66) {			//V90右
-				Motor_Wallcut_ST_NANAME(2000, 7, 1);
-				Motor_Sula_COS(2000, -84, 2000, 80000);
-				Motor_Wallcut_END_NANAME(2000, 35, 1);
+				Motor_Wallcut_ST_NANAME(2000, 13, 1);
+				Motor_Sula_COS(2000, -90, 2000, 130000);
+				Motor_Wallcut_END_NANAME(2000, 80, 1);
 			} else if (G_Short_Pass_NANAME[i] % 50 == 0) {			//直線
 				Motor_NANAME_PID(2000, MAX, 2000, AC - 5000,
 						127.3 * G_Short_Pass_NANAME[i] / -50);
@@ -864,7 +866,7 @@ void Short_Dijkstra_Move2000(int MAX, int AC) {
 
 	}
 	if (Failsafe_Flag() == 0) {
-		Motor_trapezoid_PID(2000, 2000, 0, 20000, 180);
+		Motor_trapezoid_PID(2000, 2000, 0, 20000, 270);
 		Motor_Stop();
 		Suction_Stop();
 
@@ -876,3 +878,124 @@ void Short_Dijkstra_Move2000(int MAX, int AC) {
 
 }
 
+void Short_Dijkstra_Move2400(int MAX, int AC) {
+	Maze_Road();
+	Maze_Wall_fill();
+	G_Gool_X = MAZE_GOOL_X;
+	G_Gool_Y = MAZE_GOOL_Y;
+	G_Robot_MAZE_X = 0;
+	G_Robot_MAZE_Y = 0;
+	G_Robot_Direction = 0;
+	G_MAZE_Explored[G_Gool_X][G_Gool_Y] = 0;
+	Maze_Step_Calculate();
+
+	//Maze_Shortest_Calculation();
+	Maze_Dijkstra_Calculation();
+
+	Shortest_Pass_Compression();
+	Shortest_Pass_Compression_NANAME();
+	Maze_Dijkstra_Mapping();
+	for (int i = 0; i < MAX_STEP; i++) {
+		printf("%d:::%d___NANAME:::%d\n\r", i, G_Short_Pass[i],
+				G_Short_Pass_NANAME[i]);
+	}
+	Suction_Start(50);
+	HAL_Delay(500);
+
+	Motor_Setup();
+	if (G_Short_Pass_NANAME[0] == 1) {
+		Motor_trapezoid_PID(0, 2400, 2400, 30000, 90 + 24);			//24
+		G_Short_Pass_NANAME[0] = -1;
+	} else {
+		Motor_trapezoid_PID(0, 2400, 2400, 60000, 10);			//24
+	}
+	for (int i = 0; G_Short_Pass_NANAME[i] != 0; i++) {
+		if (Failsafe_Flag() == 1) {
+			break;
+		}
+		if (G_Short_Pass_NANAME[i] > 0) {			//区間前進
+			Motor_trapezoid_Asymmetric_PID(2400, MAX, 2400, AC,
+					90 * G_Short_Pass_NANAME[i]);
+		} else if ((G_Short_Pass_NANAME[i] <= -4)
+				&& (G_Short_Pass_NANAME[i] > -50)) {
+			if (G_Short_Pass_CP[i] == -4) {			//左大廻９０
+				Motor_Wallcut_ST(2400, 25, 0);
+				Motor_Sula_COS(2400, 90, 1600, 80000);
+				Motor_Wallcut_END(2400, 100, 0);
+			} else if (G_Short_Pass_CP[i] == -6) {			//右大廻９０
+				Motor_Wallcut_ST(2400, 25, 1);
+				Motor_Sula_COS(2400, -90, 1600, 80000);
+				Motor_Wallcut_END(2400, 100, 1);
+			} else if (G_Short_Pass_CP[i] == -5) {			//左大廻１８０
+				Motor_Wallcut_ST(2400, 15, 0);
+				Motor_Sula_COS(2400, 180, 1500, 70000);
+				Motor_Wallcut_END(2400, 88, 0);
+			} else if (G_Short_Pass_CP[i] == -7) {			//右大廻１８０
+				Motor_Wallcut_ST(2400, 15, 1);
+				Motor_Sula_COS(2400, -180, 1500, 70000);
+				Motor_Wallcut_END(2400, 88, 1);
+
+			}
+		} else if (G_Short_Pass_NANAME[i] <= -50) {			//斜め
+			if (G_Short_Pass_NANAME[i] == -51) {			//入り　左４５
+				Motor_Wallcut_ST(2400, 3, 0);
+				Motor_Sula_COS(2400, 45, 2500, 160000);
+				Motor_Wallcut_END_NANAME(2400, 113, 0);
+			} else if (G_Short_Pass_NANAME[i] == -52) {			//入り　左１３５
+				Motor_Wallcut_ST(2400, 15, 0);
+				Motor_Sula_COS(2400, 135, 2000, 55000);
+				Motor_Wallcut_END_NANAME(2400, 85, 0);
+			} else if (G_Short_Pass_NANAME[i] == -53) {			//入り　右４５
+				Motor_Wallcut_ST(2400, 3, 1);
+				Motor_Sula_COS(2400, -45, 2500, 160000);
+				Motor_Wallcut_END_NANAME(2400, 113, 1);
+			} else if (G_Short_Pass_NANAME[i] == -54) {			//入り　右１３５
+				Motor_Wallcut_ST(2400, 15, 1);
+				Motor_Sula_COS(2400, -135, 2000, 55000);
+				Motor_Wallcut_END_NANAME(2400, 85, 1);
+			} else if (G_Short_Pass_NANAME[i] == -61) {			//出　左４５
+				Motor_Wallcut_ST_NANAME(2400, 8, 0);
+				Motor_Sula_COS(2400, 45, 1550, 70000);
+				Motor_Wallcut_END(2400, 40, 0);
+			} else if (G_Short_Pass_NANAME[i] == -62) {			//出　左１３５
+				Motor_Wallcut_ST_NANAME(2400, 17, 0);
+				Motor_Sula_COS(2400, 135, 2100, 80000);
+				Motor_Wallcut_END(2400, 123, 0);
+			} else if (G_Short_Pass_NANAME[i] == -63) {			//出　右４５
+				Motor_Wallcut_ST_NANAME(2400, 8, 1);
+				Motor_Sula_COS(2400, -45, 1550, 70000);
+				Motor_Wallcut_END(2400, 40, 1);
+			} else if (G_Short_Pass_NANAME[i] == -64) {			//出　右１３５
+				Motor_Wallcut_ST_NANAME(2400, 17, 1);
+				Motor_Sula_COS(2400, -135, 2100, 80000);
+				Motor_Wallcut_END(2400, 123, 1);
+			} else if (G_Short_Pass_NANAME[i] == -65) {			//V90左
+				Motor_Wallcut_ST_NANAME(2400, 5, 0);
+				//Motor_NANAME_PID(500, 500, 500, 5000, 10);
+				Motor_Sula_COS(2400, 87, 2600, 150000);
+				Motor_Wallcut_END_NANAME(2400, 90, 0);
+			} else if (G_Short_Pass_NANAME[i] == -66) {			//V90右
+				Motor_Wallcut_ST_NANAME(2400, 5, 1);
+				//Motor_NANAME_PID(500, 500, 500, 5000, 10);
+				Motor_Sula_COS(2400, -87, 2600, 150000);
+				Motor_Wallcut_END_NANAME(2400, 90, 1);
+			} else if (G_Short_Pass_NANAME[i] % 50 == 0) {			//直線
+				Motor_NANAME_PID(2400, MAX, 2400, AC - 10000,
+						127.3 * G_Short_Pass_NANAME[i] / -50);
+
+			}
+		}
+
+	}
+	if (Failsafe_Flag() == 0) {
+		Motor_trapezoid_PID(2400, 2400, 0, 30000, 180);
+		Motor_Stop();
+		Suction_Stop();
+
+		Robot_adjustment();
+		LED_Goal();
+	} else {
+		Failsafe_Flag_OFF();
+	}
+
+}

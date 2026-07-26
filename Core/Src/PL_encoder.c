@@ -14,6 +14,9 @@
 #include "UI.h"
 float encoder_R, encoder_L; //エンコーダ検出角度
 
+float encoder_R_ecc_amp = 0.0f, encoder_R_ecc_phase = 0.0f; //右エンコーダ偏心補正(振幅deg・位相deg)
+float encoder_L_ecc_amp = 0.0f, encoder_L_ecc_phase = 0.0f; //左エンコーダ偏心補正
+
 float Tire_Speed_L_LOG[10000], Tire_Speed_R_LOG[10000], GYRO_LOG[1000];
 
 float G_Tire_Speed_R, G_Tire_Speed_L; //タイヤスピード
@@ -194,6 +197,23 @@ void AS5047_DataUpdate(void) {
 			/ 8192;
 	//HAL_Delay(5);
 
+	//磁石偏心による1次高調波誤差の補正(振幅・位相はオフライン解析で決定)
+	encoder_R -= encoder_R_ecc_amp
+			* sinf((encoder_R + encoder_R_ecc_phase) * PI / 180.0f);
+	if (encoder_R < 0) {
+		encoder_R += 360;
+	} else if (encoder_R >= 360) {
+		encoder_R -= 360;
+	}
+
+	encoder_L -= encoder_L_ecc_amp
+			* sinf((encoder_L + encoder_L_ecc_phase) * PI / 180.0f);
+	if (encoder_L < 0) {
+		encoder_L += 360;
+	} else if (encoder_L >= 360) {
+		encoder_L -= 360;
+	}
+
 }
 
 void Encorder_Speed_Calculate() {
@@ -294,4 +314,12 @@ int Encorder_number_out() {
 
 int Encorder_mode_out() {
 	return Program_mode;
+}
+
+float Encoder_R_Angle_out() {
+	return encoder_R;
+}
+
+float Encoder_L_Angle_out() {
+	return encoder_L;
 }

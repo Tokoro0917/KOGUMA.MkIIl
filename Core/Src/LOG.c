@@ -8,6 +8,7 @@
 #include"LOG.h"
 #include "stdio.h"
 
+#include "Define.h"
 #include "PL_encoder.h"
 #include "lsm6dsr.h"
 #include "motor.h"
@@ -30,6 +31,11 @@ float Sensor_R_LOG[LOG_MAX];
 float Motor_Voltage_L_LOG[LOG_MAX];
 float Motor_Voltage_R_LOG[LOG_MAX];
 
+#ifdef ENCODER_ECC_CALIBRATION_LOG
+float Encoder_R_LOG[LOG_MAX];
+float Encoder_L_LOG[LOG_MAX];
+#endif
+
 int LOG_flag = 0;
 int LOG_count = 0;
 
@@ -41,6 +47,10 @@ void LOG_get_start() {
 		G_Motor_W_Target_LOG[i] = 0;
 //		Sensor_L_LOG[i] = 0;
 //		Sensor_R_LOG[i] = 0;
+#ifdef ENCODER_ECC_CALIBRATION_LOG
+		Encoder_R_LOG[i] = 0;
+		Encoder_L_LOG[i] = 0;
+#endif
 	}
 	LOG_flag = 1;
 	LOG_count = 0;
@@ -64,15 +74,26 @@ void LOG_get_interrupt() {
 		Sensor_R_LOG[LOG_count] = g_sensor_av[1];
 		Motor_Voltage_L_LOG[LOG_count]=Motor_Voltage_L;
 		Motor_Voltage_R_LOG[LOG_count]=Motor_Voltage_R;
+#ifdef ENCODER_ECC_CALIBRATION_LOG
+		Encoder_R_LOG[LOG_count] = Encoder_R_Angle_out();
+		Encoder_L_LOG[LOG_count] = Encoder_L_Angle_out();
+#endif
 		LOG_count++;
 	}
 }
 
 void LOG_print() {
 	for (int i = 0; i < LOG_MAX; i++) {
+#ifdef ENCODER_ECC_CALIBRATION_LOG
+		printf("%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n\r", i * 0.001, Tire_Speed_LOG[i],
+				G_Motor_V_Target_LOG[i], Gyro_z_LOG[i], G_Motor_W_Target_LOG[i],
+				Sensor_L_LOG[i], Sensor_R_LOG[i],Motor_Voltage_L_LOG[i],Motor_Voltage_R_LOG[i],
+				Encoder_R_LOG[i], Encoder_L_LOG[i]);
+#else
 		printf("%f,%f,%f,%f,%f,%f,%f,%f,%f\n\r", i * 0.001, Tire_Speed_LOG[i],
 				G_Motor_V_Target_LOG[i], Gyro_z_LOG[i], G_Motor_W_Target_LOG[i],
 				Sensor_L_LOG[i], Sensor_R_LOG[i],Motor_Voltage_L_LOG[i],Motor_Voltage_R_LOG[i]);
+#endif
 //		printf("%f,%f,%f,%f,%f\n\r", i * 0.001, Tire_Speed_LOG[i],
 //				G_Motor_V_Target_LOG[i], Gyro_z_LOG[i], G_Motor_W_Target_LOG[i]);
 	}

@@ -29,6 +29,7 @@ void Short_NANAME_Move2400(int, int);
 void Short_NANAME_Move2700(int, int);
 
 void Short_Dijkstra_Move2000(int, int);
+void Short_Dijkstra_Move2400(int, int);
 
 //void Sula_Shortest_Move800();
 //void Sula_Shortest_Move1100();

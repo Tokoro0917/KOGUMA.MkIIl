@@ -20,4 +20,7 @@ void Encorder_count_reset();
 int Encorder_number_out();
 int Encorder_mode_out() ;
 
+float Encoder_R_Angle_out();
+float Encoder_L_Angle_out();
+
 #endif /* INC_PL_ENCODER_H_ */

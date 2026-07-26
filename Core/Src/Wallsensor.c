@@ -29,13 +29,13 @@ float Kd_FW_dire = 0.0;
 
 float KP, KD;
 
-int Wall_L = 220; //370
-int Wall_R = 200; //250
+int Wall_L = 215; //370
+int Wall_R = 215; //250
 
 int Wall_TH_L = 80;
 int Wall_TH_R = 80;
 
-float FlontWall_Distance = 530;
+float FlontWall_Distance = 640;
 
 int Sensor_diff_TH = 50;
 

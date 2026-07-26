@@ -9,8 +9,8 @@
 #define INC_DEFINE_H_
 
 /* ゴールは迷路中央の2x2区画(標準ルール)。MAZE_SIZEを変えたらここも中央に追従させる */
-#define MAZE_GOOL_X 1
-#define MAZE_GOOL_Y 0
+#define MAZE_GOOL_X 7
+#define MAZE_GOOL_Y 7
 
 /* 迷路の1辺のマス数。16 <-> 32 の切り替えはここ1箇所でOK
  * (壁ビット幅・ノード配列サイズ・キュー容量は全てここから導出される)
@@ -24,7 +24,7 @@
 #define MAX_STEP (MAZE_SIZE * MAZE_SIZE)
 
 
-#define TIREDIAMETER 23.5 //23.3mm
+#define TIREDIAMETER 23.45 //23.3mm
 #define TIREBETWEEN 55
 #define PI 3.1415
 #define LIMITBATT 15.6
@@ -62,5 +62,10 @@
  * MAZE_SIZEに追従させる (16x16なら2890、32x32なら10890) */
 #define DIJK_MAXCOST (ST_COST * 2 * (MAZE_SIZE + 1) * (MAZE_SIZE + 1))
 #define DIJK_WALLCOST (DIJK_MAXCOST + 1)
+
+/* エンコーダ偏心補正のキャリブレーションデータ収集用。有効時はLOG.cに
+ * 生角度ログ(float[LOG_MAX]×2 = 約16KB)が追加されるため、普段はコメントアウトのまま。
+ * キャリブレーション実施時だけ有効にしてビルドする */
+//#define ENCODER_ECC_CALIBRATION_LOG
 
 #endif /* INC_DEFINE_H_ */
