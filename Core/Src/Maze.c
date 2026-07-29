@@ -39,6 +39,11 @@ uint32_t Maze_Column_Look_Save[MAZE_SIZE + 1];
 int G_Robot_Direction = 4; //0~3　前　右　後ろ　左　%4
 int G_Robot_Lastaction = 5; //0~3 直進　右　後ろ　左
 
+/* Uターン(行き止まり)が実行された直後にMove.c側からセットされるフラグ。
+ * Dijkstra誘導 未知壁探索(main.c)が「Uターンした時だけ経路を再計算する」
+ * ための検出に使う。呼び出し側が使い終わったら自分で0に戻すこと */
+int G_Just_UTurned = 0;
+
 uint16_t G_Maze_Flont;
 uint16_t G_Maze_Back;
 uint16_t G_Maze_Left;
@@ -53,11 +58,33 @@ int16_t G_Short_Pass_NANAME[MAX_STEP];
 
 int16_t G_Known_Pass[MAX_STEP];
 int16_t Known_Pass_CP[MAX_STEP];
+int16_t Known_Pass_NANAME[MAX_STEP];
 
 int NANAME_Flag = 0;
 int Known_Flag = 0;
 
 int ALL_MODE = 0;
+
+/* Dijkstraバックトレースが通過した経路上のセル列(Dijkstra誘導 未知壁探索用)。
+ * インデックスkの区間はセル(G_Dijk_Path_X[k],G_Dijk_Path_Y[k])に入るために
+ * 通過した壁(G_Dijk_Path_WallIsRow/I/J[k])に対応する。その壁が現時点で
+ * 未知かどうかはMaze_Unknown_Wall_Scan()がその都度ライブ判定するので、
+ * ここではスナップショットは持たない */
+int16_t G_Dijk_Path_X[MAX_STEP];
+int16_t G_Dijk_Path_Y[MAX_STEP];
+uint8_t G_Dijk_Path_WallIsRow[MAX_STEP];
+int16_t G_Dijk_Path_WallI[MAX_STEP];
+int16_t G_Dijk_Path_WallJ[MAX_STEP];
+int G_Dijk_Path_Len = 0;
+
+/* Maze_Unknown_Wall_Scan()が見つけた「経路上で最初に見つかった未知壁」の
+ * 手前側セル座標(Maze_Gool_Setting()のmode==2で目標地点として使う)と、
+ * その壁自体の識別子(Maze_Unknown_Wall_Still_Unknown()での再確認用) */
+int G_Unknown_Target_X = 0;
+int G_Unknown_Target_Y = 0;
+uint8_t G_Unknown_Wall_IsRow = 0;
+int16_t G_Unknown_Wall_I = 0;
+int16_t G_Unknown_Wall_J = 0;
 
 /* 行き止まり潰し(dead-end filling)。
  * 「確認済みの壁だけで出入口が1つ以下」のマスは、入った辺と同じ辺からしか
@@ -515,6 +542,9 @@ void Known_Pass_Generation() {
 	}
 	G_Known_Pass[0] = -1;
 	while (1) {
+		if (N >= MAX_STEP - 2) {	//配列オーバーフロー防止(異常系フェイルセーフ)
+			break;
+		}
 		int Known_X = G_Robot_MAZE_X;
 		int Known_Y = G_Robot_MAZE_Y;
 		if (G_Robot_Direction % 4 == 0) {
@@ -550,9 +580,10 @@ void Known_Pass_Generation() {
 			N++;
 			G_Known_Pass[N] = -3;
 			G_Robot_Direction += 1;
-		} else {
+		} else {			//Uターン(行き止まり) ※-1は先頭センチネルと衝突するため-8を使用
 			N++;
-			G_Known_Pass[N] = -1;
+			G_Known_Pass[N] = -8;
+			G_Robot_Direction += 2;
 		}
 
 	}
@@ -560,7 +591,15 @@ void Known_Pass_Generation() {
 	for (i = 0; G_Known_Pass[i] != 0; i++) {
 		Known_Pass_CP[i] = G_Known_Pass[i];
 	}
-	for (i = 0; Known_Pass_CP[i] != 0; i++) {
+	/* G_Known_Passの終端(0)自体はコピーされないので、この位置のKnown_Pass_CPは
+	 * 前回実行時の値が残ったまま。末尾コーナー判定の先読み用に1を置き、
+	 * 処理後に必ず0へ戻す(Shortest_Pass_Compression()と同じ手法)。
+	 * これをしないと下のループが終端を見失い前回の残骸を読み進めてしまう */
+	int term_idx = i;
+	G_Known_Pass[i] = 1;
+	Known_Pass_CP[i] = 1;
+	Known_Pass_CP[0] = 1;
+	for (i = 0; i < term_idx; i++) {
 		if (Known_Pass_CP[i] == -2) {
 			if (Known_Pass_CP[i - 1] > 0) {
 				if (Known_Pass_CP[i + 1] > 0) { //左９０おおまわり
@@ -605,125 +644,148 @@ void Known_Pass_Generation() {
 
 	}
 
-//	for (i = 0; Known_Pass_CP[i] != 0; i++) {
-//		if ((Known_Pass_CP[i] == -2) || (Known_Pass_CP[i] == -3)) {
-//			if (Known_Pass_CP[i - 1] > 0) { //斜め入り
-//				if (Known_Pass_CP[i] == -2) { //左
-//
-//					if (Known_Pass_CP[i + 1] == -3) {
-//						//入り４５
-//						Known_Pass_CP[i - 1] -= 1;
-//						Known_Pass_CP[i] = -51;
-//						NANAME_Flag = 1;
-//						Pass_zero_act();
-//					} else if (Known_Pass_CP[i + 1] == -2) {
-//						//入り135
-//						Known_Pass_CP[i - 1] -= 1;
-//						Known_Pass_CP[i] = -52;
-//						Known_Pass_CP[i + 1] = -1;
-//						//G_Short_Pass_NANAME[i + 2] = -1;
-//						NANAME_Flag = 1;
-//						Pass_zero_act();
-//					}
-//				} else if (Known_Pass_CP[i] == -3) { //右
-//
-//					if (Known_Pass_CP[i + 1] == -2) {
-//						//入り４５
-//						Known_Pass_CP[i - 1] -= 1;
-//						Known_Pass_CP[i] = -53;
-//						NANAME_Flag = 1;
-//						Pass_zero_act();
-//					} else if (Known_Pass_CP[i + 1] == -3) {
-//						//入り135
-//						Known_Pass_CP[i - 1] -= 1;
-//						Known_Pass_CP[i] = -54;
-//						Known_Pass_CP[i + 1] = -1;
-//						//G_Short_Pass_NANAME[i + 2] = -1;
-//						NANAME_Flag = 1;
-//						Pass_zero_act();
-//					}
-//				}
-//			} else if ((Known_Pass_CP[i + 1] >= 0) && (NANAME_Flag == 1)) { //斜め出 45
-//				if (Known_Pass_CP[i] == -3) {
-//					//右４５
-//					//G_Short_Pass_NANAME[i - 1] = -1;
-//					Known_Pass_CP[i] = -63;
-//					Known_Pass_CP[i + 1] -= 1;
-//					Pass_zero_act();
-//				} else if (Known_Pass_CP[i] == -2) {
-//					//左４５
-//					//G_Short_Pass_NANAME[i - 1] = -1;
-//					Known_Pass_CP[i] = -61;
-//					Known_Pass_CP[i + 1] -= 1;
-//					Pass_zero_act();
-//				}
-//				NANAME_Flag = 0;
-//			} else if ((Known_Pass_CP[i + 2] >= 0) && (NANAME_Flag == 1)) {
-//				if (Known_Pass_CP[i] == Known_Pass_CP[i + 1]) {
-//					if (Known_Pass_CP[i] == -3) {
-//						//右135
-//						Known_Pass_CP[i] = -64;
-//						Known_Pass_CP[i + 1] = -1;
-//						Known_Pass_CP[i + 2] -= 1;
-//						Pass_zero_act();
-//					} else if (Known_Pass_CP[i] == -2) {
-//						//左135
-//						Known_Pass_CP[i] = -62;
-//						Known_Pass_CP[i + 1] = -1;
-//						Known_Pass_CP[i + 2] -= 1;
-//						Pass_zero_act();
-//					}
-//					NANAME_Flag = 0;
-//				} else {
-//					if ((Known_Pass_CP[i] == -2) || (Known_Pass_CP[i] == -3)) {
-//						if (Known_Pass_CP[i] == Known_Pass_CP[i + 1]) {
-//							if (Known_Pass_CP[i] == -2) {
-//								Known_Pass_CP[i] = -65;
-//								Known_Pass_CP[i + 1] = -1;
-//							} else {
-//								Known_Pass_CP[i] = -66;
-//								Known_Pass_CP[i + 1] = -1;
-//							}
-//
-//						} else {
-//							Known_Pass_CP[i] = -50;
-//							//G_Short_Pass_NANAME[i + 1] = -1;
-//						}
-//					}
-//				}
-//			} else if (NANAME_Flag == 1) {
-//				if ((Known_Pass_CP[i] == -2) || (Known_Pass_CP[i] == -3)) {
-//					if (Known_Pass_CP[i] == Known_Pass_CP[i + 1]) {
-//						if (Known_Pass_CP[i] == -2) {
-//							Known_Pass_CP[i] = -65;
-//							Known_Pass_CP[i + 1] = -1;
-//						} else {
-//							Known_Pass_CP[i] = -66;
-//							Known_Pass_CP[i + 1] = -1;
-//						}
-//
-//					} else {
-//						Known_Pass_CP[i] = -50;
-//						//G_Short_Pass_NANAME[i + 1] = -1;
-//					}
-//				}
-//			}
-//		}
-//	}
-//
-//	for (i = 0; Known_Pass_CP[i] != 0; i++) {
-//		if (Known_Pass_CP[i] == -50) {
-//			for (int j = 1; Known_Pass_CP[i + j] == -50; j++) {
-//				Known_Pass_CP[i + j] = -1;
-//				Known_Pass_CP[i] -= 50;
-//			}
-//		}
-//	}
+	/* 先読み用に置いていた終端を正式な0へ戻す */
+	G_Known_Pass[term_idx] = 0;
+	Known_Pass_CP[term_idx] = 0;
+
+	Known_Pass_Compression_NANAME();
 
 	for (i = 0; G_Known_Pass[i] != 0; i++) {
 		G_Known_Pass[i] = Known_Pass_CP[i];
 	}
 	Known_Flag = 0;
+}
+
+/* 既知区間加速バーストの斜め(NANAME)圧縮パス。Known_Pass_CP[]の大廻り圧縮結果
+ * (-4/-5/-6/-7)を Known_Pass_NANAME[]へコピーし、さらに斜め入り(-51〜-54)・
+ * 斜め出(-61〜-64)・V90(-65/-66)・斜め直線(-50連結)へ圧縮する。
+ * Shortest_Pass_Compression_NANAME()と同一ロジックの既知区間版。
+ * ※Move.c側のモーター実行(Robot_Maze_Pass_Action())はまだ実機未調整のため
+ *   Known_Pass_NANAME[]を消費しない(有効化するにはMove.cの対応ブロックの
+ *   コメントアウトを外し、実行ループの参照先をKnown_Pass_NANAMEへ切り替える必要がある)。
+ */
+void Known_Pass_Compression_NANAME() {
+	NANAME_Flag = 0;
+
+	for (i = 0; Known_Pass_CP[i] != 0; i++) {
+		Known_Pass_NANAME[i] = Known_Pass_CP[i];
+	}
+	/* Known_Pass_CPの終端(0)自体はコピーされないので、この位置の
+	 * Known_Pass_NANAMEは前回実行時の値が残ったまま。末尾コーナー判定の
+	 * 先読み用に1を置き(CP側と同じ手法)、処理後に必ず0へ戻す。
+	 * これをしないと下のループが終端を見失い前回の残骸を読み進めてしまう */
+	int naname_term_idx = i;
+	Known_Pass_NANAME[i] = 1;
+	for (i = 0; i < naname_term_idx; i++) {
+		if ((Known_Pass_NANAME[i] == -2) || (Known_Pass_NANAME[i] == -3)) {
+			if (Known_Pass_NANAME[i - 1] > 0) { //斜め入り
+				if (Known_Pass_NANAME[i] == -2) { //左
+
+					if (Known_Pass_NANAME[i + 1] == -3) {
+						//入り４５
+						Known_Pass_NANAME[i - 1] -= 1;
+						Known_Pass_NANAME[i] = -51;
+						NANAME_Flag = 1;
+						Pass_zero_act();
+					} else if (Known_Pass_NANAME[i + 1] == -2) {
+						//入り135
+						Known_Pass_NANAME[i - 1] -= 1;
+						Known_Pass_NANAME[i] = -52;
+						Known_Pass_NANAME[i + 1] = -1;
+						NANAME_Flag = 1;
+						Pass_zero_act();
+					}
+				} else if (Known_Pass_NANAME[i] == -3) { //右
+
+					if (Known_Pass_NANAME[i + 1] == -2) {
+						//入り４５
+						Known_Pass_NANAME[i - 1] -= 1;
+						Known_Pass_NANAME[i] = -53;
+						NANAME_Flag = 1;
+						Pass_zero_act();
+					} else if (Known_Pass_NANAME[i + 1] == -3) {
+						//入り135
+						Known_Pass_NANAME[i - 1] -= 1;
+						Known_Pass_NANAME[i] = -54;
+						Known_Pass_NANAME[i + 1] = -1;
+						NANAME_Flag = 1;
+						Pass_zero_act();
+					}
+				}
+			} else if ((Known_Pass_NANAME[i + 1] >= 0) && (NANAME_Flag == 1)) { //斜め出 45
+				if (Known_Pass_NANAME[i] == -3) {
+					//右４５
+					Known_Pass_NANAME[i] = -63;
+					Known_Pass_NANAME[i + 1] -= 1;
+					Pass_zero_act();
+				} else if (Known_Pass_NANAME[i] == -2) {
+					//左４５
+					Known_Pass_NANAME[i] = -61;
+					Known_Pass_NANAME[i + 1] -= 1;
+					Pass_zero_act();
+				}
+				NANAME_Flag = 0;
+			} else if ((Known_Pass_NANAME[i + 2] >= 0) && (NANAME_Flag == 1)) {
+				if (Known_Pass_NANAME[i] == Known_Pass_NANAME[i + 1]) {
+					if (Known_Pass_NANAME[i] == -3) {
+						//右135
+						Known_Pass_NANAME[i] = -64;
+						Known_Pass_NANAME[i + 1] = -1;
+						Known_Pass_NANAME[i + 2] -= 1;
+						Pass_zero_act();
+					} else if (Known_Pass_NANAME[i] == -2) {
+						//左135
+						Known_Pass_NANAME[i] = -62;
+						Known_Pass_NANAME[i + 1] = -1;
+						Known_Pass_NANAME[i + 2] -= 1;
+						Pass_zero_act();
+					}
+					NANAME_Flag = 0;
+				} else {
+					if ((Known_Pass_NANAME[i] == -2) || (Known_Pass_NANAME[i] == -3)) {
+						if (Known_Pass_NANAME[i] == Known_Pass_NANAME[i + 1]) {
+							if (Known_Pass_NANAME[i] == -2) {
+								Known_Pass_NANAME[i] = -65;
+								Known_Pass_NANAME[i + 1] = -1;
+							} else {
+								Known_Pass_NANAME[i] = -66;
+								Known_Pass_NANAME[i + 1] = -1;
+							}
+
+						} else {
+							Known_Pass_NANAME[i] = -50;
+						}
+					}
+				}
+			} else if (NANAME_Flag == 1) {
+				if ((Known_Pass_NANAME[i] == -2) || (Known_Pass_NANAME[i] == -3)) {
+					if (Known_Pass_NANAME[i] == Known_Pass_NANAME[i + 1]) {
+						if (Known_Pass_NANAME[i] == -2) {
+							Known_Pass_NANAME[i] = -65;
+							Known_Pass_NANAME[i + 1] = -1;
+						} else {
+							Known_Pass_NANAME[i] = -66;
+							Known_Pass_NANAME[i + 1] = -1;
+						}
+
+					} else {
+						Known_Pass_NANAME[i] = -50;
+					}
+				}
+			}
+		}
+	}
+	for (i = 0; i < naname_term_idx; i++) {
+		if (Known_Pass_NANAME[i] == -50) {
+			for (int j = 1; Known_Pass_NANAME[i + j] == -50; j++) {
+				Known_Pass_NANAME[i + j] = -1;
+				Known_Pass_NANAME[i] -= 50;
+			}
+		}
+	}
+
+	/* 先読み用の1を正式な0終端に戻す */
+	Known_Pass_NANAME[naname_term_idx] = 0;
 }
 
 void Maze_Unkown_ALL_ModeSet() {
@@ -871,6 +933,8 @@ void Maze_Gool_Setting(int mode) {
 		if (N == 0) {
 			ALL_MODE = 0;
 		}
+	} else if (mode == 2) {
+		G_Step_Map[G_Unknown_Target_X][G_Unknown_Target_Y] = 0;
 	} else {
 		G_Step_Map[G_Gool_X][G_Gool_Y] = 0;
 	}
@@ -911,7 +975,8 @@ void Maze_Step_Calculate() {
 	 * G_Gool_X/Yだけを特別扱いして先に積むと、ALL_MODE中はスタート
 	 * (歩数100、本来は起点ではない)がFIFOの先頭に来て先に展開されてしまい、
 	 * 近くのマスを誤って「スタートからの距離」で埋めてしまう。
-	 * 歩数が実際に0のマスだけを均等に積むことでこれを避ける */
+	 * 歩数が実際に0のマスだけを均等に積むことでこれを避ける(mode==2の
+	 * G_Unknown_Target_X/Yもこのスキャンで自動的に拾われる) */
 	for (i = 0; i < MAZE_SIZE; i++) {
 		for (j = 0; j < MAZE_SIZE; j++) {
 			if (G_Step_Map[i][j] == 0) {
@@ -1016,7 +1081,6 @@ void Maze_Shortest_Calculation() {
 						G_Robot_Direction += 0;
 						break;
 					}
-					printf("1____WHILE\n\r");
 				}
 				if (Maze_Wall_Left == 0) {
 					if (G_Step_Map[Short_MAZE_X - 1][Short_MAZE_Y]
@@ -1026,7 +1090,6 @@ void Maze_Shortest_Calculation() {
 						G_Robot_Direction += 3;
 						break;
 					}
-					printf("2____WHILE\n\r");
 				}
 				if (Maze_Wall_Right == 0) {
 					if (G_Step_Map[Short_MAZE_X + 1][Short_MAZE_Y]
@@ -1036,7 +1099,6 @@ void Maze_Shortest_Calculation() {
 						G_Robot_Direction += 1;
 						break;
 					}
-					printf("3____WHILE\n\r");
 				}
 			}
 
@@ -1058,7 +1120,6 @@ void Maze_Shortest_Calculation() {
 						G_Robot_Direction += 0;
 						break;
 					}
-					printf("4____WHILE\n\r");
 				}
 				if (Maze_Wall_Left == 0) {
 					if (G_Step_Map[Short_MAZE_X][Short_MAZE_Y + 1]
@@ -1068,7 +1129,6 @@ void Maze_Shortest_Calculation() {
 						G_Robot_Direction += 3;
 						break;
 					}
-					printf("5____WHILE\n\r");
 				}
 				if (Maze_Wall_Right == 0) {
 					if (G_Step_Map[Short_MAZE_X][Short_MAZE_Y - 1]
@@ -1078,7 +1138,6 @@ void Maze_Shortest_Calculation() {
 						G_Robot_Direction += 1;
 						break;
 					}
-					printf("6____WHILE\n\r");
 				}
 
 			}
@@ -1100,7 +1159,6 @@ void Maze_Shortest_Calculation() {
 						G_Robot_Direction += 0;
 						break;
 					}
-					printf("7____WHILE\n\r");
 				}
 				if (Maze_Wall_Left == 0) {
 					if (G_Step_Map[Short_MAZE_X + 1][Short_MAZE_Y]
@@ -1110,7 +1168,6 @@ void Maze_Shortest_Calculation() {
 						G_Robot_Direction += 3;
 						break;
 					}
-					printf("8____WHILE\n\r");
 				}
 				if (Maze_Wall_Right == 0) {
 					if (G_Step_Map[Short_MAZE_X - 1][Short_MAZE_Y]
@@ -1120,7 +1177,6 @@ void Maze_Shortest_Calculation() {
 						G_Robot_Direction += 1;
 						break;
 					}
-					printf("9____WHILE\n\r");
 				}
 			}
 		} else if (G_Robot_Direction % 4 == 3) { //西
@@ -1141,7 +1197,6 @@ void Maze_Shortest_Calculation() {
 						G_Robot_Direction += 0;
 						break;
 					}
-					printf("10____WHILE\n\r");
 				}
 				if (Maze_Wall_Left == 0) {
 					if (G_Step_Map[Short_MAZE_X][Short_MAZE_Y - 1]
@@ -1151,7 +1206,6 @@ void Maze_Shortest_Calculation() {
 						G_Robot_Direction += 3;
 						break;
 					}
-					printf("11____WHILE\n\r");
 				}
 				if (Maze_Wall_Right == 0) {
 					if (G_Step_Map[Short_MAZE_X][Short_MAZE_Y + 1]
@@ -1161,7 +1215,6 @@ void Maze_Shortest_Calculation() {
 						G_Robot_Direction += 1;
 						break;
 					}
-					printf("12____WHILE\n\r");
 				}
 			}
 		}
@@ -1586,6 +1639,7 @@ void Maze_Dijkstra_Calculation() {
 	for (int i = 0; i < 255; i++) {
 		G_Short_Pass[i] = 0;
 	}
+	G_Dijk_Path_Len = 0;
 
 
 	G_Short_Pass[0] -= 1;
@@ -1594,10 +1648,14 @@ void Maze_Dijkstra_Calculation() {
 #ifdef SIM_DEBUG
 	int dbg_backtrace_hops = 0;
 #endif
+	int dijk_backtrace_guard = 0;
 	while (1) {
 #ifdef SIM_DEBUG
 		dbg_backtrace_hops++;
 #endif
+		if (++dijk_backtrace_guard > MAX_QUEUE_NODE_NUM) {	//異常系フェイルセーフ(通常は経路長で先に止まる)
+			break;
+		}
 		if (short_node->isRow == 1) {
 			short_node = &node_Row[short_node->x][short_node->y];
 		} else {
@@ -1609,7 +1667,46 @@ void Maze_Dijkstra_Calculation() {
 		}
 
 		toGool_direction = (short_node->direction + 4) % 8;
-		printf("%d direction\r\n", toGool_direction);
+
+		/* Dijkstra誘導 未知壁探索用: このホップが通る壁(short_node自身)が
+		 * 実際に通過するセルはtoGool_directionの向きで決まる(進行方向側のセル)。
+		 * Row型ノードはtoGool_directionが{0,1,7}なら北側セル、{3,4,5}なら南側セル。
+		 * Column型ノードは{1,2,3}なら東側セル、{5,6,7}なら西側セルになる
+		 * (このグラフではRow型ノードにdirection 2/6が、Column型ノードに
+		 * direction 0/4が現れることはないので、この2分岐で網羅できる) */
+		if (G_Dijk_Path_Len < MAX_STEP - 1) {
+			int16_t cellX, cellY;
+			if (short_node->isRow) {
+				if (toGool_direction == 0 || toGool_direction == 1
+						|| toGool_direction == 7) {
+					cellX = short_node->x;
+					cellY = short_node->y;
+				} else {
+					cellX = short_node->x;
+					cellY = short_node->y - 1;
+				}
+			} else {
+				if (toGool_direction == 2 || toGool_direction == 1
+						|| toGool_direction == 3) {
+					cellX = short_node->x;
+					cellY = short_node->y;
+				} else {
+					cellX = short_node->x - 1;
+					cellY = short_node->y;
+				}
+			}
+			/* この壁が現時点で既知か未知かは記録時点のスナップショットにせず、
+			 * Maze_Unknown_Wall_Scan()が呼ばれる都度Maze_Row_Look/Column_Lookを
+			 * 直接見てライブ判定する(同じ経路データを使い回して複数回スキャン
+			 * できるようにするため。詳しくはMaze_Unknown_Wall_Scan()参照) */
+			G_Dijk_Path_X[G_Dijk_Path_Len] = cellX;
+			G_Dijk_Path_Y[G_Dijk_Path_Len] = cellY;
+			G_Dijk_Path_WallIsRow[G_Dijk_Path_Len] = short_node->isRow;
+			G_Dijk_Path_WallI[G_Dijk_Path_Len] = short_node->x;
+			G_Dijk_Path_WallJ[G_Dijk_Path_Len] = short_node->y;
+			G_Dijk_Path_Len++;
+		}
+
 		if (toGool_direction == 0) {
 			if (G_Short_Pass[N] < 0) {
 				N++;
@@ -1688,6 +1785,57 @@ void Maze_Dijkstra_Calculation() {
 #ifdef SIM_DEBUG
 	g_dijkstra_backtrace_hops = dbg_backtrace_hops;
 #endif
+}
+
+/* 直近のMaze_Dijkstra_Calculation()が記録した経路(G_Dijk_Path_*)を先頭から
+ * 走査し、まだ未確認の壁をG_Unknown_Target_X/Yとその壁自体の識別子
+ * (G_Unknown_Wall_*)に記録する。戻り値1=見つかった、0=経路上の壁は全て確認済み
+ * (Dijkstra再計算タイミングをゴール到達直後とUターン発生時に絞るため、
+ * 各壁が現時点で未知かどうかはMaze_Row_Look/Maze_Column_Lookをその都度
+ * ライブで見て判定する。これにより、同じ経路データに対してこの関数を
+ * 複数回呼び、既に確認済みになった壁を自然に読み飛ばして次の未知壁を
+ * 見つけられる — Dijkstraを毎回再計算し直す必要がない) */
+int Maze_Unknown_Wall_Scan(void) {
+	for (int k = 0; k < G_Dijk_Path_Len; k++) {
+		int wallUnknown;
+		if (G_Dijk_Path_WallIsRow[k]) {
+			wallUnknown = ((Maze_Row_Look[G_Dijk_Path_WallJ[k]]
+					>> G_Dijk_Path_WallI[k]) & 1u) == 0;
+		} else {
+			wallUnknown = ((Maze_Column_Look[G_Dijk_Path_WallI[k]]
+					>> G_Dijk_Path_WallJ[k]) & 1u) == 0;
+		}
+		if (wallUnknown) {
+			G_Unknown_Target_X = G_Dijk_Path_X[k];
+			G_Unknown_Target_Y = G_Dijk_Path_Y[k];
+			G_Unknown_Wall_IsRow = G_Dijk_Path_WallIsRow[k];
+			G_Unknown_Wall_I = G_Dijk_Path_WallI[k];
+			G_Unknown_Wall_J = G_Dijk_Path_WallJ[k];
+			return 1;
+		}
+	}
+	return 0;
+}
+
+/* Maze_Unknown_Wall_Scan()が最後に見つけた壁が、今もまだ未確認かどうかを
+ * O(1)で再確認する。目標セルへ到達済みかどうか(G_MAZE_Explored)ではなく
+ * 壁のLookビットそのものを見るのは、既に立ったことのあるセルでも
+ * (その壁面を通らずに入った場合は)壁が未確認のままのことがあるため */
+int Maze_Unknown_Wall_Still_Unknown(void) {
+	if (G_Unknown_Wall_IsRow) {
+		return ((Maze_Row_Look[G_Unknown_Wall_J] >> G_Unknown_Wall_I) & 1u) == 0;
+	} else {
+		return ((Maze_Column_Look[G_Unknown_Wall_I] >> G_Unknown_Wall_J) & 1u)
+				== 0;
+	}
+}
+
+/* Maze_Unknown_Wall_Scan()が見つけた目標セルを、Maze_Gool_Setting()のmode==2で
+ * BFSの目標地点として使うようセットする。Maze_Unkown_ALL_ModeSet()の兄弟関数 */
+void Maze_Unknown_Target_ModeSet(int x, int y) {
+	G_Unknown_Target_X = x;
+	G_Unknown_Target_Y = y;
+	ALL_MODE = 2;
 }
 
 void Shortest_Pass_Compression() {
@@ -2028,14 +2176,14 @@ void Pass_zero_act() {
 		G_Short_Pass_NANAME[i + 2] = -1;
 	}
 
-	if (Known_Pass_CP[i - 1] == 0) {
-		Known_Pass_CP[i - 1] = -1;
+	if (Known_Pass_NANAME[i - 1] == 0) {
+		Known_Pass_NANAME[i - 1] = -1;
 	}
-	if (Known_Pass_CP[i + 1] == 0) {
-		Known_Pass_CP[i + 1] = -1;
+	if (Known_Pass_NANAME[i + 1] == 0) {
+		Known_Pass_NANAME[i + 1] = -1;
 	}
-	if (Known_Pass_CP[i + 2] == 0) {
-		Known_Pass_CP[i + 2] = -1;
+	if (Known_Pass_NANAME[i + 2] == 0) {
+		Known_Pass_NANAME[i + 2] = -1;
 	}
 }
 

@@ -143,6 +143,7 @@ void Robot_Maze_Suction_Action() {
 			Suction_change(20);
 			G_Robot_Direction += 2;
 			G_Robot_Lastaction = 2;
+			G_Just_UTurned = 1;
 			Robot_adjustment();
 			Motor_Back();
 			Motor_Stop();
@@ -155,6 +156,7 @@ void Robot_Maze_Suction_Action() {
 			Motor_Stop();
 			G_Robot_Direction += 2;
 			G_Robot_Lastaction = 2;
+			G_Just_UTurned = 1;
 			Robot_adjustment();
 			Motor_trapezoid_PID(0, 1000, 1000, 10000, 90);
 		}
@@ -163,6 +165,7 @@ void Robot_Maze_Suction_Action() {
 		Motor_Stop();
 		G_Robot_Direction += 2;
 		G_Robot_Lastaction = 2;
+		G_Just_UTurned = 1;
 		Robot_adjustment();
 		Motor_trapezoid_PID(0, 1000, 1000, 10000, 90);
 	}
@@ -202,6 +205,12 @@ void Robot_Maze_Pass_Action() {
 				Motor_Sula_ST(1000, 1000, 1000, 5000, 20);
 				Motor_Sula_COS(1000, -90, 1630, 60000);
 				Motor_trapezoid_PID(1000, 1000, 1000, 5000, 48);
+			} else if (G_Known_Pass[i] == -8) {			//行き止まりUターン
+				Motor_trapezoid(1000, 1000, 0, 10000, 75);
+				Motor_Stop();
+				G_Just_UTurned = 1;
+				Robot_adjustment();
+				Motor_trapezoid_PID(0, 1000, 1000, 10000, 90);
 			} else if (G_Known_Pass[i] == -4) {			//左大廻９０
 				Motor_Wallcut_ST(1000, 50, 0);
 				Motor_Sula_COS(1000, 90, 750, 20000);
@@ -218,49 +227,55 @@ void Robot_Maze_Pass_Action() {
 				Motor_Wallcut_ST(1000, 40, 1);
 				Motor_Sula_COS(1000, -180, 680, 13000);
 				Motor_Wallcut_END(1000, 70, 1);
-			}/* else if (G_Known_Pass[i] == -51) {			//入り　左４５
+			}
+			// 斜め(NANAME)区間の実行は未実装・未チューニングのためコメントアウトのまま。
+			// 有効化する際は (1) このforループの走査対象をG_Known_Pass[]ではなく
+			// Known_Pass_NANAME[]に切り替え、(2) 下記の速度・距離・角度の各定数を
+			// 実機で再チューニングすること。生成側はKnown_Pass_Compression_NANAME()
+			// (Maze.c)で既にKnown_Pass_NANAME[]として計算済み。
+			/* else if (Known_Pass_NANAME[i] == -51) {			//入り　左４５
 			 Motor_Wallcut_ST(600, 35, 0);
 			 Motor_Sula_COS(600, 45, 450, 8000);
 			 Motor_NANAME_PID(600, 600, 600, 5000, 67);
-			 } else if (G_Known_Pass[i] == -52) {			//入り　左１３５
+			 } else if (Known_Pass_NANAME[i] == -52) {			//入り　左１３５
 			 Motor_Wallcut_ST(600, 80, 0);
 			 Motor_Sula_COS(600, 135, 550, 8000);
 			 Motor_NANAME_PID(600, 600, 600, 5000, 78);
-			 } else if (G_Known_Pass[i] == -53) {			//入り　右４５
+			 } else if (Known_Pass_NANAME[i] == -53) {			//入り　右４５
 			 Motor_Wallcut_ST(600, 35, 1);
 			 Motor_Sula_COS(600, -45, 450, 8000);
 			 Motor_NANAME_PID(600, 600, 600, 5000, 67);
-			 } else if (G_Known_Pass[i] == -54) {			//入り　右１３５
+			 } else if (Known_Pass_NANAME[i] == -54) {			//入り　右１３５
 			 Motor_Wallcut_ST(600, 80, 1);
 			 Motor_Sula_COS(600, -135, 550, 8000);
 			 Motor_NANAME_PID(600, 600, 600, 5000, 78);
-			 } else if (G_Known_Pass[i] == -61) {			//出　左４５
+			 } else if (Known_Pass_NANAME[i] == -61) {			//出　左４５
 			 Motor_Wallcut_ST_NANAME(600, 65, 0);
 			 Motor_Sula_COS(600, 45, 600, 10000);
 			 Motor_Wallcut_END(600, 43, 0);
-			 } else if (G_Known_Pass[i] == -62) {			//出　左１３５
+			 } else if (Known_Pass_NANAME[i] == -62) {			//出　左１３５
 			 Motor_Wallcut_ST_NANAME(600, 45, 0);
 			 Motor_Sula_COS(600, 135, 500, 8000);
 			 Motor_Wallcut_END(600, 85, 0);
-			 } else if (G_Known_Pass[i] == -63) {			//出　右４５
+			 } else if (Known_Pass_NANAME[i] == -63) {			//出　右４５
 			 Motor_Wallcut_ST_NANAME(600, 65, 1);
 			 Motor_Sula_COS(600, -45, 600, 10000);
 			 Motor_Wallcut_END(600, 43, 1);
-			 } else if (G_Known_Pass[i] == -64) {			//出　右１３５
+			 } else if (Known_Pass_NANAME[i] == -64) {			//出　右１３５
 			 Motor_Wallcut_ST_NANAME(600, 45, 1);
 			 Motor_Sula_COS(600, -135, 500, 8000);
 			 Motor_Wallcut_END(600, 85, 1);
-			 } else if (G_Known_Pass[i] == -65) {			//V90左
+			 } else if (Known_Pass_NANAME[i] == -65) {			//V90左
 			 Motor_Wallcut_ST_NANAME(600, 30, 0);
 			 Motor_Sula_COS(600, 90, 600, 10000);
 			 Motor_NANAME_PID(600, 600, 600, 5000, 53);
-			 } else if (G_Known_Pass[i] == -66) {			//V90右
+			 } else if (Known_Pass_NANAME[i] == -66) {			//V90右
 			 Motor_Wallcut_ST_NANAME(600, 30, 1);
 			 Motor_Sula_COS(600, -90, 600, 10000);
 			 Motor_NANAME_PID(600, 600, 600, 5000, 53);
-			 } else if (G_Known_Pass[i] % 50 == 0) {			//直線
+			 } else if (Known_Pass_NANAME[i] % 50 == 0) {			//直線
 			 Motor_NANAME_PID(600, 1000, 600, 5000,
-			 127.3 * G_Known_Pass[i] / -50);
+			 127.3 * Known_Pass_NANAME[i] / -50);
 
 			 }*/
 		}
@@ -286,11 +301,6 @@ void Short_NANAME_Move1000(int MAX, int AC) {
 	Maze_Shortest_Calculation();
 	Shortest_Pass_Compression();
 	Shortest_Pass_Compression_NANAME();
-	Maze_Mapping();
-	for (int i = 0; i < MAX_STEP; i++) {
-		printf("%d:::%d___NANAME:::%d\n\r", i, G_Short_Pass[i],
-				G_Short_Pass_NANAME[i]);
-	}
 
 	Motor_Setup_Voltage();
 	Suction_Start(15);
@@ -412,11 +422,6 @@ void Short_NANAME_Move2000(int MAX, int AC) {
 
 	Shortest_Pass_Compression();
 	Shortest_Pass_Compression_NANAME();
-	Maze_Mapping();
-	for (int i = 0; i < MAX_STEP; i++) {
-		printf("%d:::%d___NANAME:::%d\n\r", i, G_Short_Pass[i],
-				G_Short_Pass_NANAME[i]);
-	}
 	Suction_Start(50);
 	HAL_Delay(500);
 
@@ -532,11 +537,6 @@ void Short_NANAME_Move2400(int MAX, int AC) {
 	Maze_Shortest_Calculation();
 	Shortest_Pass_Compression();
 	Shortest_Pass_Compression_NANAME();
-	Maze_Mapping();
-	for (int i = 0; i < MAX_STEP; i++) {
-		printf("%d:::%d___NANAME:::%d\n\r", i, G_Short_Pass[i],
-				G_Short_Pass_NANAME[i]);
-	}
 	Suction_Start(70);
 	HAL_Delay(500);
 
@@ -651,11 +651,6 @@ void Short_NANAME_Move2700(int MAX, int AC) {
 	Maze_Shortest_Calculation();
 	Shortest_Pass_Compression();
 	Shortest_Pass_Compression_NANAME();
-	Maze_Mapping();
-	for (int i = 0; i < MAX_STEP; i++) {
-		printf("%d:::%d___NANAME:::%d\n\r", i, G_Short_Pass[i],
-				G_Short_Pass_NANAME[i]);
-	}
 	Suction_Start(85);
 	HAL_Delay(500);
 
@@ -771,11 +766,6 @@ void Short_Dijkstra_Move2000(int MAX, int AC) {
 
 	Shortest_Pass_Compression();
 	Shortest_Pass_Compression_NANAME();
-	Maze_Dijkstra_Mapping();
-	for (int i = 0; i < MAX_STEP; i++) {
-		printf("%d:::%d___NANAME:::%d\n\r", i, G_Short_Pass[i],
-				G_Short_Pass_NANAME[i]);
-	}
 	Suction_Start(50);
 	HAL_Delay(500);
 

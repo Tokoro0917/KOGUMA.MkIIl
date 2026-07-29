@@ -38,6 +38,7 @@ extern uint32_t G_Maze_Column[MAZE_SIZE+1];
 
 extern int G_Robot_Direction;
 extern int G_Robot_Lastaction;
+extern int G_Just_UTurned;
 
 extern uint16_t G_Maze_Flont;
 extern uint16_t G_Maze_Back;
@@ -57,6 +58,14 @@ extern int16_t G_Short_Pass_CP[MAX_STEP];
 extern int16_t G_Short_Pass_NANAME[MAX_STEP];
 
 extern int16_t G_Known_Pass[MAX_STEP];
+extern int16_t Known_Pass_NANAME[MAX_STEP];
+
+extern int16_t G_Dijk_Path_X[MAX_STEP];
+extern int16_t G_Dijk_Path_Y[MAX_STEP];
+extern int G_Dijk_Path_Len;
+
+extern int G_Unknown_Target_X;
+extern int G_Unknown_Target_Y;
 
 void pushQueue_walk(QUEUE_T*, unsigned short);
 unsigned short popQueue_walk(QUEUE_T*);
@@ -76,7 +85,12 @@ void Maze_Gool_Setting(int );
 void Maze_DeadEnd_Fill();
 void Maze_Step_Calculate();
 
+int Maze_Unknown_Wall_Scan(void);
+int Maze_Unknown_Wall_Still_Unknown(void);
+void Maze_Unknown_Target_ModeSet(int, int);
+
 void Known_Pass_Generation();
+void Known_Pass_Compression_NANAME();
 
 void Maze_Mapping();
 void Maze_Save();

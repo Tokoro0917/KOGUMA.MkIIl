@@ -528,6 +528,131 @@ int main(void) {
 					Encorder_count_reset();
 
 				}
+			} else if (Encorder_number_out() == 7) {		//Dijkstra誘導 未知壁探索
+				if (Sensor_Enter() == 1) {
+					Buzzer_Enter();
+					Sensor_Start();
+
+					Motor_Setup();
+					Motor_Stop();
+
+					Suction_Start(35);
+
+					G_Gool_X = MAZE_GOOL_X;
+					G_Gool_Y = MAZE_GOOL_Y;
+					G_Robot_MAZE_X = 0;
+					G_Robot_MAZE_Y = 0;
+					G_Robot_Direction = 0;
+					G_MAZE_Explored[G_Gool_X][G_Gool_Y] = 0;
+
+					//往路: 通常の反応探索でスタート→ゴール
+					Motor_trapezoid_PID(0, 1000, 1000, 5000, 24 + 90);
+					while (G_MAZE_Explored[G_Gool_X][G_Gool_Y] == 0) {
+						if (Failsafe_Flag() == 1) {
+							break;
+						}
+						Robot_Maze_Pass_Action();
+						G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
+					}
+					if (Failsafe_Flag() == 0) {
+						Maze_Save();
+					}
+
+					/* スタート→ゴール固定方向でDijkstra経路を計算し、経路上の
+					 * 未確認の壁を現在位置から直接見に行く。Dijkstraの再計算は
+					 * 毎回ではなく、ゴール到達直後(この時点)とUターンが
+					 * 発生した時だけ行う。1つの壁を確認できてUターンもして
+					 * いなければ、同じ経路データのまま次の未知壁を探す
+					 * (Maze_Unknown_Wall_Scan()は壁の確認状況をその都度
+					 * ライブ判定するので、再計算しなくても正しく次を返せる) */
+					int need_recompute = 1;
+					while (Failsafe_Flag() == 0) {
+						if (need_recompute == 1) {
+							G_Gool_X = MAZE_GOOL_X;
+							G_Gool_Y = MAZE_GOOL_Y;
+							Maze_Dijkstra_Calculation();
+							need_recompute = 0;
+						}
+
+						int found = Maze_Unknown_Wall_Scan();
+						if (found == 0) {
+							break;
+						}
+
+						Maze_Unknown_Target_ModeSet(G_Unknown_Target_X,
+								G_Unknown_Target_Y);
+						Maze_Step_Calculate();
+						G_Just_UTurned = 0;
+						int sub_steps = 0;
+						while ((Maze_Unknown_Wall_Still_Unknown() == 1)
+								&& (sub_steps < MAX_STEP)) {
+							if (Failsafe_Flag() == 1) {
+								break;
+							}
+							Robot_Maze_Pass_Action();
+							G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
+							sub_steps++;
+							if (G_Just_UTurned == 1) {
+								break;
+							}
+						}
+						if ((G_Just_UTurned == 1) || (sub_steps >= MAX_STEP)) {
+							//Uターンした、または目標に辿り着けなかった場合は
+							//次のループ先頭で経路を再計算する
+							need_recompute = 1;
+						}
+						Maze_Unkown_ALL_ModeOFF();
+						if (Failsafe_Flag() == 0) {
+							Maze_Save();
+						}
+					}
+
+					//確定後: スタートへ戻る
+					if (Failsafe_Flag() == 0) {
+						G_Gool_X = 0;
+						G_Gool_Y = 0;
+						G_MAZE_Explored[0][0] = 0;
+						Maze_Step_Calculate();
+						while (G_MAZE_Explored[0][0] == 0) {
+							if (Failsafe_Flag() == 1) {
+								break;
+							}
+							Robot_Maze_Pass_Action();
+							G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
+						}
+					}
+
+					Motor_Stop();
+					Suction_Stop();
+					if (Failsafe_Flag() == 0) {
+						Maze_Save();
+					} else {
+						Failsafe_Flag_OFF();
+					}
+
+					Motor_Setup();
+					Motor_Stop();
+					if (Failsafe_Flag() == 0) {
+						Maze_Save();
+						HAL_Delay(2000);
+
+						Motor_Setup();
+						Motor_Stop();
+						Short_Dijkstra_Move2000(6000, 20000);
+						Motor_Free();
+						LED_Reset();
+						HAL_Delay(500);
+						Encorder_count_reset();
+
+					} else {
+						Failsafe_Flag_OFF();
+					}
+
+					Motor_Free();
+					LED_Reset();
+					Encorder_count_reset();
+
+				}
 			}
 		} else if (Encorder_mode_out() == 1) {		//�?短
 			if (Encorder_number_out() == 1) {		//2m/s
