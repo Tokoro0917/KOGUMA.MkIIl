@@ -17,3 +17,7 @@ KOGUMA.MkII/Release/
 
 # Eclipse/IDE local state
 .metadata/
+
+# ホスト側テストのビルド成果物 (test/test_deadend.c)
+/test_deadend
+/test_deadend32
