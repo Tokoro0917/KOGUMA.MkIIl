@@ -102,6 +102,120 @@ static int shortest(int sx, int sy, int gx, int gy, int skip_closed) {
 	return -1;
 }
 
+/* --- 参照実装 ---------------------------------------------------------
+ * Maze.c のワークリスト+連鎖と同じ仕様を、素朴な「変化がなくなるまで
+ * 全マス走査」で書き直したもの。実装同士を突き合わせることで、
+ * 連鎖の打ち切りや積み忘れといった機構側のバグを検出する。
+ * 仕様そのものの正しさは最短距離不変の検査が担保する。 */
+static int ref_closed[N][N];
+
+static int ref_protected(int x, int y) {
+	if (x == 0 && y == 0)
+		return 1;
+	if (x == G_Gool_X && y == G_Gool_Y)
+		return 1;
+	if (x >= MAZE_GOOL_X && x <= MAZE_GOOL_X + 1 && y >= MAZE_GOOL_Y
+			&& y <= MAZE_GOOL_Y + 1)
+		return 1;
+	return 0;
+}
+
+/* 既知の壁(G_Maze_Row/Column)だけを見た開口数 */
+static int ref_degree(int x, int y) {
+	int deg = 0;
+	if (y + 1 < N && !(G_Maze_Row[y + 1] & (1u << x)) && !ref_closed[x][y + 1])
+		deg++;
+	if (x + 1 < N && !(G_Maze_Column[x + 1] & (1u << y))
+			&& !ref_closed[x + 1][y])
+		deg++;
+	if (y - 1 >= 0 && !(G_Maze_Row[y] & (1u << x)) && !ref_closed[x][y - 1])
+		deg++;
+	if (x - 1 >= 0 && !(G_Maze_Column[x] & (1u << y)) && !ref_closed[x - 1][y])
+		deg++;
+	return deg;
+}
+
+static void ref_fill(void) {
+	memset(ref_closed, 0, sizeof(ref_closed));
+	int changed = 1;
+	while (changed) {
+		changed = 0;
+		for (int x = 0; x < N; x++) {
+			for (int y = 0; y < N; y++) {
+				if (ref_closed[x][y] || ref_protected(x, y))
+					continue;
+				if (ref_degree(x, y) <= 1) {
+					ref_closed[x][y] = 1;
+					changed = 1;
+				}
+			}
+		}
+	}
+}
+
+/* 参照実装と実装の閉鎖集合が完全一致するか */
+static int cmp_ref(unsigned seed, const char *tag) {
+	ref_fill();
+	for (int x = 0; x < N; x++) {
+		for (int y = 0; y < N; y++) {
+			if ((G_MAZE_Closed[x][y] != 0) != (ref_closed[x][y] != 0)) {
+				fail_count++;
+				printf("  FAIL: %s seed=%u (%d,%d) 実装=%d 参照=%d\n", tag, seed,
+						x, y, G_MAZE_Closed[x][y], ref_closed[x][y]);
+				return 0;
+			}
+		}
+	}
+	return 1;
+}
+
+/* スタート-ゴール最短経路上のマスが1つも閉じられていないか。
+ * 最短経路はBFSの親を辿って復元する */
+static void check_path_open(unsigned seed, const char *tag) {
+	static int dist[N][N];
+	static int qx[N * N], qy[N * N];
+	int head = 0, tail = 0;
+	for (int x = 0; x < N; x++)
+		for (int y = 0; y < N; y++)
+			dist[x][y] = -1;
+	dist[0][0] = 0;
+	qx[tail] = 0;
+	qy[tail] = 0;
+	tail++;
+	while (head < tail) {
+		int cx = qx[head], cy = qy[head];
+		head++;
+		for (int d = 0; d < 4; d++) {
+			if (!true_passable(cx, cy, d))
+				continue;
+			int nx = cx + DX[d], ny = cy + DY[d];
+			if (dist[nx][ny] >= 0)
+				continue;
+			dist[nx][ny] = dist[cx][cy] + 1;
+			qx[tail] = nx;
+			qy[tail] = ny;
+			tail++;
+		}
+	}
+	int cx = G_Gool_X, cy = G_Gool_Y;
+	if (dist[cx][cy] < 0)
+		return;
+	while (!(cx == 0 && cy == 0)) {
+		CHECK(G_MAZE_Closed[cx][cy] == 0,
+				"%s seed=%u 最短経路上の(%d,%d)が閉じられた", tag, seed, cx, cy);
+		for (int d = 0; d < 4; d++) {
+			if (!true_passable(cx, cy, d))
+				continue;
+			int nx = cx + DX[d], ny = cy + DY[d];
+			if (dist[nx][ny] == dist[cx][cy] - 1) {
+				cx = nx;
+				cy = ny;
+				break;
+			}
+		}
+	}
+}
+
 /* 深さ優先で全域木(完全迷路)を作る。行き止まりだらけになるので連鎖の検証に向く */
 static void gen_perfect_maze(unsigned seed) {
 	static int visited[N][N];
@@ -199,7 +313,8 @@ static void print_maze(void) {
 }
 
 int main(void) {
-	printf("=== 1. 完全迷路: 潰した後に残るのはスタート-ゴール間の唯一の経路だけか ===\n");
+	printf("=== 1. 完全迷路: 連鎖が根元まで効き、経路と保護マスだけが残るか ===\n");
+	long closed_total = 0;
 	for (unsigned seed = 1; seed <= 200; seed++) {
 		gen_perfect_maze(seed);
 		G_Gool_X = MAZE_GOOL_X;
@@ -210,20 +325,25 @@ int main(void) {
 		CHECK(before == after,
 				"seed=%u 最短距離が変わった before=%d after=%d", seed, before,
 				after);
-		/* 木なのでスタート-ゴール経路は一意。残る開マスはちょうどその経路 */
-		int open_cells = 0;
-		for (int x = 0; x < N; x++)
-			for (int y = 0; y < N; y++)
-				if (!G_MAZE_Closed[x][y])
-					open_cells++;
-		CHECK(open_cells == before + 1,
-				"seed=%u 経路長+1=%d に対し残った開マス=%d", seed, before + 1,
-				open_cells);
+		cmp_ref(seed, "完全迷路");
+		check_path_open(seed, "完全迷路");
 		CHECK(G_MAZE_Closed[0][0] == 0, "seed=%u スタートが閉じられた", seed);
-		CHECK(G_MAZE_Closed[G_Gool_X][G_Gool_Y] == 0,
-				"seed=%u ゴールが閉じられた", seed);
+		/* ゴールは2×2区画。4マスとも守られていること */
+		for (int gx = MAZE_GOOL_X; gx <= MAZE_GOOL_X + 1; gx++) {
+			for (int gy = MAZE_GOOL_Y; gy <= MAZE_GOOL_Y + 1; gy++) {
+				CHECK(G_MAZE_Closed[gx][gy] == 0,
+						"seed=%u ゴール区画の(%d,%d)が閉じられた", seed, gx, gy);
+			}
+		}
+		closed_total += g_deadend_closed_count;
 	}
-	printf("  %s\n", fail_count == 0 ? "OK (200 seeds)" : "NG");
+	/* 木は行き止まりだらけなので、連鎖が効いていれば大半が潰れるはず。
+	 * 連鎖が止まっていると第1段だけの少数しか閉じない */
+	CHECK(closed_total / 200 > (N * N) / 2,
+			"完全迷路の平均閉鎖数が%ldしかない(連鎖が効いていない疑い)",
+			closed_total / 200);
+	printf("  %s (平均 %ld/%d マス閉鎖)\n", fail_count == 0 ? "OK (200 seeds)" : "NG",
+			closed_total / 200, N * N);
 
 	int base = fail_count;
 	printf("=== 2. ループあり迷路: 最短距離が変わらないか ===\n");
@@ -238,6 +358,8 @@ int main(void) {
 		CHECK(before == after,
 				"seed=%u 最短距離が変わった before=%d after=%d", seed, before,
 				after);
+		cmp_ref(seed, "ループあり");
+		check_path_open(seed, "ループあり");
 	}
 	printf("  %s\n", fail_count == base ? "OK (300 seeds)" : "NG");
 
@@ -255,6 +377,8 @@ int main(void) {
 		CHECK(before == after,
 				"seed=%u 最短距離が変わった before=%d after=%d", seed, before,
 				after);
+		cmp_ref(seed, "部分知識");
+		check_path_open(seed, "部分知識");
 	}
 	printf("  %s\n", fail_count == base ? "OK (300 seeds)" : "NG");
 

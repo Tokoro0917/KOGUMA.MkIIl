@@ -745,8 +745,12 @@ static int Maze_Cell_IsProtected(int x, int y) {
 	if ((x == G_Gool_X) && (y == G_Gool_Y)) {
 		return 1;			//現在の目標(探索時は中央、帰還時はスタート)
 	}
-	if ((x == MAZE_GOOL_X) && (y == MAZE_GOOL_Y)) {
-		return 1;			//本番のゴール。帰還モード中も守っておく
+	/* 本番ゴールは2×2区画。Maze_Shortest_Calculation()が
+	 * (MAZE_GOOL_X..+1, MAZE_GOOL_Y..+1)の4マスを終点として扱うので、
+	 * 区画全体を守る。帰還モード中(G_Gool=スタート)も守っておく */
+	if ((x >= MAZE_GOOL_X) && (x <= MAZE_GOOL_X + 1) && (y >= MAZE_GOOL_Y)
+			&& (y <= MAZE_GOOL_Y + 1)) {
+		return 1;
 	}
 	return 0;
 }
