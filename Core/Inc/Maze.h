@@ -28,6 +28,11 @@ extern int G_Gool_Y;
 
 extern uint8_t G_MAZE_Explored[MAZE_SIZE][MAZE_SIZE];
 
+/* 行き止まりと判明して全面探索の対象から外したマス。壁マップとは別管理で、
+ * 走行の通行判定には使わない(Maze.c冒頭のコメント参照) */
+extern uint8_t G_MAZE_Closed[MAZE_SIZE][MAZE_SIZE];
+extern int G_DeadEnd_Fill_Enable;	//0で従来動作(行き止まり潰しなし)に戻る
+
 extern uint32_t G_Maze_Row[MAZE_SIZE+1];
 extern uint32_t G_Maze_Column[MAZE_SIZE+1];
 
@@ -77,6 +82,7 @@ void Maze_Unkown_ALL_ModeOFF();
 int Maze_All_MODE_Check();
 
 void Maze_Gool_Setting(int );
+void Maze_DeadEnd_Fill();
 void Maze_Step_Calculate();
 
 int Maze_Unknown_Wall_Scan(void);

@@ -1,0 +1,29 @@
+name: maze-test
+
+# Core/Src/Maze.c はHALに依存しないので、ホストのgccにそのままリンクして
+# 迷路アルゴリズムの不変条件を検証できる。ファームウェア本体のARMビルドは
+# ここでは行わない。
+# pushとpull_requestの両方を無条件に拾うと、PRブランチへのpushで
+# 同じジョブが2回走る。masterへのpushとPRだけに絞る
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  deadend-fill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 行き止まり潰しの検証 (16x16)
+        run: |
+          gcc -std=c11 -Wall -I Core/Inc -o test_deadend \
+            test/test_deadend.c Core/Src/Maze.c
+          ./test_deadend
+
+      - name: 行き止まり潰しの検証 (32x32)
+        run: |
+          gcc -std=c11 -Wall -DMAZE_SIZE=32 -I Core/Inc -o test_deadend32 \
+            test/test_deadend.c Core/Src/Maze.c
+          ./test_deadend32

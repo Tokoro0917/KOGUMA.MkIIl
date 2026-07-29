@@ -86,6 +86,26 @@ uint8_t G_Unknown_Wall_IsRow = 0;
 int16_t G_Unknown_Wall_I = 0;
 int16_t G_Unknown_Wall_J = 0;
 
+/* 行き止まり潰し(dead-end filling)。
+ * 「確認済みの壁だけで出入口が1つ以下」のマスは、入った辺と同じ辺からしか
+ * 出られないので、そのマス自身が始点/終点でない限り最短経路上に絶対に乗らない。
+ * 全面探索でわざわざ寄り道する価値がないので、目標マスの候補から外す。
+ *
+ * 安全側に倒すための作り:
+ *  - G_Maze_Row/G_Maze_Column(実測の壁マップ)は一切書き換えない。
+ *    マップの保存/表示/ダイクストラは今まで通り真の壁データだけを見る。
+ *  - この情報は歩数マップBFSの通行判定には使わない。使うのは
+ *    Maze_Gool_Setting()の「未探索マスを目標にするか」の判断だけなので、
+ *    誤って閉じても「そのマスを探索しない」だけで、経路が塞がったり
+ *    スタートに帰れなくなったりはしない。
+ *  - 毎回ゼロから作り直す(ステートレス)ので、誤った閉鎖が累積しないし、
+ *    ゴール座標が探索用/帰還用に切り替わっても自動で追従する。
+ *  - 未確認の壁は「開いている」とみなす(閉じる方向には倒さない)。*/
+uint8_t G_MAZE_Closed[MAZE_SIZE][MAZE_SIZE];
+/* 実機で挙動が疑わしいときに0にすれば即座に従来動作へ戻せる */
+int G_DeadEnd_Fill_Enable = 1;
+int g_deadend_closed_count = 0;
+
 void pushQueue_walk(QUEUE_T *queue, unsigned short input) {
 	/* データをデータの最後尾の１つ後ろに格納*/
 	queue->data[queue->tail] = input;
@@ -224,8 +244,10 @@ void Maze_Initialization() {
 	for (i = 0; i < MAZE_SIZE; i++) {
 		for (j = 0; j < MAZE_SIZE; j++) {
 			G_MAZE_Explored[i][j] = 0;
+			G_MAZE_Closed[i][j] = 0;
 		}
 	}
+	g_deadend_closed_count = 0;
 	G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
 	for (i = 0; i < MAZE_SIZE; i++) {
 		for (j = 0; j < MAZE_SIZE; j++) {
@@ -335,6 +357,7 @@ void Maze_Wall_Update() {
 					Maze_Column_Look[G_Robot_MAZE_X + 1]
 							| (1u << (G_Robot_MAZE_Y));
 
+			Maze_DeadEnd_Fill();		//行き止まりマスを目標候補から外す
 			Maze_Step_Calculate();			//歩数マップ更新
 		}
 		G_Maze_Flont = G_Step_Map[G_Robot_MAZE_X][G_Robot_MAZE_Y + 1];
@@ -383,6 +406,7 @@ void Maze_Wall_Update() {
 			Maze_Row_Look[G_Robot_MAZE_Y] = Maze_Row_Look[G_Robot_MAZE_Y]
 					| (1u << (G_Robot_MAZE_X));
 
+			Maze_DeadEnd_Fill();		//行き止まりマスを目標候補から外す
 			Maze_Step_Calculate();			//歩数マップ更新
 		}
 		G_Maze_Flont = G_Step_Map[G_Robot_MAZE_X + 1][G_Robot_MAZE_Y];
@@ -430,6 +454,7 @@ void Maze_Wall_Update() {
 			Maze_Column_Look[G_Robot_MAZE_X] = Maze_Column_Look[G_Robot_MAZE_X]
 					| (1u << (G_Robot_MAZE_Y));
 
+			Maze_DeadEnd_Fill();		//行き止まりマスを目標候補から外す
 			Maze_Step_Calculate();			//歩数マップ更新
 
 		}
@@ -479,6 +504,7 @@ void Maze_Wall_Update() {
 			Maze_Row_Look[G_Robot_MAZE_Y + 1] =
 					Maze_Row_Look[G_Robot_MAZE_Y + 1] | (1u << (G_Robot_MAZE_X));
 
+			Maze_DeadEnd_Fill();		//行き止まりマスを目標候補から外す
 			Maze_Step_Calculate();			//歩数マップ更新
 		}
 		G_Maze_Flont = G_Step_Map[G_Robot_MAZE_X - 1][G_Robot_MAZE_Y];
@@ -770,13 +796,129 @@ int Maze_All_MODE_Check() {
 	return ALL_MODE;
 }
 
+/* 連鎖で潰してはいけないマス。
+ * ここを守っている限り、閉じたマスが最短経路に乗ることはない
+ * (経路の途中のマスは必ず入口と出口の2辺が要るので、出入口1つのマスは
+ *  始点/終点にしかなり得ない)。*/
+static int Maze_Cell_IsProtected(int x, int y) {
+	if ((x == 0) && (y == 0)) {
+		return 1;			//スタートは初期状態で3枚壁。潰すと帰還できない
+	}
+	if ((x == G_Gool_X) && (y == G_Gool_Y)) {
+		return 1;			//現在の目標(探索時は中央、帰還時はスタート)
+	}
+	/* 本番ゴールは2×2区画。Maze_Shortest_Calculation()が
+	 * (MAZE_GOOL_X..+1, MAZE_GOOL_Y..+1)の4マスを終点として扱うので、
+	 * 区画全体を守る。帰還モード中(G_Gool=スタート)も守っておく */
+	if ((x >= MAZE_GOOL_X) && (x <= MAZE_GOOL_X + 1) && (y >= MAZE_GOOL_Y)
+			&& (y <= MAZE_GOOL_Y + 1)) {
+		return 1;
+	}
+	return 0;
+}
+
+/* (x,y)から出られる辺の数。
+ * 「壁が確認済み」または「その先が閉鎖済み(=経路に乗り得ない)」の辺は数えない。
+ * 未確認の壁は開いているとみなすので、判定は必ず安全側に倒れる。*/
+static int Maze_Cell_OpenDegree(int x, int y) {
+	int deg = 0;
+	if (((G_Maze_Row[y + 1] & (1u << x)) == 0) && (y + 1 < MAZE_SIZE)
+			&& (G_MAZE_Closed[x][y + 1] == 0)) {
+		deg++;						//北
+	}
+	if (((G_Maze_Column[x + 1] & (1u << y)) == 0) && (x + 1 < MAZE_SIZE)
+			&& (G_MAZE_Closed[x + 1][y] == 0)) {
+		deg++;						//東
+	}
+	if (((G_Maze_Row[y] & (1u << x)) == 0) && (y - 1 >= 0)
+			&& (G_MAZE_Closed[x][y - 1] == 0)) {
+		deg++;						//南
+	}
+	if (((G_Maze_Column[x] & (1u << y)) == 0) && (x - 1 >= 0)
+			&& (G_MAZE_Closed[x - 1][y] == 0)) {
+		deg++;						//西
+	}
+	return deg;
+}
+
+/* 行き止まりマスを連鎖的に閉じる。毎回ゼロから作り直す。
+ * 必ず「壁を記録した後」かつ「Maze_Wall_fill()より前」に呼ぶこと。
+ * Maze_Wall_fill()は未確認の壁を全部1に潰すので、その後に呼ぶと
+ * ほぼ全マスが行き止まり判定になってしまう。*/
+void Maze_DeadEnd_Fill() {
+	/* 1マスにつき高々1回しか積まないのでMAX_STEP(=総マス数)で足りる。
+	 * スタックオーバーフロー回避のためstatic(.bss)に置く */
+	static uint8_t stack_x[MAX_STEP];
+	static uint8_t stack_y[MAX_STEP];
+	static const int dx[4] = { 0, 1, 0, -1 };
+	static const int dy[4] = { 1, 0, -1, 0 };
+	int sp = 0;
+
+	for (int x = 0; x < MAZE_SIZE; x++) {
+		for (int y = 0; y < MAZE_SIZE; y++) {
+			G_MAZE_Closed[x][y] = 0;
+		}
+	}
+	g_deadend_closed_count = 0;
+
+	if (G_DeadEnd_Fill_Enable == 0) {
+		return;
+	}
+
+	/* 第1段: 確認済みの壁だけで既に行き止まりになっているマスを閉じる */
+	for (int x = 0; x < MAZE_SIZE; x++) {
+		for (int y = 0; y < MAZE_SIZE; y++) {
+			if (Maze_Cell_IsProtected(x, y)) {
+				continue;
+			}
+			if (Maze_Cell_OpenDegree(x, y) <= 1) {
+				G_MAZE_Closed[x][y] = 1;
+				g_deadend_closed_count++;
+				stack_x[sp] = (uint8_t) x;
+				stack_y[sp] = (uint8_t) y;
+				sp++;
+			}
+		}
+	}
+
+	/* 第2段: 閉じたマスの隣を再評価して連鎖させる。
+	 * 閉じたマスは通路として数えなくなるので、袋小路の通路が根元まで潰れる */
+	while (sp > 0) {
+		sp--;
+		int cx = stack_x[sp];
+		int cy = stack_y[sp];
+		for (int d = 0; d < 4; d++) {
+			int nx = cx + dx[d];
+			int ny = cy + dy[d];
+			if ((nx < 0) || (nx >= MAZE_SIZE) || (ny < 0) || (ny >= MAZE_SIZE)) {
+				continue;
+			}
+			if (G_MAZE_Closed[nx][ny] != 0) {
+				continue;
+			}
+			if (Maze_Cell_IsProtected(nx, ny)) {
+				continue;
+			}
+			if (Maze_Cell_OpenDegree(nx, ny) <= 1) {
+				G_MAZE_Closed[nx][ny] = 1;
+				g_deadend_closed_count++;
+				stack_x[sp] = (uint8_t) nx;
+				stack_y[sp] = (uint8_t) ny;
+				sp++;
+			}
+		}
+	}
+}
+
 void Maze_Gool_Setting(int mode) {
 	int N = 0;
 
 	if (mode == 1) {
 		for (int x = 0; x < MAZE_SIZE; x++) {
 			for (int y = 0; y < MAZE_SIZE; y++) {
-				if (G_MAZE_Explored[x][y] == 0) {
+				/* 行き止まりと判明したマスは全面探索の目標にしない。
+				 * 最短経路に乗り得ないので、探索を打ち切っても損しない */
+				if ((G_MAZE_Explored[x][y] == 0) && (G_MAZE_Closed[x][y] == 0)) {
 
 					if ((x == 0) && (y == 0)) {
 						G_Step_Map[x][y] = 100;
@@ -820,12 +962,28 @@ void Maze_Step_Calculate() {
 		}
 	}
 	Maze_Gool_Setting(ALL_MODE);
-	if (ALL_MODE == 2) {
-		pushQueue_walk(&queue_x, G_Unknown_Target_X);
-		pushQueue_walk(&queue_y, G_Unknown_Target_Y);
-	} else {
-		pushQueue_walk(&queue_x, G_Gool_X);
-		pushQueue_walk(&queue_y, G_Gool_Y);
+	/* ALL_MODE中に未探索マスが尽きるとMaze_Gool_Setting()内でALL_MODEが
+	 * OFFになるが、そのタイミングではまだ「通常モードの目標セル
+	 * (G_Gool_X,Y)を歩数0にする」処理(elseブランチ)が走っていない
+	 * (呼び出し時点のmode==1のまま実行されているため)。ここで補う */
+	if (ALL_MODE == 0 && G_Step_Map[G_Gool_X][G_Gool_Y] != 0) {
+		G_Step_Map[G_Gool_X][G_Gool_Y] = 0;
+	}
+	/* ALL_MODE時はMaze_Gool_Setting()が未探索マスを全部歩数0にするが、
+	 * BFSはキューに積んだマスからしか伝播しないので、歩数0のマス全部を
+	 * 起点としてキューに積まないと多点始点BFSにならない。
+	 * G_Gool_X/Yだけを特別扱いして先に積むと、ALL_MODE中はスタート
+	 * (歩数100、本来は起点ではない)がFIFOの先頭に来て先に展開されてしまい、
+	 * 近くのマスを誤って「スタートからの距離」で埋めてしまう。
+	 * 歩数が実際に0のマスだけを均等に積むことでこれを避ける(mode==2の
+	 * G_Unknown_Target_X/Yもこのスキャンで自動的に拾われる) */
+	for (i = 0; i < MAZE_SIZE; i++) {
+		for (j = 0; j < MAZE_SIZE; j++) {
+			if (G_Step_Map[i][j] == 0) {
+				pushQueue_walk(&queue_x, i);
+				pushQueue_walk(&queue_y, j);
+			}
+		}
 	}
 	while (Step_N < MAX_STEP) {
 		X = popQueue_walk(&queue_x);
@@ -858,6 +1016,19 @@ void Maze_Step_Calculate() {
 			pushQueue_walk(&queue_y, Y - 1);
 		}
 		Step_N++;
+	}
+
+	/* 大会ルール上、壁で完全に閉じられていて到達不可能なマスが
+	 * 存在し得る。ALL_MODE中にそういうマスだけが未探索として残ると
+	 * Maze_Gool_Setting()のN(未探索マス数)が0にならずALL_MODEが
+	 * 永遠にOFFにならない。その場合、今いる場所からはどの未探索マスにも
+	 * 到達できず歩数マップが更新されない(=自分のマスがMAX_STEPのまま)
+	 * ので、それを検知したら全面探索を打ち切ってスタートへ戻るモードに
+	 * 切り替え、歩数マップを作り直す */
+	if (ALL_MODE == 1
+			&& G_Step_Map[G_Robot_MAZE_X][G_Robot_MAZE_Y] == MAX_STEP) {
+		ALL_MODE = 0;
+		Maze_Step_Calculate();
 	}
 }
 
@@ -1914,6 +2085,7 @@ void Maze_Mapping() {
 			}
 			printf("%3d", G_Step_Map[i][j - 1]);
 			//printf("%3d", G_MAZE_Explored[i][j - 1]);
+			//printf("%3d", G_MAZE_Closed[i][j - 1]);	//行き止まり潰しの確認用
 		}
 		printf("\n\r");
 	}
