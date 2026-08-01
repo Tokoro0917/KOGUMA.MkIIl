@@ -14,6 +14,7 @@ Core/Src, Core/Inc   本体ファームウェア
 Drivers/             STM32 HAL / CMSIS
 KOGUMA.MkII/          旧バージョン一式(参考用に同梱)
 test/                ホスト(PC)上で走る迷路アルゴリズムのテスト
+sim/                 ホスト上で探索を走らせるシミュレータと可視化ツール
 .github/workflows/   CI設定
 *.ioc                STM32CubeMX設定
 STM32F446RETX_*.ld   リンカスクリプト
@@ -162,6 +163,28 @@ gcc -std=c11 -Wall -DMAZE_SIZE=32 -I Core/Inc -o test_deadend32 test/test_deaden
 テストは不変条件が壊れると非0で終了する。実際に`Maze_Cell_IsProtected()`の保護を外した改変版を通すと失敗を検出することを確認済み。
 
 CIは`.github/workflows/maze-test.yml`で、masterへのpushとPRのときに16×16と32×32の両方を実行する。ファームウェア本体のARMビルドは対象外。
+
+## シミュレータと可視化(`sim/`)
+
+同じくHAL非依存であることを利用して、`Core/Src/Maze.c`を**無改変のまま**ホストでリンクし、壁センサだけを正解迷路を参照する仮想センサに差し替えて探索を最後まで走らせる。実機の意思決定ロジックそのものが動くので、再実装ではない。
+
+```sh
+./sim/build.sh                # ビルド→実行→HTMLへの埋め込みまで通しで実行
+./sim/build.sh --regen-maze   # 正解迷路(sim/sim_maze_data.h)から作り直す
+```
+
+生成された`sim/visualizer.html`をブラウザで開くと、再生・コマ送り・速度調整つきで探索の様子を再生できる。外部リソースは参照していないのでローカルファイルのまま開ける。
+
+| ファイル | 役割 |
+|---|---|
+| `sim/sim_main.c` | 仮想壁センサと、1マス分の意思決定を実行するハーネス。トレースをNDJSONで出力 |
+| `sim/gen_maze.py` | 正解迷路の生成(乱数シード固定なので出力は再現する) |
+| `sim/sim_maze_data.h` | 生成された正解の壁マップ。手で編集しない |
+| `sim/visualizer_template.html` | 可視化本体。`__TRACE_DATA__`をトレースで置換して使う |
+
+再生されるシナリオは2つ。**A**は未探索マスを全部同時にBFSゴールにして踏破する全面探索(`ALL_MODE=1`)、**B**はスタート→ゴールのダイクストラ経路上の未知壁を現在位置から直接見に行くのを繰り返す誘導探索(`ALL_MODE=2`)。
+
+ビルド成果物(`sim/maze_sim`、`sim/trace.ndjson`、`sim/trace.json`)は`sim/.gitignore`で除外している。
 
 ## 現状のベンチテスト設定(要確認)
 
