@@ -1136,11 +1136,6 @@ int main(void) {
 
 					Encorder_count_reset();
 				}
-			} else if (Encorder_number_out() == 0) {		//
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-				}
 			}
 		} else if (Encorder_mode_out() == 6) {	//2.0m/s
 			if (Encorder_number_out() == 0) {		//
