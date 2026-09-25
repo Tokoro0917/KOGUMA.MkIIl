@@ -1035,7 +1035,6 @@ void Maze_Step_Calculate() {
 void Maze_Shortest_Calculation() {
 	int Short_MAZE_X = 0;
 	int Short_MAZE_Y = 0;
-	int Step = 0;
 	int N = 0;
 
 	G_Step_Map[G_Gool_X][G_Gool_Y] = 0;
@@ -1061,7 +1060,6 @@ void Maze_Shortest_Calculation() {
 			break;
 		}
 #endif
-		Step = G_Step_Map[Short_MAZE_X][Short_MAZE_Y];
 		if (G_Robot_Direction % 4 == 0) { //北向き
 			Short_MAZE_X += 0;
 			Short_MAZE_Y += 1;
