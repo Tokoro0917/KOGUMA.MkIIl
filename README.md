@@ -196,6 +196,10 @@ gcc -std=c11 -Wall -I Core/Inc -o test_walldist test/test_walldist.c Core/Src/Wa
 
 CIは`.github/workflows/maze-test.yml`で、masterへのpushとPRのときに16×16と32×32の両方と、距離変換の表の検査を実行する。ファームウェア本体のARMビルドは対象外。
 
+## やることリスト
+
+`TODO.md`を参照。
+
 ## 大会前チェック
 
 - `Core/Inc/Define.h`の`MAZE_GOOL_X/Y`は標準ゴール(迷路中央2×2、`MAZE_SIZE/2-1`)。ベンチテストでスタート近くにゴールを置きたいときだけ一時的に書き換え、**書き換えたままコミットしないこと。** 行き止まり潰しのゴール保護もこの定数から導出している。
