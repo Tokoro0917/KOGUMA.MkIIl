@@ -9,6 +9,7 @@
 #define INC_WALLSENSOR_H_
 
 extern int G_Wall_data[];
+extern int G_WallCtrl_Use_mm;
 
 void Wall_search();
 
@@ -18,6 +19,7 @@ int Sensor_Enter();
 int Sensor_Start();
 
 void Wall_search_LED();
+void Wall_Distance_Calibration();
 
 float calWallConrol();
 float calWallConrol_NANAME();

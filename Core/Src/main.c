@@ -815,6 +815,12 @@ int main(void) {
 					HAL_Delay(500);
 					Encorder_count_reset();
 				}
+			} else if (Encorder_number_out() == 4) {		//距離キャリブレーション
+				if (Sensor_Enter() == 1) {
+					Buzzer_Enter();
+					Sensor_Start();
+					Wall_Distance_Calibration();
+				}
 			}
 		} else if (Encorder_mode_out() == 4) {		//基本調整
 			if (Encorder_number_out() == 0) {		//センサ
