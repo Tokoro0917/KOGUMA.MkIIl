@@ -21,6 +21,7 @@
 #include "Failsafe.h"
 #include "UI.h"
 #include"Failsafe.h"
+#include "SpeedPlan.h"
 
 int G_Pass_before;
 int G_Pass_after;
@@ -866,3 +867,187 @@ void Short_Dijkstra_Move2000(int MAX, int AC) {
 
 }
 
+
+/*
+ * ターンごとに通過速度を変える最短走行。
+ *
+ * Short_NANAME_Move2000 と同じ走り方で、ターンの種類ごとに通過速度を持つ。
+ * 直線の始点・終点速度は、前後のターンの速度に合わせる(SpeedPlan.c)。
+ * 直線が短くて加減速しきれないときや、ターンが直接つながるときは、
+ * 速度計画が遅い方に合わせて速度を下げる。
+ *
+ * ターンのパラメータは Short_NANAME_Move2000 の値(V_BASE=2000で調整済み)を基準にし、
+ * 通過速度Vに合わせて 角速度 x (V/V_BASE)、角加速度 x (V/V_BASE)^2 に換算する。
+ * こうすると理想的には同じ軌跡(同じ旋回半径)になる。横加速度は (V/V_BASE)^2 倍になる。
+ * 前後のオフセット距離は理想的には変わらないが、実機では遅れで変わるので、
+ * 速度を変えたターンは offset_st / offset_end の調整が必要。
+ *
+ * TurnV_Table の v を全部 2000 にすると Short_NANAME_Move2000 と同じ走りになる。
+ */
+#define TURNV_V_BASE 2000.0f
+#define TURNV_V_START 2000.0f	/* スタート区間の終わりの速度の上限 */
+#define TURNV_V_GOAL 2000.0f	/* ゴール停止区間に入る速度の上限 */
+
+#define WC_NORMAL 0
+#define WC_NANAME 1
+
+typedef struct {
+	float v;			/* 通過速度[mm/s]。これを調整する */
+	float angle;		/* 左旋回の角度[deg]。右は符号を反転 */
+	float w_max;		/* V_BASEでの最大角速度 */
+	float w_ac;			/* V_BASEでの角加速度 */
+	int st_kind;		/* 前オフセットの壁切れ: WC_NORMAL / WC_NANAME */
+	float offset_st;
+	int end_kind;		/* 後オフセット */
+	float offset_end;
+} TurnV_Param;
+
+enum {
+	TV_BIG90,		/* 大回り90  (-4 / -6) */
+	TV_BIG180,		/* 大回り180 (-5 / -7) */
+	TV_IN45,		/* 斜め入り45  (-51 / -53) */
+	TV_IN135,		/* 斜め入り135 (-52 / -54) */
+	TV_OUT45,		/* 斜め出45  (-61 / -63) */
+	TV_OUT135,		/* 斜め出135 (-62 / -64) */
+	TV_V90,			/* V90 (-65 / -66) */
+	TV_NUM
+};
+
+static TurnV_Param TurnV_Table[TV_NUM] = {
+	/*            v     angle  w_max  w_ac     st_kind    st   end_kind   end */
+	[TV_BIG90]  = {2000,  90, 2000,  40000, WC_NORMAL, 10, WC_NORMAL,  75},
+	[TV_BIG180] = {2000, 180, 1220,  40000, WC_NORMAL,  5, WC_NORMAL,  73},
+	[TV_IN45]   = {2000,  45, 1900, 120000, WC_NORMAL,  5, WC_NANAME, 112},
+	[TV_IN135]  = {2000, 135, 1500,  80000, WC_NORMAL, 31, WC_NANAME,  98},
+	[TV_OUT45]  = {2000,  45, 1500,  40000, WC_NANAME, 13, WC_NORMAL,  25},
+	[TV_OUT135] = {2000, 135, 1350,  70000, WC_NANAME, 10, WC_NORMAL,  90},
+	[TV_V90]    = {2000,  90, 2000, 130000, WC_NANAME, 13, WC_NANAME,  80},
+};
+
+/* パスのコード -> テーブル番号と向き(0:左 1:右)。ターンでなければ -1 */
+static int TurnV_Lookup(int16_t code, int *dir) {
+	switch (code) {
+	case -4:  *dir = 0; return TV_BIG90;
+	case -6:  *dir = 1; return TV_BIG90;
+	case -5:  *dir = 0; return TV_BIG180;
+	case -7:  *dir = 1; return TV_BIG180;
+	case -51: *dir = 0; return TV_IN45;
+	case -53: *dir = 1; return TV_IN45;
+	case -52: *dir = 0; return TV_IN135;
+	case -54: *dir = 1; return TV_IN135;
+	case -61: *dir = 0; return TV_OUT45;
+	case -63: *dir = 1; return TV_OUT45;
+	case -62: *dir = 0; return TV_OUT135;
+	case -64: *dir = 1; return TV_OUT135;
+	case -65: *dir = 0; return TV_V90;
+	case -66: *dir = 1; return TV_V90;
+	default:  return -1;
+	}
+}
+
+static float TurnV_Speed(int16_t code) {
+	int dir;
+	int k = TurnV_Lookup(code, &dir);
+	return (k >= 0) ? TurnV_Table[k].v : TURNV_V_BASE;
+}
+
+static void TurnV_Run(int16_t code, float V) {
+	int dir;
+	int k = TurnV_Lookup(code, &dir);
+	if (k < 0) {
+		return;
+	}
+	const TurnV_Param *p = &TurnV_Table[k];
+	float s = V / TURNV_V_BASE;
+	float angle = (dir == 0) ? p->angle : -p->angle;
+
+	if (p->st_kind == WC_NANAME) {
+		Motor_Wallcut_ST_NANAME(V, p->offset_st, dir);
+	} else {
+		Motor_Wallcut_ST(V, p->offset_st, dir);
+	}
+	Motor_Sula_COS(V, angle, p->w_max * s, p->w_ac * s * s);
+	if (p->end_kind == WC_NANAME) {
+		Motor_Wallcut_END_NANAME(V, p->offset_end, dir);
+	} else {
+		Motor_Wallcut_END(V, p->offset_end, dir);
+	}
+}
+
+void Short_NANAME_MoveTurnV(int MAX, int AC) {
+	static SpeedPlan_t plan;
+
+	Maze_Road();
+	Maze_Wall_fill();
+	G_Gool_X = MAZE_GOOL_X;
+	G_Gool_Y = MAZE_GOOL_Y;
+	G_Robot_MAZE_X = 0;
+	G_Robot_MAZE_Y = 0;
+	G_Robot_Direction = 0;
+	G_MAZE_Explored[G_Gool_X][G_Gool_Y] = 0;
+	Maze_Step_Calculate();
+
+	Maze_Shortest_Calculation();
+
+	Shortest_Pass_Compression();
+	Shortest_Pass_Compression_NANAME();
+
+	/* 最初の半区画はスタート区間に含める(Short_NANAME_Move2000と同じ) */
+	int start_half = (G_Short_Pass_NANAME[0] == 1);
+	if (start_half) {
+		G_Short_Pass_NANAME[0] = -1;
+	}
+
+	plan.turn_v = TurnV_Speed;
+	plan.v_max = MAX;
+	plan.ac = AC;
+	plan.v_start = TURNV_V_START;
+	plan.v_goal = TURNV_V_GOAL;
+	if (SpeedPlan_Make(G_Short_Pass_NANAME, &plan) != 0) {
+		return;
+	}
+
+	Suction_Start(50);
+	HAL_Delay(500);
+
+	Motor_Setup();
+	float v0 = plan.v_start_out;
+	if (start_half) {
+		Motor_trapezoid_PID(0, v0, v0, 30000, 90 + 24);
+	} else {
+		Motor_trapezoid_PID(0, v0, v0, 70000, 10);
+	}
+
+	for (int i = 0; G_Short_Pass_NANAME[i] != 0; i++) {
+		if (Failsafe_Flag() == 1) {
+			break;
+		}
+		int16_t code = G_Short_Pass_NANAME[i];
+		switch (SpeedPlan_Kind(code)) {
+		case SP_STRAIGHT:			//区間前進
+			Motor_trapezoid_Asymmetric_PID(plan.v_in[i], MAX, plan.v_out[i],
+					AC, 90 * code);
+			break;
+		case SP_DIAGONAL:			//斜め直線
+			Motor_NANAME_PID(plan.v_in[i], MAX, plan.v_out[i], AC - 5000,
+					127.3 * code / -50);
+			break;
+		case SP_TURN:
+			TurnV_Run(code, plan.v_in[i]);
+			break;
+		default:
+			break;
+		}
+	}
+	if (Failsafe_Flag() == 0) {
+		float vg = plan.v_goal_in;
+		Motor_trapezoid_PID(vg, vg, 0, 15000, 180);
+		Motor_Stop();
+		Suction_Stop();
+
+		Robot_adjustment();
+		LED_Goal();
+	} else {
+		Failsafe_Flag_OFF();
+	}
+}

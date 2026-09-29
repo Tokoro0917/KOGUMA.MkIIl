@@ -27,6 +27,7 @@ void Short_NANAME_Move1000(int, int);
 void Short_NANAME_Move2000(int, int);
 void Short_NANAME_Move2400(int, int);
 void Short_NANAME_Move2700(int, int);
+void Short_NANAME_MoveTurnV(int, int);
 
 void Short_Dijkstra_Move2000(int, int);
 

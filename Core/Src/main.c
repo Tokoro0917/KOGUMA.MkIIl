@@ -772,6 +772,19 @@ int main(void) {
 					HAL_Delay(500);
 					Encorder_count_reset();
 				}
+			} else if (Encorder_number_out() == 10) {		//ターンごとの通過速度
+				if (Sensor_Enter() == 1) {
+					Buzzer_Enter();
+					Sensor_Start();
+
+					Motor_Setup();
+					Motor_Stop();
+					Short_NANAME_MoveTurnV(6000, 20000);
+					Motor_Free();
+					LED_Reset();
+					HAL_Delay(500);
+					Encorder_count_reset();
+				}
 			}
 		} else if (Encorder_mode_out() == 2) {		//サーキ�?�?
 
