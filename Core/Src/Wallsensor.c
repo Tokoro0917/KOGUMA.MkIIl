@@ -11,12 +11,22 @@
 #include "gpio.h"
 #include "motor.h"
 #include "math.h"
+#include "WallDistance.h"
+#include <stdio.h>
 
 int G_Wall_data[] = { 0, 0, 0, 0 };
 int Wall_threshold[] = { 60, 90, 90, 60 }; //80, 150, 150, 80
 
 float Kp = 0.05; //0.025
 float Kd = 0.01;
+
+/* 横壁制御を距離[mm]で行うか (0: 従来のセンサ値, 1: 距離)
+ * WallDistance.c の表を実測値に置き換えてから 1 にすること */
+int G_WallCtrl_Use_mm = 0;
+/* 区画中心付近で従来のKp, Kdと同じ効きになる値から始める
+ * (仮の表では84mm付近の傾きが約5.2[値/mm] -> 0.05*5.2, 0.01*5.2) */
+float Kp_mm = 0.26;
+float Kd_mm = 0.05;
 
 float Kp_Na = 0.1;
 float Kd_Na = 0.00;
@@ -121,6 +131,32 @@ void Wall_search_LED() {
 
 }
 
+/* 距離キャリブレーション(モード3-4)
+ * 機体を壁から既知の距離に置き、表示された値を WallDistance.c の表に書き写す。
+ * 約0.2秒ごとに100回平均したセンサ値と、現在の表で変換した距離[mm]をCSVで出す。
+ * 手で機体を動かすとモード選択が変わるが、このループの中にいる間は影響しない。
+ * 抜けるときはリセット。 */
+void Wall_Distance_Calibration() {
+	printf("CAL,FL,L,R,FR,FL_mm,L_mm,R_mm,FR_mm\n\r");
+	while (1) {
+		long sum[4] = { 0, 0, 0, 0 };
+		for (int k = 0; k < 100; k++) {
+			for (int i = 0; i < 4; i++) {
+				sum[i] += g_sensor[i][0];
+			}
+			HAL_Delay(2);
+		}
+		int v[4];
+		for (int i = 0; i < 4; i++) {
+			v[i] = sum[i] / 100;
+		}
+		printf("CAL,%d,%d,%d,%d,%.1f,%.1f,%.1f,%.1f\n\r", v[0], v[2], v[1],
+				v[3], WallDist_mm(WALLDIST_FL, v[0]),
+				WallDist_mm(WALLDIST_L, v[2]), WallDist_mm(WALLDIST_R, v[1]),
+				WallDist_mm(WALLDIST_FR, v[3]));
+	}
+}
+
 float calWallConrol() {
 
 	int Sensor_diff_L = abs(g_sensor[2][0] - g_sensor[2][1]);
@@ -141,12 +177,14 @@ float calWallConrol() {
 		}
 	}
 
+	float Kp_base = G_WallCtrl_Use_mm ? Kp_mm : Kp;
+	float Kd_base = G_WallCtrl_Use_mm ? Kd_mm : Kd;
 	if (G_Motor_V_Target >= 2000) {
-		KP = Kp * (2000 / 500);
-		KD = Kd * (2000 / 500);
+		KP = Kp_base * (2000 / 500);
+		KD = Kd_base * (2000 / 500);
 	} else {
-		KP = Kp * (G_Motor_V_Target / 500);
-		KD = Kd * (G_Motor_V_Target / 500);
+		KP = Kp_base * (G_Motor_V_Target / 500);
+		KD = Kd_base * (G_Motor_V_Target / 500);
 	}
 
 	int Sensor_L = g_sensor[2][0];
@@ -159,19 +197,30 @@ float calWallConrol() {
 		Sensor_R = 600;
 	}
 
+	/* 距離モードでは「壁に近いほど正」になるよう (中心距離 - 実距離) を使う。
+	 * 近づいたときの値の急増は変換で吸収されるので600での頭打ちは不要 */
+	float Err_L, Err_R;
+	if (G_WallCtrl_Use_mm) {
+		Err_L = WALLDIST_CENTER_MM - WallDist_mm(WALLDIST_L, g_sensor[2][0]);
+		Err_R = WALLDIST_CENTER_MM - WallDist_mm(WALLDIST_R, g_sensor[1][0]);
+	} else {
+		Err_L = Sensor_L - Wall_L;
+		Err_R = Sensor_R - Wall_R;
+	}
+
 	LED_Reset();
 	if (Wall_Flont_Av() > 800) {
 		Wall_error = 0;
 		Wall_old_error = 0;
 	} else if (Wall_st == 3) {
-		Wall_error = (Sensor_L - Wall_L) - (Sensor_R - Wall_R);
+		Wall_error = Err_L - Err_R;
 		LED_ON_L();
 		LED_ON_R();
 	} else if (Wall_st == 2) {
-		Wall_error = 2.0 * -(Sensor_R - Wall_R);
+		Wall_error = 2.0 * -Err_R;
 		LED_ON_R();
 	} else if (Wall_st == 1) {
-		Wall_error = 2.0 * (Sensor_L - Wall_L);
+		Wall_error = 2.0 * Err_L;
 		LED_ON_L();
 	} else {
 		Wall_error = 0;

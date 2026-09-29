@@ -27,3 +27,14 @@ jobs:
           gcc -std=c11 -Wall -DMAZE_SIZE=32 -I Core/Inc -o test_deadend32 \
             test/test_deadend.c Core/Src/Maze.c
           ./test_deadend32
+
+  walldist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 壁センサ距離変換の表の検証
+        run: |
+          gcc -std=c11 -Wall -I Core/Inc -o test_walldist \
+            test/test_walldist.c Core/Src/WallDistance.c
+          ./test_walldist
