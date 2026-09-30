@@ -38,3 +38,14 @@ jobs:
           gcc -std=c11 -Wall -I Core/Inc -o test_walldist \
             test/test_walldist.c Core/Src/WallDistance.c
           ./test_walldist
+
+  speedplan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: ターンごとの通過速度の速度計画の検証
+        run: |
+          gcc -std=c11 -Wall -I Core/Inc -o test_speedplan \
+            test/test_speedplan.c Core/Src/SpeedPlan.c -lm
+          ./test_speedplan
