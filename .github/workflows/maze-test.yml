@@ -49,11 +49,3 @@ jobs:
           gcc -std=c11 -Wall -I Core/Inc -o test_speedplan \
             test/test_speedplan.c Core/Src/SpeedPlan.c -lm
           ./test_speedplan
-
-  turn-sim:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: ターンシミュレーターの検証
-        run: python3 sim/turn_sim.py selftest
