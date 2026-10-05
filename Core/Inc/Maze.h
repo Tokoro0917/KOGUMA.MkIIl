@@ -105,3 +105,4 @@ void Pass_zero_act();
 
 void  Maze_Dijkstra_Calculation();
 void Maze_Dijkstra_Mapping();
+void Maze_Debug_Dump(void);	//保存済みの迷路と最短経路の命令列をシリアルに出す(モード3 No.0)

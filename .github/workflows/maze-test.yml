@@ -28,6 +28,18 @@ jobs:
             test/test_deadend.c Core/Src/Maze.c
           ./test_deadend32
 
+      - name: 最短走行の命令列の検証 (16x16)
+        run: |
+          gcc -std=c11 -Wall -I Core/Inc -o test_shortpath \
+            test/test_shortpath.c Core/Src/Maze.c
+          ./test_shortpath
+
+      - name: 最短走行の命令列の検証 (32x32)
+        run: |
+          gcc -std=c11 -Wall -DMAZE_SIZE=32 -I Core/Inc -o test_shortpath32 \
+            test/test_shortpath.c Core/Src/Maze.c
+          ./test_shortpath32
+
   walldist:
     runs-on: ubuntu-latest
     steps:

@@ -12,6 +12,14 @@
  *   gcc -std=c11 -Wall -ICore/Inc -o /tmp/t test/test_shortpath.c Core/Src/Maze.c && /tmp/t
  *   gcc -std=c11 -Wall -DMAZE_SIZE=32 -ICore/Inc -o /tmp/t32 test/test_shortpath.c Core/Src/Maze.c && /tmp/t32
  *
+ * 実機の迷路の確認:
+ *   /tmp/t --dump log.txt
+ *     実機のモード3 No.0(Maze_Debug_Dump)の出力を保存したファイルを読み込み、
+ *     PCで同じ命令列が作られるか、その命令列が壁に突っ込まないかを調べる。
+ *     未確認の壁は最短走行と同じく壁として扱う。
+ *   /tmp/t --make-dump 番号 [未確認にする壁の割合%(既定3)]
+ *     ランダム迷路で Maze_Debug_Dump と同じ出力を作る(--dump の動作確認用)
+ *
  * 座標は半区画単位。マス(x,y)の中心が(2x+1,2y+1)、壁の中点が片方だけ偶数の点、
  * 柱が両方偶数の点。向きは45度単位で 0=北,2=東,4=南,6=西(奇数が斜め)。
  */
@@ -25,6 +33,8 @@
 int G_Wall_data[4];
 extern uint32_t Maze_Row_Look[];	//Maze.c 内部(見た壁)
 extern uint32_t Maze_Column_Look[];
+extern uint32_t Maze_Row_Look_Save[];
+extern uint32_t Maze_Column_Look_Save[];
 
 #define N MAZE_SIZE
 
@@ -475,7 +485,159 @@ static int run_suite(const char *name, int dijkstra, int count, int loops,
 	return fails;
 }
 
+/* ---- 実機の出力を読み込んで確かめる(--dump) ------------------------- */
+
+static int parse_pass(const char *line, int16_t *out) {
+	const char *p = strchr(line, ':');
+	int k = 0;
+	if (!p)
+		return 0;
+	p++;
+	while (k < MAX_STEP - 1) {
+		char *end;
+		long v = strtol(p, &end, 10);
+		if (end == p)
+			break;
+		out[k++] = (int16_t) v;
+		p = end;
+	}
+	out[k] = 0;
+	return 1;
+}
+
+static int same_pass(const int16_t *a, const int16_t *b) {
+	for (int k = 0; k < MAX_STEP; k++) {
+		if (a[k] != b[k])
+			return 0;
+		if (a[k] == 0)
+			return 1;
+	}
+	return 1;
+}
+
+static int check_dump(const char *path) {
+	static uint32_t row[N + 1], col[N + 1], lrow[N + 1], lcol[N + 1];
+	static int16_t robot_bfs[MAX_STEP], robot_dijk[MAX_STEP];
+	int have_bfs = 0, have_dijk = 0, size = -1, nrow = 0;
+	char line[4096];
+	FILE *f = fopen(path, "r");
+	if (!f) {
+		printf("cannot open %s\n", path);
+		return 2;
+	}
+	while (fgets(line, sizeof(line), f)) {
+		char *p;
+		int k;
+		unsigned long v;
+		if ((p = strstr(line, "MAZE_DUMP_BEGIN")) != NULL) {
+			size = atoi(p + 15);
+			nrow = 0;
+		} else if (sscanf(line, " ROW %d %lx", &k, &v) == 2 && k >= 0 && k <= N) {
+			row[k] = (uint32_t) v;
+			nrow++;
+		} else if (sscanf(line, " COL %d %lx", &k, &v) == 2 && k >= 0 && k <= N) {
+			col[k] = (uint32_t) v;
+			nrow++;
+		} else if (sscanf(line, " LROW %d %lx", &k, &v) == 2 && k >= 0 && k <= N) {
+			lrow[k] = (uint32_t) v;
+			nrow++;
+		} else if (sscanf(line, " LCOL %d %lx", &k, &v) == 2 && k >= 0 && k <= N) {
+			lcol[k] = (uint32_t) v;
+			nrow++;
+		} else if (strstr(line, "BFS_NANAME:")) {
+			have_bfs = parse_pass(strstr(line, "BFS_NANAME:"), robot_bfs);
+		} else if (strstr(line, "DIJK_NANAME:")) {
+			have_dijk = parse_pass(strstr(line, "DIJK_NANAME:"), robot_dijk);
+		}
+	}
+	fclose(f);
+	if (size != N) {
+		printf("MAZE_DUMP_BEGIN %d not found (this build is MAZE_SIZE=%d)\n",
+				size, N);
+		return 2;
+	}
+	if (nrow != 4 * (N + 1)) {
+		printf("dump is incomplete: %d of %d lines\n", nrow, 4 * (N + 1));
+		return 2;
+	}
+
+	/* 最短走行と同じく、未確認の壁は壁として扱う */
+	uint32_t mask = (uint32_t) (((uint64_t) 1 << N) - 1);
+	int unknown = 0;
+	for (int k = 0; k < N + 1; k++) {
+		true_row[k] = row[k] | (~lrow[k] & mask);
+		true_col[k] = col[k] | (~lcol[k] & mask);
+		for (int b = 0; b < N; b++)
+			unknown += !((lrow[k] >> b) & 1u) + !((lcol[k] >> b) & 1u);
+	}
+	printf("MAZE_SIZE=%d, unknown walls=%d\n", N, unknown);
+
+	int bad = 0;
+	for (int dijkstra = 0; dijkstra <= 1; dijkstra++) {
+		const char *name = dijkstra ? "Dijkstra" : "BFS";
+		plan(dijkstra);
+		int ok;
+		if (G_Short_Pass[0] == 0) {
+			ok = 0;
+			snprintf(g_msg, sizeof(g_msg),
+					"no path (start cannot reach goal; unknown walls count as walls)");
+		} else {
+			ok = run_raw();
+			if (ok)
+				ok = run_tokens();
+		}
+		printf("%-8s path: %s%s\n", name, ok ? "OK" : "NG: ", ok ? "" : g_msg);
+		if (!ok) {
+			dump_tokens();
+			bad++;
+		}
+		int have = dijkstra ? have_dijk : have_bfs;
+		const int16_t *robot = dijkstra ? robot_dijk : robot_bfs;
+		if (!have) {
+			printf("%-8s robot output: not found\n", name);
+		} else if (same_pass(robot, G_Short_Pass_NANAME)) {
+			printf("%-8s robot output: same as PC\n", name);
+		} else {
+			printf("%-8s robot output: DIFFERENT from PC\n", name);
+			dump_tokens();
+			bad++;
+		}
+	}
+	return bad ? 1 : 0;
+}
+
+/* ランダム迷路の一部の壁を未確認にして Maze_Debug_Dump の出力を作る */
+static void make_dump(unsigned seed, int ratio) {
+	gen_maze(seed, N * 3);
+	Maze_Initialization();
+	for (int k = 0; k < N + 1; k++) {
+		G_Maze_Row_Save[k] = true_row[k];
+		G_Maze_Column_Save[k] = true_col[k];
+		Maze_Row_Look_Save[k] = 0xFFFFFFFFu;
+		Maze_Column_Look_Save[k] = 0xFFFFFFFFu;
+	}
+	for (int y = 1; y < N; y++) {
+		for (int x = 0; x < N; x++) {
+			if (rand() % 100 < ratio) {	/* 壁があるかどうかは消して未確認にする */
+				Maze_Row_Look_Save[y] &= ~(1u << x);
+				G_Maze_Row_Save[y] &= ~(1u << x);
+			}
+			if (rand() % 100 < ratio) {
+				Maze_Column_Look_Save[y] &= ~(1u << x);
+				G_Maze_Column_Save[y] &= ~(1u << x);
+			}
+		}
+	}
+	Maze_Debug_Dump();
+}
+
 int main(int argc, char **argv) {
+	if (argc > 2 && strcmp(argv[1], "--dump") == 0)
+		return check_dump(argv[2]);
+	if (argc > 2 && strcmp(argv[1], "--make-dump") == 0) {
+		make_dump((unsigned) atoi(argv[2]), (argc > 3) ? atoi(argv[3]) : 3);
+		return 0;
+	}
 	int n = (argc > 1) ? atoi(argv[1]) : 300;	/* 迷路の数(既定300) */
 	printf("MAZE_SIZE=%d\n", N);
 	run_suite("BFS  perfect maze", 0, n, 0, 1000, 3);
