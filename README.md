@@ -26,7 +26,9 @@ STM32F446RETX_*.ld   リンカスクリプト
 2種類の最短経路計算を実装:
 
 - **`Maze_Shortest_Calculation()`**: セル単位のBFS歩数マップに基づく最短経路。直交移動のみ。
-- **`Maze_Dijkstra_Calculation()`**: 半セル(壁境界)単位のグラフ上でSPFA(キューベースのBellman-Ford)を用いたダイクストラ法。直進・斜め・コーナー継続でコストを変え(`ST_COST`/`DIAG_COST`/`CON_COST`)、斜め走行を積極的に使う経路を生成する。
+- **`Maze_Dijkstra_Calculation()`**: 半セル(壁境界)単位のグラフ上でSPFA(キューベースのBellman-Ford)を用いたダイクストラ法。直進・斜め・コーナー継続でコストを変え(`ST_COST`/`DIAG_COST`/`CON_COST`)、斜め走行を積極的に使う経路を生成する。境界ノードは「どちら向きに通過しているか」で2つの状態に分けてあり、進めるのは今の向きの先のマスを通る3本の辺(直進1・斜め2)だけ。
+
+BFS版の経路をたどるときは、ゴール2×2区画の4マス全部を歩数0の起点にして歩数マップを作り直す(探索用の歩数マップはゴールの1マスだけが起点)。スタートからゴールへ行けないときは、どちらも空の経路を返す。
 
 どちらも生成した手順を`Shortest_Pass_Compression()` → `Shortest_Pass_Compression_NANAME()`で圧縮し、コーナーの大廻り・斜め入り/出のパターンに変換してから`Move.c`のモーター制御関数(`Short_NANAME_Move*`/`Short_Dijkstra_Move2000`など)が実行する。
 
@@ -133,6 +135,7 @@ No.2とNo.3はパラメータが同一で、BFS経路とダイクストラ経路
 
 | No | コーナー | 直線最高速 | 加速度 |
 |---|---|---|---|
+| 0 | 迷路の出力(走らない、下記) | | |
 | 1 | 2000 | 2000 | 20000 |
 | 2 | 2400 | 2400 | 20000 |
 | 3 | 2700 | 2700 | 20000 |
@@ -163,6 +166,25 @@ No.2とNo.3はパラメータが同一で、BFS経路とダイクストラ経路
 | 9 (3.0m/s) | 空 | **No.1のみ実装**、2〜7は空 |
 
 「空」はセンサ待機だけで何も走らせない分岐。
+
+### 迷路の出力(モード3 No.0、`Maze_Debug_Dump()`)
+
+保存済みの迷路(`Maze_Save()`した壁と見た壁)と、最短走行と同じ手順で作った命令列をシリアルに出す。モーターは動かさない。迷路はRAMにしかないので、**探索のあと電源を切らずに**モード3 No.0を選び、前センサに手をかざしてから横センサに手をかざす。
+
+出力の中身:
+
+- `MAZE_DUMP_BEGIN`〜`MAZE_DUMP_END`: PCで読み込む用の16進(`ROW`/`COL`=壁、`LROW`/`LCOL`=見たかどうか)
+- 地図: `---`/`|`=壁、空白=壁なし、` . `/`:`=未確認(最短走行では壁として扱う)、`S`=スタート、`G`=ゴール
+- `BFS_PASS`/`BFS_NANAME`、`DIJK_PASS`/`DIJK_NANAME`: 最短走行の命令列(圧縮前/斜め圧縮後)
+
+ターミナルの出力をファイルに保存して、PCで確かめる:
+
+```sh
+gcc -std=c11 -Wall -I Core/Inc -o test_shortpath test/test_shortpath.c Core/Src/Maze.c
+./test_shortpath --dump log.txt
+```
+
+PCで同じ命令列が作られるか(`robot output: same as PC`)と、その命令列が壁に突っ込まずゴールに止まるか(`path: OK`)を表示する。スタートからゴールへ行けない場合は`no path`になる。
 
 ## 壁センサの距離変換(`Core/Src/WallDistance.c`)
 
@@ -224,7 +246,13 @@ gcc -std=c11 -Wall -I Core/Inc -o test_walldist test/test_walldist.c Core/Src/Wa
 gcc -std=c11 -Wall -I Core/Inc -o test_speedplan test/test_speedplan.c Core/Src/SpeedPlan.c -lm && ./test_speedplan
 ```
 
-CIは`.github/workflows/maze-test.yml`で、masterへのpushとPRのときに16×16と32×32の両方と、距離変換の表の検査、速度計画の検査を実行する。ファームウェア本体のARMビルドは対象外。
+`test/test_shortpath.c`は最短走行の命令列を検査する。BFS版とダイクストラ版で`G_Short_Pass_NANAME`を作り、`Move.c`と同じ解釈で迷路の上を半区画単位に走らせて、壁や柱を通らないか、`Move.c`が実行しない命令が残っていないか、最後にゴール2×2区画で止まるか、BFS版が最短マス数か、をランダム迷路で確認する。引数で迷路の数を変えられる(既定300)。`--dump`は上記の実機出力の確認。
+
+```sh
+gcc -std=c11 -Wall -I Core/Inc -o test_shortpath test/test_shortpath.c Core/Src/Maze.c && ./test_shortpath
+```
+
+CIは`.github/workflows/maze-test.yml`で、masterへのpushとPRのときに行き止まり潰しと最短走行の命令列の検査(それぞれ16×16と32×32)、距離変換の表の検査、速度計画の検査を実行する。ファームウェア本体のARMビルドは対象外。
 
 ## やることリスト
 
@@ -236,6 +264,11 @@ CIは`.github/workflows/maze-test.yml`で、masterへのpushとPRのときに16�
 - `Move.c`の`Short_Dijkstra_Move2000()`終端の旋回角度(180°→270°)の調整は、手元で作業中ならリポジトリには未反映。
 
 ## 直近の主な変更
+
+- **ダイクストラの経路が壁に突っ込む不具合を修正**。境界ノードが通過の向きを持っていなかったため、あとから向きが入れ替わったノードの先に古いつながりが残り、「マスに入って横へ抜け、同じマスに戻る」走れない経路ができていた(ランダム迷路5000個中4個)。ノードを向きごとの状態に分けて書き直した
+- **BFS最短がゴールの1マスだけを目指していたのを修正**。2×2区画のほかのマスから入る方が近い迷路で1〜2マス遠回りになっていた(ループのあるランダム迷路で約4%)
+- **最短経路の計算が固まる不具合を修正**。未確認の壁を壁とみなすとスタートからゴールへ行けない場合(探索が途中で止まった等)、`Maze_Shortest_Calculation()`が永久ループしていた。空の経路を返すようにした。最短走行(`Move.c`の`Short_*`)は経路が空なら**走らずにエラー**(全LED点滅+低い音を3回、シリアルに`ERROR: no shortest path`)を出して戻る。モード3 No.0の出力にも`NO PATH`と出る
+- モード3 No.0に迷路の出力(`Maze_Debug_Dump()`)、PCでの確認用に`test/test_shortpath.c`を追加
 
 - **行き止まり潰し(`Maze_DeadEnd_Fill()`)を追加**。確認済みの壁だけで出入口が1つ以下のマスを連鎖的に閉じ、エセ全面探索の目標候補から外す。壁マップは書き換えず、通行判定にも使わないため、誤判定の最悪ケースが「そのマスを探索しない」で頭打ちになるようにしてある(詳細は上記)
 - ホスト上で`Core/Src/Maze.c`を直接リンクして回すテスト(`test/test_deadend.c`)とCI(`.github/workflows/maze-test.yml`)を追加

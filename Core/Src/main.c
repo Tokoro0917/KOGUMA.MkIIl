@@ -789,7 +789,14 @@ int main(void) {
 		} else if (Encorder_mode_out() == 2) {		//サーキ�?�?
 
 		} else if (Encorder_mode_out() == 3) {		//�?バッグ用
-			if (Encorder_number_out() == 1) {		//2m/s
+			if (Encorder_number_out() == 0) {		//迷路の出力(走らない)
+				if (Sensor_Enter() == 1) {
+					Buzzer_Enter();
+					Sensor_Start();
+					Maze_Debug_Dump();
+					HAL_Delay(1000);
+				}
+			} else if (Encorder_number_out() == 1) {		//2m/s
 				if (Sensor_Enter() == 1) {
 					Buzzer_Enter();
 					Sensor_Start();
