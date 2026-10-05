@@ -289,6 +289,19 @@ void Robot_Maze_Pass_Action() {
 	}
 }
 
+/* 最短経路が作れたか確認する。スタートからゴールへ行けない迷路
+ * (探索が途中で止まった、未確認の壁を壁とみなすと塞がる等)では
+ * Maze_Shortest_Calculation()/Maze_Dijkstra_Calculation()が空の経路を返すので、
+ * そのときはエラーを知らせて走らずに戻る。戻り値1=走ってよい */
+static int Short_Pass_Check(void) {
+	if (G_Short_Pass[0] != 0) {
+		return 1;
+	}
+	printf("ERROR: no shortest path (start cannot reach goal)\r\n");
+	LED_Path_Error();
+	return 0;
+}
+
 void Short_NANAME_Move1000(int MAX, int AC) {
 	Maze_Road();
 	Maze_Wall_fill();
@@ -302,6 +315,9 @@ void Short_NANAME_Move1000(int MAX, int AC) {
 	Maze_Shortest_Calculation();
 	Shortest_Pass_Compression();
 	Shortest_Pass_Compression_NANAME();
+	if (!Short_Pass_Check()) {
+		return;
+	}
 
 	Motor_Setup_Voltage();
 	Suction_Start(15);
@@ -423,6 +439,9 @@ void Short_NANAME_Move2000(int MAX, int AC) {
 
 	Shortest_Pass_Compression();
 	Shortest_Pass_Compression_NANAME();
+	if (!Short_Pass_Check()) {
+		return;
+	}
 	Suction_Start(50);
 	HAL_Delay(500);
 
@@ -538,6 +557,9 @@ void Short_NANAME_Move2400(int MAX, int AC) {
 	Maze_Shortest_Calculation();
 	Shortest_Pass_Compression();
 	Shortest_Pass_Compression_NANAME();
+	if (!Short_Pass_Check()) {
+		return;
+	}
 	Suction_Start(70);
 	HAL_Delay(500);
 
@@ -652,6 +674,9 @@ void Short_NANAME_Move2700(int MAX, int AC) {
 	Maze_Shortest_Calculation();
 	Shortest_Pass_Compression();
 	Shortest_Pass_Compression_NANAME();
+	if (!Short_Pass_Check()) {
+		return;
+	}
 	Suction_Start(85);
 	HAL_Delay(500);
 
@@ -767,6 +792,9 @@ void Short_Dijkstra_Move2000(int MAX, int AC) {
 
 	Shortest_Pass_Compression();
 	Shortest_Pass_Compression_NANAME();
+	if (!Short_Pass_Check()) {
+		return;
+	}
 	Suction_Start(50);
 	HAL_Delay(500);
 
@@ -991,6 +1019,9 @@ void Short_NANAME_MoveTurnV(int MAX, int AC) {
 
 	Shortest_Pass_Compression();
 	Shortest_Pass_Compression_NANAME();
+	if (!Short_Pass_Check()) {
+		return;
+	}
 
 	/* 最初の半区画はスタート区間に含める(Short_NANAME_Move2000と同じ) */
 	int start_half = (G_Short_Pass_NANAME[0] == 1);

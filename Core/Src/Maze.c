@@ -1971,6 +1971,9 @@ void Maze_Debug_Dump(void) {
 
 	/* 最短走行と同じ手順の命令列 */
 	Maze_Debug_Plan(0);
+	if (G_Short_Pass[0] == 0) {	//空の経路(最短走行ではエラーになって走らない)
+		printf("NO PATH: start cannot reach goal (unknown walls count as walls)\r\n");
+	}
 	Maze_Debug_Print_Pass("BFS_PASS", G_Short_Pass);
 	Maze_Debug_Print_Pass("BFS_NANAME", G_Short_Pass_NANAME);
 	Maze_Debug_Plan(1);
