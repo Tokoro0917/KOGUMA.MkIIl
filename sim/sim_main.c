@@ -13,8 +13,8 @@
  * (モーター呼び出しを含まない)意思決定ロジックだけを sim_step() として移植する。
  *
  * 2つのシナリオを続けて実行する:
- *   A: エセ全面探索 (main.c のメニュー1相当) -- 往路探索 + 全面探索モードでの復路
- *   B: Dijkstra誘導 未知壁探索 (main.c のメニュー7相当) -- 往路探索の後、
+ *   A: エセ全面探索 (main.c モード0 No.2 相当) -- 往路探索 + 全面探索モードでの復路
+ *   B: Dijkstra誘導 未知壁探索 (main.c モード0 No.7/No.8 相当) -- 往路探索の後、
  *      スタート→ゴール固定方向のDijkstra経路上の未確認の壁を、現在位置から
  *      直接見に行くことを繰り返し、全て確認できたらスタートに戻って最終走行
  * それぞれ Maze_Initialization() からやり直すので、互いに影響しない独立した実行。
@@ -229,7 +229,7 @@ static int run_until_wall_known(const char *scenario, const char *phase) {
 	return (G_Just_UTurned == 1) || (sub_steps >= MAX_STEP);
 }
 
-/* ---- シナリオA: エセ全面探索 (main.c: Encorder_number_out()==1 相当) ---- */
+/* ---- シナリオA: エセ全面探索 (main.c モード0 No.2 相当) ---- */
 static void run_scenario_a(void) {
 	Maze_Initialization();
 	ALL_MODE = 0;
@@ -258,7 +258,7 @@ static void run_scenario_a(void) {
 	emit_final_path("A");
 }
 
-/* ---- シナリオB: Dijkstra誘導 未知壁探索 (main.c: ==7 相当) ----
+/* ---- シナリオB: Dijkstra誘導 未知壁探索 (main.c モード0 No.7/No.8 相当) ----
  * スタート→ゴール固定方向でDijkstra経路を計算し、経路上の未確認の壁を
  * 現在位置から直接見に行く。Dijkstraの再計算はゴール到達直後とUターン
  * 発生時だけ行い、それ以外は同じ経路データのまま次の未知壁を探す。
