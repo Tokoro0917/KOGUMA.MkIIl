@@ -36,12 +36,13 @@ int main(void) {
 				"%s: 表の範囲が 84mm を含んでいない", name[s]);
 	}
 
-	/* 仮の表の値そのものと、その中点での補間 */
-	CHECK(WallDist_mm(WALLDIST_L, 220) == 84.0f, "L: 220 -> 84mm");
-	CHECK(WallDist_mm(WALLDIST_R, 200) == 84.0f, "R: 200 -> 84mm");
-	CHECK(WallDist_mm(WALLDIST_FL, 530) == 84.0f, "FL: 530 -> 84mm");
-	float mid = WallDist_mm(WALLDIST_L, (220 + 176) / 2);
-	CHECK(mid > 88.9f && mid < 89.1f, "L: 198 -> 89mm (got %.2f)", mid);
+	/* 表の点そのものと、その中点での補間 */
+	CHECK(WallDist_mm(WALLDIST_L, 237) == 85.0f, "L: 237 -> 85mm");
+	CHECK(WallDist_mm(WALLDIST_R, 201) == 85.0f, "R: 201 -> 85mm");
+	CHECK(WallDist_mm(WALLDIST_FL, 645) == 84.0f, "FL: 645 -> 84mm");
+	CHECK(WallDist_mm(WALLDIST_FR, 627) == 84.0f, "FR: 627 -> 84mm");
+	float mid = WallDist_mm(WALLDIST_L, (237 + 183) / 2);
+	CHECK(mid > 90.9f && mid < 91.1f, "L: 210 -> 91mm (got %.2f)", mid);
 
 	if (fail_count == 0) {
 		printf("OK\n");
