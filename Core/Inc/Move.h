@@ -32,6 +32,9 @@ void Short_NANAME_MoveTurnV(int, int);
 void Short_Dijkstra_Move2000(int, int);
 void Short_Dijkstra_Move2400(int, int);
 
+extern void (*G_Stop_Hook)(void);	//区画の中央で止まっているあいだに呼ぶ計算
+void Robot_Maze_Go_From_Stop(float, float);
+void Robot_Maze_Stop_And_Go(int);
 extern int G_Log_Next_UTurn;	//1にすると次の吸引探索のUターンでログを取り始める
 
 //void Sula_Shortest_Move800();

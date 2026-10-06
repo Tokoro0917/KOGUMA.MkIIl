@@ -2049,3 +2049,41 @@ void Maze_Dijkstra_Calculation() {
 	Maze_Dijkstra_Calculation_Body();
 	Maze_Time_End(&G_Time_Max_Dijk_us, t);
 }
+
+/* 今いる区画(G_Robot_MAZE_X/Y)と向き(G_Robot_Direction)から、前後左右の
+ * 区画の歩数を G_Maze_Flont/Back/Left/Right に入れる(壁があれば MAX_STEP)。
+ * Maze_Wall_Update() の後半と同じ内容を、区画を移動せずに行う。
+ * 止まっているあいだに歩数マップを作り直したあと、進む向きを決め直すのに使う */
+void Maze_Neighbor_Update(void) {
+	static const int dx[4] = { 0, 1, 0, -1 };
+	static const int dy[4] = { 1, 0, -1, 0 };
+	int x = G_Robot_MAZE_X;
+	int y = G_Robot_MAZE_Y;
+	int h = G_Robot_Direction % 4;
+	uint16_t v[4];	//向き 0=前 1=右 2=後 3=左
+	for (int k = 0; k < 4; k++) {
+		int d = (h + k) % 4;	//絶対方位 0=北 1=東 2=南 3=西
+		int nx = x + dx[d];
+		int ny = y + dy[d];
+		int wall;
+		if (d == 0) {
+			wall = (G_Maze_Row[y + 1] >> x) & 1u;
+		} else if (d == 1) {
+			wall = (G_Maze_Column[x + 1] >> y) & 1u;
+		} else if (d == 2) {
+			wall = (G_Maze_Row[y] >> x) & 1u;
+		} else {
+			wall = (G_Maze_Column[x] >> y) & 1u;
+		}
+		if (wall || nx < 0 || ny < 0 || nx >= MAZE_SIZE || ny >= MAZE_SIZE) {
+			v[k] = MAX_STEP;
+		} else {
+			v[k] = G_Step_Map[nx][ny];
+		}
+	}
+	G_Maze_Flont = v[0];
+	G_Maze_Right = v[1];
+	G_Maze_Back = v[2];
+	G_Maze_Left = v[3];
+}
+
