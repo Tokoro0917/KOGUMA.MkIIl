@@ -11,6 +11,38 @@
 #include"stdio.h"
 #include "Define.h"
 
+/* 計算時間の計測(実機のみ。DWTのサイクルカウンタ)。PCのテストでは0のまま。
+ * 各関数の最大時間[us]を記録し、Maze_Debug_Dump()で表示する */
+uint32_t G_Time_Max_WallUpdate_us = 0;	//Maze_Wall_Update(壁の記録+行き止まり潰し+歩数マップ)
+uint32_t G_Time_Max_Known_us = 0;		//Known_Pass_Generation(既知区間の経路生成)
+uint32_t G_Time_Max_Step_us = 0;		//Maze_Step_Calculate(歩数マップ)
+uint32_t G_Time_Max_Dijk_us = 0;		//Maze_Dijkstra_Calculation
+#if defined(STM32F446xx)
+#include "stm32f4xx.h"
+static uint32_t Maze_Time_Start(void) {
+	if ((DWT->CTRL & DWT_CTRL_CYCCNTENA_Msk) == 0) {
+		CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+		DWT->CYCCNT = 0;
+		DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+	}
+	return DWT->CYCCNT;
+}
+static void Maze_Time_End(uint32_t *max_us, uint32_t start) {
+	uint32_t us = (DWT->CYCCNT - start) / (SystemCoreClock / 1000000u);
+	if (us > *max_us) {
+		*max_us = us;
+	}
+}
+#else
+static uint32_t Maze_Time_Start(void) {
+	return 0;
+}
+static void Maze_Time_End(uint32_t *max_us, uint32_t start) {
+	(void) max_us;
+	(void) start;
+}
+#endif
+
 int G_Gool_X; /////////////////////////////////////////
 int G_Gool_Y; /////////////////////////////////////////
 
@@ -343,7 +375,7 @@ void Maze_Wall_Search(int X, int Y, int Direction) {
 
 }
 
-void Maze_Wall_Update() {
+static void Maze_Wall_Update_Body(void) {
 	if (G_Robot_Direction % 4 == 0) { //////////////////////////////////////////////////////////北に移動
 		G_Robot_MAZE_X += 0;
 		G_Robot_MAZE_Y += 1;
@@ -542,7 +574,7 @@ void Maze_Wall_Update() {
 	}
 }
 
-void Known_Pass_Generation() {
+static void Known_Pass_Generation_Body(void) {
 	int N = 0;
 
 	Known_Flag = 1;
@@ -602,14 +634,14 @@ void Known_Pass_Generation() {
 	for (i = 0; G_Known_Pass[i] != 0; i++) {
 		Known_Pass_CP[i] = G_Known_Pass[i];
 	}
-	/* G_Known_Passの終端(0)自体はコピーされないので、この位置のKnown_Pass_CPは
-	 * 前回実行時の値が残ったまま。末尾コーナー判定の先読み用に1を置き、
-	 * 処理後に必ず0へ戻す(Shortest_Pass_Compression()と同じ手法)。
-	 * これをしないと下のループが終端を見失い前回の残骸を読み進めてしまう */
+	/* ループは実際の経路長term_idxで打ち切る。終端より先(先読み)は関数の最初で
+	 * 0にしてあるので、最後の曲がりは小回りのまま残る。
+	 * 最短走行(Shortest_Pass_Compression)と違い、ここでは先頭を1にしたり
+	 * 終端に1を置いたりしてはいけない。既知区間は区画の境界の手前から始まり、
+	 * 未探索の区画の手前で終わるので、先頭に1(半区画の直進)を置くと毎回
+	 * 90mm余分に進み、終端に1を置くと最後の小回りが大回りになって半区画先で
+	 * 終わってしまう(どちらも実機で直線が伸びる症状になった) */
 	int term_idx = i;
-	G_Known_Pass[i] = 1;
-	Known_Pass_CP[i] = 1;
-	Known_Pass_CP[0] = 1;
 	for (i = 0; i < term_idx; i++) {
 		if (Known_Pass_CP[i] == -2) {
 			if (Known_Pass_CP[i - 1] > 0) {
@@ -655,7 +687,6 @@ void Known_Pass_Generation() {
 
 	}
 
-	/* 先読み用に置いていた終端を正式な0へ戻す */
 	G_Known_Pass[term_idx] = 0;
 	Known_Pass_CP[term_idx] = 0;
 
@@ -1011,7 +1042,7 @@ static void Maze_Step_Propagate(void) {
 	}
 }
 
-void Maze_Step_Calculate() {
+static void Maze_Step_Calculate_Body(void) {
 	for (i = 0; i < MAZE_SIZE; i++) {
 		for (j = 0; j < MAZE_SIZE; j++) {
 			G_Step_Map[i][j] = MAX_STEP;
@@ -1288,7 +1319,7 @@ static const DIJK_EDGE_T dijk_edges[2][2][3] = {
 	},
 };
 
-void Maze_Dijkstra_Calculation() {
+static void Maze_Dijkstra_Calculation_Body(void) {
 	for (int s = 0; s < DIJK_STATE_NUM; s++) {	//初期化
 		dijk_state[s].cost = DIJK_MAXCOST;
 		dijk_state[s].pred = DIJK_NO_PRED;
@@ -1969,6 +2000,13 @@ void Maze_Debug_Dump(void) {
 	}
 	printf("unknown walls: %d\r\n\r\n", unknown);
 
+	/* 電源を入れてからの各計算の最大時間(この下の経路計算の分は含まない) */
+	printf("TIME_MAX_US wall_update=%lu known_pass=%lu step=%lu dijkstra=%lu\r\n\r\n",
+			(unsigned long) G_Time_Max_WallUpdate_us,
+			(unsigned long) G_Time_Max_Known_us,
+			(unsigned long) G_Time_Max_Step_us,
+			(unsigned long) G_Time_Max_Dijk_us);
+
 	/* 最短走行と同じ手順の命令列 */
 	Maze_Debug_Plan(0);
 	if (G_Short_Pass[0] == 0) {	//空の経路(最短走行ではエラーになって走らない)
@@ -1982,4 +2020,32 @@ void Maze_Debug_Dump(void) {
 	printf("\r\n");
 
 	Maze_Road();	//作業用の壁情報を保存済みの状態に戻しておく
+}
+
+/* ---- 計算時間を測るための入口 -----------------------------------------------
+ * 探索中は計算のあいだも機体は前の速度のまま進むので、計算が長いとその分だけ
+ * 直線が伸びる。最大時間はファイル先頭の G_Time_Max_* に記録する */
+
+void Maze_Wall_Update() {
+	uint32_t t = Maze_Time_Start();
+	Maze_Wall_Update_Body();
+	Maze_Time_End(&G_Time_Max_WallUpdate_us, t);
+}
+
+void Known_Pass_Generation() {
+	uint32_t t = Maze_Time_Start();
+	Known_Pass_Generation_Body();
+	Maze_Time_End(&G_Time_Max_Known_us, t);
+}
+
+void Maze_Step_Calculate() {
+	uint32_t t = Maze_Time_Start();
+	Maze_Step_Calculate_Body();
+	Maze_Time_End(&G_Time_Max_Step_us, t);
+}
+
+void Maze_Dijkstra_Calculation() {
+	uint32_t t = Maze_Time_Start();
+	Maze_Dijkstra_Calculation_Body();
+	Maze_Time_End(&G_Time_Max_Dijk_us, t);
 }
