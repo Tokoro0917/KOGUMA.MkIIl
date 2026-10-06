@@ -49,7 +49,13 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+/* Maze_Search() の探索の組み合わせ(モード0) */
+#define SEARCH_SLALOM		0x00	//スラローム探索(500mm/s、吸引なし)
+#define SEARCH_SUCTION		0x01	//吸引探索(1000mm/s、吸引あり)
+#define SEARCH_ALL			0x02	//復路でエセ全面探索
+#define SEARCH_ONEWAY		0x04	//片道: ゴールで止まる
+#define SEARCH_KNOWN		0x08	//既知区間加速(探索済みの区間はまとめて速く走る)
+#define SEARCH_DIJKSTRA		0x10	//ゴール後にダイクストラ経路上の未確認の壁を見に行く
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -66,7 +72,7 @@
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-
+static void Maze_Search(int flags);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -147,512 +153,29 @@ int main(void) {
 		Maze_Unkown_ALL_ModeOFF();
 		Motor_Setup_Voltage();
 		if (Encorder_mode_out() == 0) {		//大会用
-			if (Encorder_number_out() == 0) {		//
-				/////////////////////////////
-			} else if (Encorder_number_out() == 1) {		//エセ全面探索
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-
-					Motor_Setup();
-					Motor_Stop();
-
-					G_Gool_X = MAZE_GOOL_X;
-					G_Gool_Y = MAZE_GOOL_Y;
-					G_Robot_MAZE_X = 0;
-					G_Robot_MAZE_Y = 0;
-					G_Robot_Direction = 0;
-					G_MAZE_Explored[G_Gool_X][G_Gool_Y] = 0;
-
-					Motor_trapezoid_PID(0, 500, 500, 5000, 24 + 90);
-					while (G_MAZE_Explored[G_Gool_X][G_Gool_Y] == 0) {
-						if (Failsafe_Flag() == 1) {
-							break;
-						}
-						Robot_Maze_Sula_Action();
-						//Robot_Maze_Pass_Action();
-						G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
-					}
-					Maze_Save();
-
-					Maze_Unkown_ALL_ModeSet();
-
-					G_Gool_X = 0;
-					G_Gool_Y = 0;
-					G_MAZE_Explored[G_Gool_X][G_Gool_Y] = 0;
-					Maze_Step_Calculate();
-					while (G_MAZE_Explored[G_Gool_X][G_Gool_Y] == 0) {
-						if (Failsafe_Flag() == 1) {
-							break;
-						}
-						Robot_Maze_Sula_Action();
-						//Robot_Maze_Pass_Action();
-						G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
-					}
-					Motor_Stop();
-					if (Failsafe_Flag() == 0) {
-						Maze_Save();
-					} else {
-						Failsafe_Flag_OFF();
-					}
-					Motor_Free();
-					LED_Reset();
-					Encorder_count_reset();
-
-				}
-			} else if (Encorder_number_out() == 2) {		//�?復
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-
-					Motor_Setup();
-					Motor_Stop();
-
-					G_Gool_X = MAZE_GOOL_X;
-					G_Gool_Y = MAZE_GOOL_Y;
-					G_Robot_MAZE_X = 0;
-					G_Robot_MAZE_Y = 0;
-					G_Robot_Direction = 0;
-					G_MAZE_Explored[G_Gool_X][G_Gool_Y] = 0;
-
-					Motor_trapezoid_PID(0, 500, 500, 5000, 24 + 90);
-					while (G_MAZE_Explored[G_Gool_X][G_Gool_Y] == 0) {
-						if (Failsafe_Flag() == 1) {
-							break;
-						}
-						Robot_Maze_Sula_Action();
-						//Robot_Maze_Pass_Action();
-						G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
-					}
-					Maze_Save();
-
-					//Maze_Unkown_ALL_ModeSet();
-
-					G_Gool_X = 0;
-					G_Gool_Y = 0;
-					G_MAZE_Explored[G_Gool_X][G_Gool_Y] = 0;
-					Maze_Step_Calculate();
-					while (G_MAZE_Explored[G_Gool_X][G_Gool_Y] == 0) {
-						if (Failsafe_Flag() == 1) {
-							break;
-						}
-						Robot_Maze_Sula_Action();
-						//Robot_Maze_Pass_Action();
-						G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
-					}
-					Motor_Stop();
-
-					if (Failsafe_Flag() == 0) {
-						Maze_Save();
-					} else {
-						Failsafe_Flag_OFF();
-					}
-
-					Motor_Setup();
-					Motor_Stop();
-					if (Failsafe_Flag() == 0) {
-						Maze_Save();
-					} else {
-						Failsafe_Flag_OFF();
-					}
-					Motor_Free();
-					LED_Reset();
-					Encorder_count_reset();
-				}
-			} else if (Encorder_number_out() == 3) {		//吸引探索
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-
-					Motor_Setup();
-					Motor_Stop();
-
-					Suction_Start(35);
-
-					G_Gool_X = MAZE_GOOL_X;
-					G_Gool_Y = MAZE_GOOL_Y;
-					G_Robot_MAZE_X = 0;
-					G_Robot_MAZE_Y = 0;
-					G_Robot_Direction = 0;
-					G_MAZE_Explored[G_Gool_X][G_Gool_Y] = 0;
-
-					Motor_trapezoid_PID(0, 1000, 1000, 5000, 24 + 90);
-					while (G_MAZE_Explored[G_Gool_X][G_Gool_Y] == 0) {
-						if (Failsafe_Flag() == 1) {
-							break;
-						}
-						Robot_Maze_Suction_Action();
-						//Robot_Maze_Pass_Action();
-						G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
-					}
-					Maze_Save();
-
-					//Maze_Unkown_ALL_ModeSet();
-
-					G_Gool_X = 0;
-					G_Gool_Y = 0;
-					G_MAZE_Explored[G_Gool_X][G_Gool_Y] = 0;
-					Maze_Step_Calculate();
-					while (G_MAZE_Explored[G_Gool_X][G_Gool_Y] == 0) {
-						if (Failsafe_Flag() == 1) {
-							break;
-						}
-						Robot_Maze_Suction_Action();
-						//Robot_Maze_Pass_Action();
-						G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
-					}
-					Motor_Stop();
-					Suction_Stop();
-					if (Failsafe_Flag() == 0) {
-						Maze_Save();
-					} else {
-						Failsafe_Flag_OFF();
-					}
-
-					Motor_Setup();
-					Motor_Stop();
-					if (Failsafe_Flag() == 0) {
-						Maze_Save();
-					} else {
-						Failsafe_Flag_OFF();
-					}
-					Motor_Free();
-					LED_Reset();
-					Encorder_count_reset();
-				}
-			} else if (Encorder_number_out() == 4) {		//吸引探索 +エセ全面
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-
-					Motor_Setup();
-					Motor_Stop();
-
-					Suction_Start(35);
-
-					G_Gool_X = MAZE_GOOL_X;
-					G_Gool_Y = MAZE_GOOL_Y;
-					G_Robot_MAZE_X = 0;
-					G_Robot_MAZE_Y = 0;
-					G_Robot_Direction = 0;
-					G_MAZE_Explored[G_Gool_X][G_Gool_Y] = 0;
-
-					Motor_trapezoid_PID(0, 1000, 1000, 5000, 24 + 90);
-					while (G_MAZE_Explored[G_Gool_X][G_Gool_Y] == 0) {
-						if (Failsafe_Flag() == 1) {
-							break;
-						}
-						Robot_Maze_Suction_Action();
-						//Robot_Maze_Pass_Action();
-						G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
-					}
-					Maze_Save();
-
-					Maze_Unkown_ALL_ModeSet();
-
-					G_Gool_X = 0;
-					G_Gool_Y = 0;
-					G_MAZE_Explored[G_Gool_X][G_Gool_Y] = 0;
-					Maze_Step_Calculate();
-					while (G_MAZE_Explored[G_Gool_X][G_Gool_Y] == 0) {
-						if (Failsafe_Flag() == 1) {
-							break;
-						}
-						Robot_Maze_Suction_Action();
-						//Robot_Maze_Pass_Action();
-						G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
-					}
-					Motor_Stop();
-					Suction_Stop();
-					if (Failsafe_Flag() == 0) {
-						Maze_Save();
-					} else {
-						Failsafe_Flag_OFF();
-					}
-
-					Motor_Setup();
-					Motor_Stop();
-					if (Failsafe_Flag() == 0) {
-						Maze_Save();
-					} else {
-						Failsafe_Flag_OFF();
-					}
-					Motor_Free();
-					LED_Reset();
-					Encorder_count_reset();
-
-				}
-			} else if (Encorder_number_out() == 5) {		//吸引探索
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-
-					Motor_Setup();
-					Motor_Stop();
-
-					Suction_Start(35);
-
-					G_Gool_X = MAZE_GOOL_X;
-					G_Gool_Y = MAZE_GOOL_Y;
-					G_Robot_MAZE_X = 0;
-					G_Robot_MAZE_Y = 0;
-					G_Robot_Direction = 0;
-					G_MAZE_Explored[G_Gool_X][G_Gool_Y] = 0;
-
-					Motor_trapezoid_PID(0, 1000, 1000, 5000, 24 + 90);
-					while (G_MAZE_Explored[G_Gool_X][G_Gool_Y] == 0) {
-						if (Failsafe_Flag() == 1) {
-							break;
-						}
-						Robot_Maze_Suction_Action();
-						//Robot_Maze_Pass_Action();
-						G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
-					}
-					Maze_Save();
-
-					//Maze_Unkown_ALL_ModeSet();
-
-					G_Gool_X = 0;
-					G_Gool_Y = 0;
-					G_MAZE_Explored[G_Gool_X][G_Gool_Y] = 0;
-					Maze_Step_Calculate();
-					while (G_MAZE_Explored[G_Gool_X][G_Gool_Y] == 0) {
-						if (Failsafe_Flag() == 1) {
-							break;
-						}
-						Robot_Maze_Suction_Action();
-						//Robot_Maze_Pass_Action();
-						G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
-					}
-					Motor_Stop();
-					Suction_Stop();
-					if (Failsafe_Flag() == 0) {
-						Maze_Save();
-					} else {
-						Failsafe_Flag_OFF();
-					}
-
-					Motor_Setup();
-					Motor_Stop();
-					if (Failsafe_Flag() == 0) {
-						Maze_Save();
-						HAL_Delay(2000);
-
-						Motor_Setup();
-						Motor_Stop();
-						Short_NANAME_Move2000(5000, 15000);
-						Motor_Free();
-						LED_Reset();
-						HAL_Delay(500);
-						Encorder_count_reset();
-
-					} else {
-						Failsafe_Flag_OFF();
-					}
-
-					Motor_Free();
-					LED_Reset();
-					Encorder_count_reset();
-
-				}
-			} else if (Encorder_number_out() == 6) {		//吸引探索+既知区間加�?
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-
-					Motor_Setup();
-					Motor_Stop();
-
-					Suction_Start(35);
-
-					G_Gool_X = MAZE_GOOL_X;
-					G_Gool_Y = MAZE_GOOL_Y;
-					G_Robot_MAZE_X = 0;
-					G_Robot_MAZE_Y = 0;
-					G_Robot_Direction = 0;
-					G_MAZE_Explored[G_Gool_X][G_Gool_Y] = 0;
-
-					Motor_trapezoid_PID(0, 1000, 1000, 5000, 24 + 90);
-					while (G_MAZE_Explored[G_Gool_X][G_Gool_Y] == 0) {
-						if (Failsafe_Flag() == 1) {
-							break;
-						}
-						//Robot_Maze_Suction_Action();
-						Robot_Maze_Pass_Action();
-						G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
-					}
-					Maze_Save();
-
-					//Maze_Unkown_ALL_ModeSet();
-
-					G_Gool_X = 0;
-					G_Gool_Y = 0;
-					G_MAZE_Explored[G_Gool_X][G_Gool_Y] = 0;
-					Maze_Step_Calculate();
-					while (G_MAZE_Explored[G_Gool_X][G_Gool_Y] == 0) {
-						if (Failsafe_Flag() == 1) {
-							break;
-						}
-						//Robot_Maze_Suction_Action();
-						Robot_Maze_Pass_Action();
-						G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
-					}
-					Motor_Stop();
-					Suction_Stop();
-					if (Failsafe_Flag() == 0) {
-						Maze_Save();
-					} else {
-						Failsafe_Flag_OFF();
-					}
-
-					Motor_Setup();
-					Motor_Stop();
-					if (Failsafe_Flag() == 0) {
-						Maze_Save();
-						HAL_Delay(2000);
-
-						Motor_Setup();
-						Motor_Stop();
-						Short_NANAME_Move2000(6000, 15000);
-						Motor_Free();
-						LED_Reset();
-						HAL_Delay(500);
-						Encorder_count_reset();
-
-					} else {
-						Failsafe_Flag_OFF();
-					}
-
-					Motor_Free();
-					LED_Reset();
-					Encorder_count_reset();
-
-				}
-			} else if (Encorder_number_out() == 7) {		//Dijkstra誘導 未知壁探索
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-
-					Motor_Setup();
-					Motor_Stop();
-
-					Suction_Start(35);
-
-					G_Gool_X = MAZE_GOOL_X;
-					G_Gool_Y = MAZE_GOOL_Y;
-					G_Robot_MAZE_X = 0;
-					G_Robot_MAZE_Y = 0;
-					G_Robot_Direction = 0;
-					G_MAZE_Explored[G_Gool_X][G_Gool_Y] = 0;
-
-					//往路: 通常の反応探索でスタート→ゴール
-					Motor_trapezoid_PID(0, 1000, 1000, 5000, 24 + 90);
-					while (G_MAZE_Explored[G_Gool_X][G_Gool_Y] == 0) {
-						if (Failsafe_Flag() == 1) {
-							break;
-						}
-						Robot_Maze_Pass_Action();
-						G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
-					}
-					if (Failsafe_Flag() == 0) {
-						Maze_Save();
-					}
-
-					/* スタート→ゴール固定方向でDijkstra経路を計算し、経路上の
-					 * 未確認の壁を現在位置から直接見に行く。Dijkstraの再計算は
-					 * 毎回ではなく、ゴール到達直後(この時点)とUターンが
-					 * 発生した時だけ行う。1つの壁を確認できてUターンもして
-					 * いなければ、同じ経路データのまま次の未知壁を探す
-					 * (Maze_Unknown_Wall_Scan()は壁の確認状況をその都度
-					 * ライブ判定するので、再計算しなくても正しく次を返せる) */
-					int need_recompute = 1;
-					while (Failsafe_Flag() == 0) {
-						if (need_recompute == 1) {
-							G_Gool_X = MAZE_GOOL_X;
-							G_Gool_Y = MAZE_GOOL_Y;
-							Maze_Dijkstra_Calculation();
-							need_recompute = 0;
-						}
-
-						int found = Maze_Unknown_Wall_Scan();
-						if (found == 0) {
-							break;
-						}
-
-						Maze_Unknown_Target_ModeSet(G_Unknown_Target_X,
-								G_Unknown_Target_Y);
-						Maze_Step_Calculate();
-						G_Just_UTurned = 0;
-						int sub_steps = 0;
-						while ((Maze_Unknown_Wall_Still_Unknown() == 1)
-								&& (sub_steps < MAX_STEP)) {
-							if (Failsafe_Flag() == 1) {
-								break;
-							}
-							Robot_Maze_Pass_Action();
-							G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
-							sub_steps++;
-							if (G_Just_UTurned == 1) {
-								break;
-							}
-						}
-						if ((G_Just_UTurned == 1) || (sub_steps >= MAX_STEP)) {
-							//Uターンした、または目標に辿り着けなかった場合は
-							//次のループ先頭で経路を再計算する
-							need_recompute = 1;
-						}
-						Maze_Unkown_ALL_ModeOFF();
-						if (Failsafe_Flag() == 0) {
-							Maze_Save();
-						}
-					}
-
-					//確定後: スタートへ戻る
-					if (Failsafe_Flag() == 0) {
-						G_Gool_X = 0;
-						G_Gool_Y = 0;
-						G_MAZE_Explored[0][0] = 0;
-						Maze_Step_Calculate();
-						while (G_MAZE_Explored[0][0] == 0) {
-							if (Failsafe_Flag() == 1) {
-								break;
-							}
-							Robot_Maze_Pass_Action();
-							G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
-						}
-					}
-
-					Motor_Stop();
-					Suction_Stop();
-					if (Failsafe_Flag() == 0) {
-						Maze_Save();
-					} else {
-						Failsafe_Flag_OFF();
-					}
-
-					Motor_Setup();
-					Motor_Stop();
-					if (Failsafe_Flag() == 0) {
-						Maze_Save();
-						HAL_Delay(2000);
-
-						Motor_Setup();
-						Motor_Stop();
-						Short_Dijkstra_Move2000(6000, 20000);
-						Motor_Free();
-						LED_Reset();
-						HAL_Delay(500);
-						Encorder_count_reset();
-
-					} else {
-						Failsafe_Flag_OFF();
-					}
-
-					Motor_Free();
-					LED_Reset();
-					Encorder_count_reset();
-
-				}
+			/* 探索の組み合わせは Maze_Search() の引数で指定する(下の SEARCH_*)。
+			 * No.0 と No.9〜15 は何もしない */
+			int n = Encorder_number_out();
+			int flags = -1;
+			if (n == 1) {			//スラローム探索 往復
+				flags = SEARCH_SLALOM;
+			} else if (n == 2) {	//スラローム探索+エセ全面探索
+				flags = SEARCH_SLALOM | SEARCH_ALL;
+			} else if (n == 3) {	//スラローム探索 片道(ゴールで止まる)
+				flags = SEARCH_SLALOM | SEARCH_ONEWAY;
+			} else if (n == 4) {	//吸引探索 往復
+				flags = SEARCH_SUCTION;
+			} else if (n == 5) {	//吸引探索+エセ全面探索
+				flags = SEARCH_SUCTION | SEARCH_ALL;
+			} else if (n == 6) {	//吸引探索+エセ全面探索+既知区間加速
+				flags = SEARCH_SUCTION | SEARCH_ALL | SEARCH_KNOWN;
+			} else if (n == 7) {	//ダイクストラ誘導の未知壁探索
+				flags = SEARCH_SUCTION | SEARCH_DIJKSTRA;
+			} else if (n == 8) {	//ダイクストラ誘導の未知壁探索+既知区間加速
+				flags = SEARCH_SUCTION | SEARCH_DIJKSTRA | SEARCH_KNOWN;
+			}
+			if ((flags >= 0) && (Sensor_Enter() == 1)) {
+				Maze_Search(flags);
 			}
 		} else if (Encorder_mode_out() == 1) {		//�?短
 			if (Encorder_number_out() == 1) {		//2m/s
@@ -1922,6 +1445,140 @@ void SystemClock_Config(void) {
 }
 
 /* USER CODE BEGIN 4 */
+
+/* 1区画ぶんの探索動作。flags で走り方を選ぶ */
+static void Maze_Search_Action(int flags) {
+	if (flags & SEARCH_KNOWN) {
+		Robot_Maze_Pass_Action();
+	} else if (flags & SEARCH_SUCTION) {
+		Robot_Maze_Suction_Action();
+	} else {
+		Robot_Maze_Sula_Action();
+	}
+}
+
+/* (G_Gool_X, G_Gool_Y) に着くまで探索する */
+static void Maze_Search_Until_Goal(int flags) {
+	while (G_MAZE_Explored[G_Gool_X][G_Gool_Y] == 0) {
+		if (Failsafe_Flag() == 1) {
+			break;
+		}
+		Maze_Search_Action(flags);
+		G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
+	}
+}
+
+/* ゴールに着いたあと、スタート→ゴールのダイクストラ経路上に残っている
+ * 未確認の壁を、今いる位置から直接見に行く。Dijkstraの再計算は毎回ではなく、
+ * ゴール到達直後とUターンが発生した時だけ行う。1つの壁を確認できてUターンも
+ * していなければ、同じ経路データのまま次の未知壁を探す
+ * (Maze_Unknown_Wall_Scan()は壁の確認状況をその都度ライブ判定する) */
+static void Maze_Search_Unknown_Walls(int flags) {
+	int need_recompute = 1;
+	while (Failsafe_Flag() == 0) {
+		if (need_recompute == 1) {
+			G_Gool_X = MAZE_GOOL_X;
+			G_Gool_Y = MAZE_GOOL_Y;
+			Maze_Dijkstra_Calculation();
+			need_recompute = 0;
+		}
+
+		int found = Maze_Unknown_Wall_Scan();
+		if (found == 0) {
+			break;
+		}
+
+		Maze_Unknown_Target_ModeSet(G_Unknown_Target_X, G_Unknown_Target_Y);
+		Maze_Step_Calculate();
+		G_Just_UTurned = 0;
+		int sub_steps = 0;
+		while ((Maze_Unknown_Wall_Still_Unknown() == 1)
+				&& (sub_steps < MAX_STEP)) {
+			if (Failsafe_Flag() == 1) {
+				break;
+			}
+			Maze_Search_Action(flags);
+			G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
+			sub_steps++;
+			if (G_Just_UTurned == 1) {
+				break;
+			}
+		}
+		if ((G_Just_UTurned == 1) || (sub_steps >= MAX_STEP)) {
+			//Uターンした、または目標に辿り着けなかった場合は
+			//次のループ先頭で経路を再計算する
+			need_recompute = 1;
+		}
+		Maze_Unkown_ALL_ModeOFF();
+		if (Failsafe_Flag() == 0) {
+			Maze_Save();
+		}
+	}
+}
+
+/* モード0の探索。往路(スタート→ゴール)のあと、flags に応じて
+ * 片道ならゴールで止まり、そうでなければ(全面探索・未知壁探索をしながら)
+ * スタートへ戻る。区間の終わりごとに Maze_Save() する */
+static void Maze_Search(int flags) {
+	int v = (flags & (SEARCH_SUCTION | SEARCH_KNOWN)) ? 1000 : 500;
+
+	Buzzer_Enter();
+	Sensor_Start();
+
+	Motor_Setup();
+	Motor_Stop();
+	if (flags & SEARCH_SUCTION) {
+		Suction_Start(35);
+	}
+
+	//往路: スタート→ゴール
+	G_Gool_X = MAZE_GOOL_X;
+	G_Gool_Y = MAZE_GOOL_Y;
+	G_Robot_MAZE_X = 0;
+	G_Robot_MAZE_Y = 0;
+	G_Robot_Direction = 0;
+	G_MAZE_Explored[G_Gool_X][G_Gool_Y] = 0;
+
+	Motor_trapezoid_PID(0, v, v, 5000, 24 + 90);
+	Maze_Search_Until_Goal(flags);
+	Maze_Save();
+
+	if (flags & SEARCH_ONEWAY) {
+		//片道: ゴール区画に入ったところで、Uターンのときと同じ減速で止まる
+		if (Failsafe_Flag() == 0) {
+			Motor_trapezoid(v, v, 0, 5000, 70);
+		}
+	} else {
+		if (flags & SEARCH_DIJKSTRA) {
+			Maze_Search_Unknown_Walls(flags);
+		}
+		if (flags & SEARCH_ALL) {
+			Maze_Unkown_ALL_ModeSet();
+		}
+
+		//復路: スタートへ戻る
+		if (Failsafe_Flag() == 0) {
+			G_Gool_X = 0;
+			G_Gool_Y = 0;
+			G_MAZE_Explored[G_Gool_X][G_Gool_Y] = 0;
+			Maze_Step_Calculate();
+			Maze_Search_Until_Goal(flags);
+		}
+	}
+
+	Motor_Stop();
+	if (flags & SEARCH_SUCTION) {
+		Suction_Stop();
+	}
+	if (Failsafe_Flag() == 0) {
+		Maze_Save();
+	} else {
+		Failsafe_Flag_OFF();
+	}
+	Motor_Free();
+	LED_Reset();
+	Encorder_count_reset();
+}
 
 /* USER CODE END 4 */
 
