@@ -41,6 +41,12 @@ int main(void) {
 	CHECK(WallDist_mm(WALLDIST_R, 201) == 85.0f, "R: 201 -> 85mm");
 	CHECK(WallDist_mm(WALLDIST_FL, 645) == 84.0f, "FL: 645 -> 84mm");
 	CHECK(WallDist_mm(WALLDIST_FR, 627) == 84.0f, "FR: 627 -> 84mm");
+	CHECK(WallDist_mm(WALLDIST_FL, 132) == 180.0f, "FL: 132 -> 180mm");
+	CHECK(WallDist_mm(WALLDIST_FR, 155) == 168.0f, "FR: 155 -> 168mm");
+	/* スラロームの前の直進は、境目(前壁まで174mm)から前壁までの距離を見る。
+	 * 174mmより遠くまで表があること(端に張り付くとすぐ打ち切られる) */
+	CHECK(WallDist_mm(WALLDIST_FL, 0) > 174.0f && WallDist_mm(WALLDIST_FR, 0) > 174.0f,
+			"FL/FR: 表が 174mm より遠くまでない");
 	float mid = WallDist_mm(WALLDIST_L, (237 + 183) / 2);
 	CHECK(mid > 90.9f && mid < 91.1f, "L: 210 -> 91mm (got %.2f)", mid);
 

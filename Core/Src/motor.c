@@ -15,6 +15,7 @@
 #include "PL_sensor.h"
 #include "Wallsensor.h"
 #include "Maze.h"
+#include "WallDistance.h"
 #include "UI.h"
 #include "stdlib.h"
 
@@ -87,7 +88,6 @@ int Sula_Flag = 0;
 
 float Alignment_TIME = 0.5;
 
-int Flont_th = 130; //310
 
 float Cut_R = 80;
 float Cut_L = 80;
@@ -620,6 +620,20 @@ void Motor_trapezoid_Asymmetric_PID(float Vst, float Vmax, float Vend, float Ac,
 	G_Motor_Flag = 0;
 }
 
+/* スラロームの前の直進(Motor_Sula_before / Motor_Sula_ST)で、前壁が見えているときは、
+ * 前センサで測った前壁までの距離からターンを始める位置を決める。
+ * 区画の境目にいるとき、その区画の前壁までは 84 + 90 = 174mm。
+ * 前距離 X なら、前壁までが 174 - X mm になったところでターンに入る
+ * (以前はセンサ値130で打ち切っていたが、これは境目より手前の約178mmで、
+ *  前壁があるとすぐ打ち切られて境目からターンしていた) */
+#define SULA_BOUNDARY_FRONT_MM 174.0f
+#define SULA_FRONT_WALL_TH 60	//境目でこれより大きければ前壁あり(境目で前壁は約140)
+
+static float Front_Wall_mm(void) {
+	return (WallDist_mm(WALLDIST_FL, g_sensor[0][0])
+			+ WallDist_mm(WALLDIST_FR, g_sensor[3][0])) / 2;
+}
+
 void Motor_Sula_before(float Vst, float Vmax, float Vend, float Ac, float X) {
 	G_Motor_Flag = 1;
 	PID_Mode = 1;
@@ -635,7 +649,9 @@ void Motor_Sula_before(float Vst, float Vmax, float Vend, float Ac, float X) {
 	Gyro_Sigma_error = 0;
 	//Enc_Sigma_error = 0;
 
-	if (Wall_Flont_Av() > Flont_th - 70) {		//壁補正前進用
+	float X0 = X;
+	int front_wall = (Wall_Flont_Av() > SULA_FRONT_WALL_TH);
+	if (front_wall) {		//壁補正前進用
 		X = X + 15;
 	}
 
@@ -647,7 +663,7 @@ void Motor_Sula_before(float Vst, float Vmax, float Vend, float Ac, float X) {
 			break;
 		}
 
-		if (Wall_Flont_Av() > Flont_th) {
+		if (front_wall && Front_Wall_mm() <= SULA_BOUNDARY_FRONT_MM - X0) {
 			break;
 		}
 	}
@@ -672,7 +688,9 @@ void Motor_Sula_ST(float Vst, float Vmax, float Vend, float Ac, float X) {
 	Gyro_Sigma_error = 0;
 	//Enc_Sigma_error = 0;
 
-	if (Wall_Flont_Av() > Flont_th - 70) {		//壁補正前進用
+	float X0 = X;
+	int front_wall = (Wall_Flont_Av() > SULA_FRONT_WALL_TH);
+	if (front_wall) {		//壁補正前進用
 		X = X + 15;
 	}
 
@@ -681,7 +699,7 @@ void Motor_Sula_ST(float Vst, float Vmax, float Vend, float Ac, float X) {
 			break;
 		}
 
-		if (Wall_Flont_Av() > Flont_th) {
+		if (front_wall && Front_Wall_mm() <= SULA_BOUNDARY_FRONT_MM - X0) {
 			break;
 		}
 	}
