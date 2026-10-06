@@ -163,6 +163,50 @@ void Wall_Distance_Calibration() {
 	}
 }
 
+/* 会場ごとの感度合わせ(モード3 No.5)
+ * 機体を区画中心に置き、前・左・右に壁がある状態で測る
+ * (スタート区画なら、後ろの壁のほうを向けて置く)。
+ * 約1秒ごとに500回平均した値と、手で書き写す行をシリアルに出す。抜けるときはリセット。
+ * 倍率 = 測った値 / 表の区画中心(84mm)の値。閾値は今の値に倍率を掛けたもの
+ * (書き写す前の値、つまり倍率1のときの値が基準。2回目以降も元の値に掛ける) */
+void Wall_Center_Calibration() {
+	/* 倍率1のときの閾値(書き換えたら、ここも基準として残す) */
+	const int th_base[4] = { 60, 90, 90, 60 };	//Wall_threshold
+	const float align_base = 200;	//Move.c ALIGN_FRONT_MIN
+	const float cut_base = 80;	//motor.c Cut_L / Cut_R
+	const float cut_na_base = 150;	//motor.c Cut_L_NA / Cut_R_NA
+
+	while (1) {
+		long sum[4] = { 0, 0, 0, 0 };
+		for (int k = 0; k < 500; k++) {
+			for (int i = 0; i < 4; i++) {
+				sum[i] += g_sensor[i][0];
+			}
+			HAL_Delay(2);
+		}
+		float v[4], ref[4], k[4];
+		for (int i = 0; i < 4; i++) {
+			v[i] = sum[i] / 500.0f;
+			ref[i] = WallDist_Value(i, WALLDIST_CENTER_MM);
+			k[i] = v[i] / ref[i];
+		}
+		float kf = (k[0] + k[3]) / 2;
+		printf("\n\r---- CENTER  FL=%.0f L=%.0f R=%.0f FR=%.0f  (table FL=%.0f L=%.0f R=%.0f FR=%.0f)\n\r",
+				v[0], v[2], v[1], v[3], ref[0], ref[2], ref[1], ref[3]);
+		printf("WallDistance.c: float WallDist_Scale[4] = { %.2ff, %.2ff, %.2ff, %.2ff };\n\r",
+				k[0], k[1], k[2], k[3]);
+		printf("Wallsensor.c:   int Wall_L = %.0f;  int Wall_R = %.0f;  float FlontWall_Distance = %.0f;\n\r",
+				v[2], v[1], (v[0] + v[3]) / 2);
+		printf("Wallsensor.c:   int Wall_threshold[] = { %.0f, %.0f, %.0f, %.0f };\n\r",
+				th_base[0] * k[0], th_base[1] * k[1], th_base[2] * k[2],
+				th_base[3] * k[3]);
+		printf("Move.c:         #define ALIGN_FRONT_MIN %.0f\n\r", align_base * kf);
+		printf("motor.c:        float Cut_R = %.0f;  float Cut_L = %.0f;  float Cut_R_NA = %.0f;  float Cut_L_NA = %.0f;\n\r",
+				cut_base * k[1], cut_base * k[2], cut_na_base * k[1],
+				cut_na_base * k[2]);
+	}
+}
+
 float calWallConrol() {
 
 	int Sensor_diff_L = abs(g_sensor[2][0] - g_sensor[2][1]);

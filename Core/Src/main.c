@@ -275,6 +275,12 @@ int main(void) {
 					Sensor_Start();
 					Wall_Distance_Calibration();
 				}
+			} else if (Encorder_number_out() == 5) {		//会場ごとの感度合わせ(区画中心)
+				if (Sensor_Enter() == 1) {
+					Buzzer_Enter();
+					Sensor_Start();
+					Wall_Center_Calibration();
+				}
 			}
 		} else if (Encorder_mode_out() == 4) {		//基本調整
 			if (Encorder_number_out() == 0) {		//センサ

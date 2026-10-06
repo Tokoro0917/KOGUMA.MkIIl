@@ -48,8 +48,29 @@ static const WallDistTable wall_dist_table[4] = {
 	  { 1377, 940, 627, 461, 358, 281, 248, 204, 175, 155, 129, 120, 112 } },
 };
 
-float WallDist_mm(int sensor, int v) {
+/* 会場ごとの倍率。モード3 No.5 の出力の WallDist_Scale の行を書き写す。
+ * 並びは FL, R, L, FR (g_sensor と同じ) */
+float WallDist_Scale[4] = { 1.00f, 1.00f, 1.00f, 1.00f };
+
+float WallDist_Value(int sensor, float mm) {
 	const WallDistTable *t = &wall_dist_table[sensor];
+
+	if (mm <= t->mm[0]) {
+		return t->v[0];
+	}
+	for (int i = 0; i < t->n - 1; i++) {
+		if (mm <= t->mm[i + 1]) {
+			float r = (mm - t->mm[i]) / (t->mm[i + 1] - t->mm[i]);
+			return t->v[i] + r * (t->v[i + 1] - t->v[i]);
+		}
+	}
+	return t->v[t->n - 1];
+}
+
+float WallDist_mm(int sensor, int v_raw) {
+	const WallDistTable *t = &wall_dist_table[sensor];
+	float s = WallDist_Scale[sensor];
+	int v = (s > 0.0f) ? (int) (v_raw / s + 0.5f) : v_raw;
 
 	if (v >= t->v[0]) {
 		return t->mm[0];

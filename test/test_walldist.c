@@ -47,6 +47,12 @@ int main(void) {
 	 * 174mmより遠くまで表があること(端に張り付くとすぐ打ち切られる) */
 	CHECK(WallDist_mm(WALLDIST_FL, 0) > 174.0f && WallDist_mm(WALLDIST_FR, 0) > 174.0f,
 			"FL/FR: 表が 174mm より遠くまでない");
+	/* 逆引き(距離 -> センサ値)と、会場ごとの倍率 */
+	CHECK(WallDist_Value(WALLDIST_FL, 84.0f) == 645.0f, "FL: 84mm -> 645");
+	CHECK(WallDist_Value(WALLDIST_L, 85.0f) == 237.0f, "L: 85mm -> 237");
+	WallDist_Scale[WALLDIST_FL] = 1.2f;
+	CHECK(WallDist_mm(WALLDIST_FL, 774) == 84.0f, "FL: 倍率1.2 で 774 -> 84mm");
+	WallDist_Scale[WALLDIST_FL] = 1.0f;
 	float mid = WallDist_mm(WALLDIST_L, (237 + 183) / 2);
 	CHECK(mid > 90.9f && mid < 91.1f, "L: 210 -> 91mm (got %.2f)", mid);
 
