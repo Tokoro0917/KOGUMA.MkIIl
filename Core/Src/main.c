@@ -56,6 +56,7 @@
 #define SEARCH_ONEWAY		0x04	//片道: ゴールで止まる
 #define SEARCH_KNOWN		0x08	//既知区間加速(探索済みの区間はまとめて速く走る)
 #define SEARCH_DIJKSTRA		0x10	//ゴール後にダイクストラ経路上の未確認の壁を見に行く
+#define SEARCH_SHORTEST		0x20	//スタートに戻ったあと最短走行(モード1 No.3と同じ)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -154,7 +155,7 @@ int main(void) {
 		Motor_Setup_Voltage();
 		if (Encorder_mode_out() == 0) {		//大会用
 			/* 探索の組み合わせは Maze_Search() の引数で指定する(下の SEARCH_*)。
-			 * No.0 と No.9〜15 は何もしない */
+			 * No.0 と No.11〜15 は何もしない */
 			int n = Encorder_number_out();
 			int flags = -1;
 			if (n == 1) {			//スラローム探索 往復
@@ -167,12 +168,17 @@ int main(void) {
 				flags = SEARCH_SUCTION;
 			} else if (n == 5) {	//吸引探索+エセ全面探索
 				flags = SEARCH_SUCTION | SEARCH_ALL;
-			} else if (n == 6) {	//吸引探索+エセ全面探索+既知区間加速
-				flags = SEARCH_SUCTION | SEARCH_ALL | SEARCH_KNOWN;
-			} else if (n == 7) {	//ダイクストラ誘導の未知壁探索
+			} else if (n == 6) {	//ダイクストラ誘導の未知壁探索
 				flags = SEARCH_SUCTION | SEARCH_DIJKSTRA;
-			} else if (n == 8) {	//ダイクストラ誘導の未知壁探索+既知区間加速
+			} else if (n == 7) {	//ダイクストラ誘導の未知壁探索+既知区間加速
 				flags = SEARCH_SUCTION | SEARCH_DIJKSTRA | SEARCH_KNOWN;
+			} else if (n == 8) {	//スラローム探索 往復 → 最短
+				flags = SEARCH_SLALOM | SEARCH_SHORTEST;
+			} else if (n == 9) {	//吸引探索 往復 → 最短
+				flags = SEARCH_SUCTION | SEARCH_SHORTEST;
+			} else if (n == 10) {	//ダイクストラ誘導+既知区間加速 → 最短
+				flags = SEARCH_SUCTION | SEARCH_DIJKSTRA | SEARCH_KNOWN
+						| SEARCH_SHORTEST;
 			}
 			if ((flags >= 0) && (Sensor_Enter() == 1)) {
 				Maze_Search(flags);
@@ -1518,7 +1524,8 @@ static void Maze_Search_Unknown_Walls(int flags) {
 
 /* モード0の探索。往路(スタート→ゴール)のあと、flags に応じて
  * 片道ならゴールで止まり、そうでなければ(全面探索・未知壁探索をしながら)
- * スタートへ戻る。区間の終わりごとに Maze_Save() する */
+ * スタートへ戻る。区間の終わりごとに Maze_Save() する。
+ * SEARCH_SHORTEST なら、スタートに戻ったあと2秒待って最短走行する */
 static void Maze_Search(int flags) {
 	int v = (flags & (SEARCH_SUCTION | SEARCH_KNOWN)) ? 1000 : 500;
 
@@ -1572,6 +1579,15 @@ static void Maze_Search(int flags) {
 	}
 	if (Failsafe_Flag() == 0) {
 		Maze_Save();
+		if ((flags & SEARCH_SHORTEST) && !(flags & SEARCH_ONEWAY)) {
+			//最短走行(モード1 No.3と同じ: ダイクストラ、直線6000mm/s、加速20000)
+			HAL_Delay(2000);
+			Motor_Setup();
+			Motor_Stop();
+			Short_Dijkstra_Move2000(6000, 20000);
+			LED_Reset();
+			HAL_Delay(500);
+		}
 	} else {
 		Failsafe_Flag_OFF();
 	}
