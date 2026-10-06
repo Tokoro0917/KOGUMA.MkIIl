@@ -39,13 +39,19 @@ float Kd_FW_dire = 0.0;
 
 float KP, KD;
 
-int Wall_L = 220; //370
-int Wall_R = 200; //250
+/* 区画中心(壁まで84mm)での横センサの値。2026-10-06の実測の表(WallDistance.c)から
+ * L=243、R=206(以前は220/200で、片側の壁だけのときは左壁から約89mm/右壁から
+ * 約85mm、両側の壁では中心から右へ約1.7mmずれた位置に合わせていた) */
+int Wall_L = 243; //220 //370
+int Wall_R = 206; //200 //250
 
 int Wall_TH_L = 80;
 int Wall_TH_R = 80;
 
-float FlontWall_Distance = 530;
+/* 前壁合わせの目標(前センサFL/FRの平均)。区画中心(前の壁まで84mm)で
+ * FL=645、FR=627(2026-10-06実測)の平均。以前の530は前の壁から約92mmで、
+ * 区画中心より約8mm手前で止まっていた */
+float FlontWall_Distance = 636; //530
 
 int Sensor_diff_TH = 50;
 
