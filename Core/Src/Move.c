@@ -138,6 +138,67 @@ static void Log_UTurn_Start(void) {
 	}
 }
 
+/* 区画の中央で止まっているあいだに呼ぶ計算(ダイクストラなど)。NULLなら何もしない。
+ * 吸引探索のUターン(行き止まり以外では、計算の結果で進む向きを決め直す)、
+ * 既知区間加速の行き止まりUターン(-8)、Robot_Maze_Stop_And_Go() で呼ばれる */
+void (*G_Stop_Hook)(void) = NULL;
+
+static int Stop_Hook_Run(void) {
+	if (G_Stop_Hook != NULL) {
+		G_Stop_Hook();
+		return 1;
+	}
+	return 0;
+}
+
+/* 区画の中央で止まっている状態から、歩数マップで進む向きを決めて発進し、
+ * 次の区画の境目まで進む(Uターンのあとと同じ位置)。v: 探索速度、ac: 加速度 */
+void Robot_Maze_Go_From_Stop(float v, float ac) {
+	Maze_Neighbor_Update();
+	if ((G_Maze_Flont <= G_Maze_Left) && (G_Maze_Flont <= G_Maze_Right)
+			&& (G_Maze_Flont <= G_Maze_Back)) {	//前進
+		G_Robot_Lastaction = 0;
+	} else if ((G_Maze_Left <= G_Maze_Right) && (G_Maze_Left <= G_Maze_Back)) {	//左
+		Robot_Align_If_Wall(G_Wall_data[0] == 1 && G_Wall_data[3] == 1);
+		Motor_trapezoid_Turn(90, 600, 20000);
+		Motor_Stop();
+		G_Robot_Direction += 3;
+		G_Robot_Lastaction = 3;
+	} else if (G_Maze_Right <= G_Maze_Back) {	//右
+		Robot_Align_If_Wall(G_Wall_data[0] == 1 && G_Wall_data[3] == 1);
+		Motor_trapezoid_Turn(-90, 600, 20000);
+		Motor_Stop();
+		G_Robot_Direction += 1;
+		G_Robot_Lastaction = 1;
+	} else {	//後ろ
+		Robot_adjustment();
+		G_Robot_Direction += 2;
+		G_Robot_Lastaction = 2;
+		G_Just_UTurned = 1;
+	}
+	Motor_trapezoid_PID(0, v, v, ac, 90);
+}
+
+/* 境目を通過中の状態から、次の区画の入口で壁を見て(Maze_Wall_Update)、
+ * 区画の中央で止まり、G_Stop_Hook の計算をしてから発進する。
+ * suction: 1なら吸引探索(1000mm/s)、0ならスラローム探索(500mm/s)の動き */
+void Robot_Maze_Stop_And_Go(int suction) {
+	if (suction) {
+		Motor_Sula_before(1000, 1000, 1000, 5000, 15);
+		Motor_trapezoid(1000, 1000, 0, 10000, 75);
+	} else {
+		Motor_Sula_before(500, 500, 500, 5000, 20);
+		Motor_trapezoid(500, 500, 0, 5000, 70);
+	}
+	Motor_Stop();
+	Stop_Hook_Run();
+	if (suction) {
+		Robot_Maze_Go_From_Stop(1000, 10000);
+	} else {
+		Robot_Maze_Go_From_Stop(500, 5000);
+	}
+}
+
 void Robot_Maze_Suction_Action() {
 	Motor_Sula_before(1000, 1000, 1000, 5000, 15);
 	if ((G_Maze_Flont <= G_Maze_Left) && (G_Maze_Flont <= G_Maze_Right)	//前進
@@ -177,6 +238,7 @@ void Robot_Maze_Suction_Action() {
 		} else {
 			Motor_trapezoid(1000, 1000, 0, 10000, 75);
 			Motor_Stop();
+			Stop_Hook_Run();	//行き止まりなのでUターンしかない
 			G_Robot_Direction += 2;
 			G_Robot_Lastaction = 2;
 			G_Just_UTurned = 1;
@@ -187,6 +249,11 @@ void Robot_Maze_Suction_Action() {
 		Log_UTurn_Start();
 		Motor_trapezoid(1000, 1000, 0, 10000, 75);
 		Motor_Stop();
+		if (Stop_Hook_Run()) {
+			//止まっているあいだに計算した歩数マップで、進む向きを決め直す
+			Robot_Maze_Go_From_Stop(1000, 10000);
+			return;
+		}
 		G_Robot_Direction += 2;
 		G_Robot_Lastaction = 2;
 		G_Just_UTurned = 1;
@@ -232,6 +299,7 @@ void Robot_Maze_Pass_Action() {
 			} else if (G_Known_Pass[i] == -8) {			//行き止まりUターン
 				Motor_trapezoid(1000, 1000, 0, 10000, 75);
 				Motor_Stop();
+				Stop_Hook_Run();	//既知区間の残りはこのまま走る(Uターンは変えない)
 				G_Just_UTurned = 1;
 				Robot_adjustment();
 				Motor_trapezoid_PID(0, 1000, 1000, 10000, 90);

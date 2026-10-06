@@ -1379,51 +1379,85 @@ static void Maze_Search_Until_Goal(int flags) {
 	}
 }
 
-/* ゴールに着いたあと、スタート→ゴールのダイクストラ経路上に残っている
- * 未確認の壁を、今いる位置から直接見に行く。Dijkstraの再計算は毎回ではなく、
- * ゴール到達直後とUターンが発生した時だけ行う。1つの壁を確認できてUターンも
- * していなければ、同じ経路データのまま次の未知壁を探す
- * (Maze_Unknown_Wall_Scan()は壁の確認状況をその都度ライブ判定する) */
-static void Maze_Search_Unknown_Walls(int flags) {
-	int need_recompute = 1;
-	while (Failsafe_Flag() == 0) {
-		if (need_recompute == 1) {
-			G_Gool_X = MAZE_GOOL_X;
-			G_Gool_Y = MAZE_GOOL_Y;
-			Maze_Dijkstra_Calculation();
-			need_recompute = 0;
-		}
+/* ダイクストラ誘導の未知壁探索で、経路上の未確認の壁がなくなったら1 */
+static int s_unknown_done = 0;
 
-		int found = Maze_Unknown_Wall_Scan();
-		if (found == 0) {
-			break;
-		}
-
+/* 止まっているあいだに呼ぶ計算(G_Stop_Hook)。スタート→ゴールのダイクストラ経路を
+ * 作り直し、経路上でまだ見ていない最初の壁の手前の区画を目標にした歩数マップを作る。
+ * 見る壁がなければ、スタートへ帰る歩数マップにする */
+static void Maze_Unknown_Walls_Plan(void) {
+	G_Gool_X = MAZE_GOOL_X;
+	G_Gool_Y = MAZE_GOOL_Y;
+	Maze_Dijkstra_Calculation();
+	if (Maze_Unknown_Wall_Scan() == 1) {
 		Maze_Unknown_Target_ModeSet(G_Unknown_Target_X, G_Unknown_Target_Y);
-		Maze_Step_Calculate();
-		G_Just_UTurned = 0;
+		s_unknown_done = 0;
+	} else {
+		Maze_Unkown_ALL_ModeOFF();
+		G_Gool_X = 0;
+		G_Gool_Y = 0;
+		G_MAZE_Explored[0][0] = 0;
+		s_unknown_done = 1;
+	}
+	Maze_Step_Calculate();
+}
+
+/* ゴールに着いたあと、スタート→ゴールのダイクストラ経路上に残っている
+ * 未確認の壁を、今いる位置から直接見に行く。
+ * ダイクストラの計算は機体が止まっているときだけ行う:
+ *   - ゴールに着いた直後: 次の区画の中央で止まって計算してから発進
+ *     (Robot_Maze_Stop_And_Go)
+ *   - Uターンしたとき: Uターンで止まっているあいだに計算する(G_Stop_Hook)。
+ *     行き止まりでなければ、計算した結果で進む向きを決め直す
+ *   - 目標に辿り着けなかったとき(異常系): 次の区画で止まって計算する
+ * 1つの壁を確認できたら、同じ経路データのまま次の未確認の壁を探す
+ * (Maze_Unknown_Wall_Scan()は壁の確認状況をその都度ライブ判定する。
+ *  ダイクストラは計算し直さず、歩数マップだけ走りながら作り直す) */
+static void Maze_Search_Unknown_Walls(int flags) {
+	int suction = (flags & SEARCH_SUCTION) ? 1 : 0;
+
+	if (Failsafe_Flag() == 1) {
+		return;
+	}
+	s_unknown_done = 0;
+	G_Stop_Hook = Maze_Unknown_Walls_Plan;
+	Robot_Maze_Stop_And_Go(suction);
+	G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
+
+	while ((Failsafe_Flag() == 0) && (s_unknown_done == 0)) {
 		int sub_steps = 0;
 		while ((Maze_Unknown_Wall_Still_Unknown() == 1)
-				&& (sub_steps < MAX_STEP)) {
+				&& (sub_steps < MAX_STEP) && (s_unknown_done == 0)) {
 			if (Failsafe_Flag() == 1) {
 				break;
 			}
 			Maze_Search_Action(flags);
 			G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
 			sub_steps++;
-			if (G_Just_UTurned == 1) {
-				break;
-			}
 		}
-		if ((G_Just_UTurned == 1) || (sub_steps >= MAX_STEP)) {
-			//Uターンした、または目標に辿り着けなかった場合は
-			//次のループ先頭で経路を再計算する
-			need_recompute = 1;
+		if ((Failsafe_Flag() == 1) || (s_unknown_done == 1)) {
+			break;
 		}
-		Maze_Unkown_ALL_ModeOFF();
-		if (Failsafe_Flag() == 0) {
-			Maze_Save();
+		Maze_Save();
+
+		if (sub_steps >= MAX_STEP) {
+			//目標に辿り着けなかった: 止まってダイクストラから計算し直す
+			Robot_Maze_Stop_And_Go(suction);
+			G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
+		} else if (Maze_Unknown_Wall_Scan() == 1) {
+			//壁を確認できた: 同じ経路で次の未確認の壁へ
+			Maze_Unknown_Target_ModeSet(G_Unknown_Target_X, G_Unknown_Target_Y);
+			Maze_Step_Calculate();
+		} else {
+			//経路上の未確認の壁がなくなった
+			Maze_Unkown_ALL_ModeOFF();
+			s_unknown_done = 1;
 		}
+	}
+	G_Stop_Hook = NULL;
+	Maze_Unkown_ALL_ModeOFF();
+	if (Failsafe_Flag() == 0) {
+		Maze_Save();
 	}
 }
 
