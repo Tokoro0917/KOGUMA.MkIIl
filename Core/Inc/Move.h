@@ -32,6 +32,8 @@ void Short_NANAME_MoveTurnV(int, int);
 void Short_Dijkstra_Move2000(int, int);
 void Short_Dijkstra_Move2400(int, int);
 
+extern int G_Log_Next_UTurn;	//1にすると次の吸引探索のUターンでログを取り始める
+
 //void Sula_Shortest_Move800();
 //void Sula_Shortest_Move1100();
 //void Sula_Shortest_Move1000(int, int);

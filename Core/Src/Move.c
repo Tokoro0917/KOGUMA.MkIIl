@@ -22,6 +22,7 @@
 #include "UI.h"
 #include"Failsafe.h"
 #include "SpeedPlan.h"
+#include "LOG.h"
 
 int G_Pass_before;
 int G_Pass_after;
@@ -117,6 +118,18 @@ void Robot_Maze_Sula_Action() {
 
 }
 
+/* 1にすると、次の吸引探索のUターンでログ(LOG.c、1kHzで2秒)を取り始める。
+ * 1回取ったら0に戻る。ゴール後のUターンの調査用(Maze_Search()が往路のあとに1にする)。
+ * 取ったログはモード4 No.7で出力する */
+int G_Log_Next_UTurn = 0;
+
+static void Log_UTurn_Start(void) {
+	if (G_Log_Next_UTurn) {
+		G_Log_Next_UTurn = 0;
+		LOG_get_start();
+	}
+}
+
 void Robot_Maze_Suction_Action() {
 	Motor_Sula_before(1000, 1000, 1000, 5000, 15);
 	if ((G_Maze_Flont <= G_Maze_Left) && (G_Maze_Flont <= G_Maze_Right)	//前進
@@ -138,6 +151,7 @@ void Robot_Maze_Suction_Action() {
 		G_Robot_Lastaction = 1;
 	} else if ((G_Maze_Flont == MAX_STEP) && (G_Maze_Left == MAX_STEP)
 			&& (G_Maze_Right == MAX_STEP)) {	//Uターン　全部壁あり
+		Log_UTurn_Start();
 		if ((G_Robot_MAZE_X == 0) && (G_Robot_MAZE_Y == 0)) {	//初期位置に戻ってきたとき
 			Motor_trapezoid(1000, 1000, 0, 10000, 75);
 			Motor_Stop();
@@ -162,6 +176,7 @@ void Robot_Maze_Suction_Action() {
 			Motor_trapezoid_PID(0, 1000, 1000, 10000, 90);
 		}
 	} else {	//Uターン　一部壁無し
+		Log_UTurn_Start();
 		Motor_trapezoid(1000, 1000, 0, 10000, 75);
 		Motor_Stop();
 		G_Robot_Direction += 2;

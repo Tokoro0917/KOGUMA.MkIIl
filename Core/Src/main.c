@@ -1454,6 +1454,8 @@ static void Maze_Search(int flags) {
 	Motor_trapezoid_PID(0, v, v, 5000, 24 + 90);
 	Maze_Search_Until_Goal(flags);
 	Maze_Save();
+	//ゴール後の最初の吸引探索のUターンからログを取る(モード4 No.7で出力)
+	G_Log_Next_UTurn = 1;
 
 	if (flags & SEARCH_ONEWAY) {
 		//片道: ゴール区画に入ったところで、Uターンのときと同じ減速で止まる
@@ -1496,6 +1498,7 @@ static void Maze_Search(int flags) {
 	} else {
 		Failsafe_Flag_OFF();
 	}
+	G_Log_Next_UTurn = 0;
 	Motor_Free();
 	LED_Reset();
 	Encorder_count_reset();
