@@ -22,34 +22,43 @@
 #include "UI.h"
 #include"Failsafe.h"
 #include "SpeedPlan.h"
+#include "LOG.h"
 
 int G_Pass_before;
 int G_Pass_after;
 
 int Pass_NM = 0;
 
+/* 前壁合わせ(Motor_Robot_Alignment)をしてよいか。
+ * 前壁合わせは前センサの値が FlontWall_Distance(530) になるようにモーターを
+ * 0.5秒動かすので、前に壁がないと全力で前進してしまう。地図上の壁の有無
+ * (探索時のセンサ判定)に加えて、今の前センサの値でも壁があることを確かめる */
+#define ALIGN_FRONT_MIN 200	/* 区画中心で前壁があれば約530。これより小さければ合わせない */
+
+static void Robot_Align_If_Wall(int wall_in_front) {
+	if (wall_in_front && (Wall_Flont_Av() > ALIGN_FRONT_MIN)) {
+		Motor_Robot_Alignment();
+		Motor_Stop();
+	}
+}
+
+/* その場Uターン(左90°を2回)。前に壁があれば前壁に、左90°回ったあとは
+ * 元の左の壁(今の前)があればそれに合わせる。
+ * 以前は2回目も元の「前」の壁の有無で判定していたため、前が壁で左が空いている
+ * 区画では、何もない方向に向かって前壁合わせをして急に前進していた */
 void Robot_adjustment() {
 	Motor_Stop();
-	if (G_Wall_data[0] == 1 && G_Wall_data[3] == 1) {
-		Motor_Robot_Alignment();
-		Motor_Stop();
-	}
+	Robot_Align_If_Wall(G_Wall_data[0] == 1 && G_Wall_data[3] == 1);	//前の壁
 	Motor_trapezoid_Turn(90, 600, 20000);
 	Motor_Stop();
-	if (G_Wall_data[0] == 1 && G_Wall_data[3] == 1) {
-		Motor_Robot_Alignment();
-		Motor_Stop();
-	}
+	Robot_Align_If_Wall(G_Wall_data[1] == 1);	//元の左の壁(今の前)
 	Motor_trapezoid_Turn(90, 600, 20000);
 	Motor_Stop();
 }
 
 void Robot_adjustment_180() {
 	Suction_change(20);
-	if (G_Wall_data[0] == 1 && G_Wall_data[3] == 1) {
-		Motor_Robot_Alignment();
-		Motor_Stop();
-	}
+	Robot_Align_If_Wall(G_Wall_data[0] == 1 && G_Wall_data[3] == 1);
 	Motor_trapezoid_Turn(180, 2000, 50000);
 	Motor_Stop();
 	Suction_change(35);
@@ -117,6 +126,18 @@ void Robot_Maze_Sula_Action() {
 
 }
 
+/* 1にすると、次の吸引探索のUターンでログ(LOG.c、1kHzで2秒)を取り始める。
+ * 1回取ったら0に戻る。ゴール後のUターンの調査用(Maze_Search()が往路のあとに1にする)。
+ * 取ったログはモード4 No.7で出力する */
+int G_Log_Next_UTurn = 0;
+
+static void Log_UTurn_Start(void) {
+	if (G_Log_Next_UTurn) {
+		G_Log_Next_UTurn = 0;
+		LOG_get_start();
+	}
+}
+
 void Robot_Maze_Suction_Action() {
 	Motor_Sula_before(1000, 1000, 1000, 5000, 15);
 	if ((G_Maze_Flont <= G_Maze_Left) && (G_Maze_Flont <= G_Maze_Right)	//前進
@@ -138,6 +159,7 @@ void Robot_Maze_Suction_Action() {
 		G_Robot_Lastaction = 1;
 	} else if ((G_Maze_Flont == MAX_STEP) && (G_Maze_Left == MAX_STEP)
 			&& (G_Maze_Right == MAX_STEP)) {	//Uターン　全部壁あり
+		Log_UTurn_Start();
 		if ((G_Robot_MAZE_X == 0) && (G_Robot_MAZE_Y == 0)) {	//初期位置に戻ってきたとき
 			Motor_trapezoid(1000, 1000, 0, 10000, 75);
 			Motor_Stop();
@@ -162,6 +184,7 @@ void Robot_Maze_Suction_Action() {
 			Motor_trapezoid_PID(0, 1000, 1000, 10000, 90);
 		}
 	} else {	//Uターン　一部壁無し
+		Log_UTurn_Start();
 		Motor_trapezoid(1000, 1000, 0, 10000, 75);
 		Motor_Stop();
 		G_Robot_Direction += 2;
