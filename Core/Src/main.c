@@ -1451,7 +1451,12 @@ static void Maze_Search(int flags) {
 	G_Robot_Direction = 0;
 	G_MAZE_Explored[G_Gool_X][G_Gool_Y] = 0;
 
-	Motor_trapezoid_PID(0, v, v, 5000, 24 + 90);
+	/* 走り出しの114mmで探索速度まで加速する(cos加速で必要な距離は
+	 * π*v^2/(4*ac))。1000mm/sは5000だと157mm必要で届かず、約930mm/sで
+	 * 約136mm進んでから目標速度が1000に跳び、最初の判断位置が約22mm
+	 * 遅れていた。7000なら112mmで届く。500mm/sは5000で39mmなので足りている */
+	float start_ac = (v > 500) ? 7000 : 5000;
+	Motor_trapezoid_PID(0, v, v, start_ac, 24 + 90);
 	Maze_Search_Until_Goal(flags);
 	Maze_Save();
 	//ゴール後の最初の吸引探索のUターンからログを取る(モード4 No.7で出力)
