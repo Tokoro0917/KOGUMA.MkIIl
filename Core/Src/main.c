@@ -56,7 +56,7 @@
 #define SEARCH_ONEWAY		0x04	//片道: ゴールで止まる
 #define SEARCH_KNOWN		0x08	//既知区間加速(探索済みの区間はまとめて速く走る)
 #define SEARCH_DIJKSTRA		0x10	//ゴール後にダイクストラ経路上の未確認の壁を見に行く
-#define SEARCH_SHORTEST		0x20	//スタートに戻ったあと最短走行(モード1 No.3と同じ)
+#define SEARCH_SHORTEST		0x20	//スタートに戻ったあと最短走行(モード1 No.5と同じ)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -74,6 +74,7 @@
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 static void Maze_Search(int flags);
+static void Maze_Shortest_Run(void (*run)(int, int), int max, int ac);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -184,136 +185,40 @@ int main(void) {
 				Maze_Search(flags);
 			}
 		} else if (Encorder_mode_out() == 1) {		//�?短
-			if (Encorder_number_out() == 1) {		//2m/s
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-
-					Motor_Setup();
-					Motor_Stop();
-					Short_NANAME_Move2000(6000, 15000);
-					Motor_Free();
-					LED_Reset();
-					HAL_Delay(500);
-					Encorder_count_reset();
-				}
-			} else if (Encorder_number_out() == 2) {
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-
-					Motor_Setup();
-					Motor_Stop();
-					Short_NANAME_Move2000(6000, 20000);
-					Motor_Free();
-					LED_Reset();
-					HAL_Delay(500);
-					Encorder_count_reset();
-				}
-			} else if (Encorder_number_out() == 3) {//dijk
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-
-					Motor_Setup();
-					Motor_Stop();
-					Short_Dijkstra_Move2000(6000, 20000);
-					Motor_Free();
-					LED_Reset();
-					HAL_Delay(500);
-					Encorder_count_reset();
-				}
-			} else if (Encorder_number_out() == 4) {
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-
-					Motor_Setup();
-					Motor_Stop();
-					Short_NANAME_Move2000(6000, 25000);
-					Motor_Free();
-					LED_Reset();
-					HAL_Delay(500);
-					Encorder_count_reset();
-				}
-			} else if (Encorder_number_out() == 5) {
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-
-					Motor_Setup();
-					Motor_Stop();
-					Short_NANAME_Move2000(6000, 30000);
-					Motor_Free();
-					LED_Reset();
-					HAL_Delay(500);
-					Encorder_count_reset();
-				}
-			} else if (Encorder_number_out() == 6) {
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-
-					Motor_Setup();
-					Motor_Stop();
-					Short_NANAME_Move2400(6000, 15000);
-					Motor_Free();
-					LED_Reset();
-					HAL_Delay(500);
-					Encorder_count_reset();
-				}
-			} else if (Encorder_number_out() == 7) {
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-
-					Motor_Setup();
-					Motor_Stop();
-					Short_NANAME_Move2400(6000, 20000);
-					Motor_Free();
-					LED_Reset();
-					HAL_Delay(500);
-					Encorder_count_reset();
-				}
-			} else if (Encorder_number_out() == 8) {
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-
-					Motor_Setup();
-					Motor_Stop();
-					Short_NANAME_Move2400(6000, 23000);
-					Motor_Free();
-					LED_Reset();
-					HAL_Delay(500);
-					Encorder_count_reset();
-				}
-			} else if (Encorder_number_out() == 9) {
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-
-					Motor_Setup();
-					Motor_Stop();
-					Short_NANAME_Move2700(5000, 20000);
-					Motor_Free();
-					LED_Reset();
-					HAL_Delay(500);
-					Encorder_count_reset();
-				}
-			} else if (Encorder_number_out() == 10) {		//ターンごとの通過速度
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-
-					Motor_Setup();
-					Motor_Stop();
-					Short_NANAME_MoveTurnV(6000, 20000);
-					Motor_Free();
-					LED_Reset();
-					HAL_Delay(500);
-					Encorder_count_reset();
-				}
+			/* 最短走行。No.0 と No.10〜15 は何もしない */
+			int n = Encorder_number_out();
+			void (*run)(int, int) = NULL;
+			int ac = 0;
+			if (n == 1) {			//BFS コーナー2000 直線6000 加速15000
+				run = Short_NANAME_Move2000;
+				ac = 15000;
+			} else if (n == 2) {	//BFS コーナー2000 直線6000 加速20000
+				run = Short_NANAME_Move2000;
+				ac = 20000;
+			} else if (n == 3) {	//BFS コーナー2400 直線6000 加速20000
+				run = Short_NANAME_Move2400;
+				ac = 20000;
+			} else if (n == 4) {	//ダイクストラ コーナー2000 直線6000 加速15000
+				run = Short_Dijkstra_Move2000;
+				ac = 15000;
+			} else if (n == 5) {	//ダイクストラ コーナー2000 直線6000 加速20000
+				run = Short_Dijkstra_Move2000;
+				ac = 20000;
+			} else if (n == 6) {	//ダイクストラ コーナー2000 直線6000 加速23000
+				run = Short_Dijkstra_Move2000;
+				ac = 23000;
+			} else if (n == 7) {	//ダイクストラ コーナー2000 直線6000 加速25000
+				run = Short_Dijkstra_Move2000;
+				ac = 25000;
+			} else if (n == 8) {	//ダイクストラ コーナー2400 直線6000 加速20000
+				run = Short_Dijkstra_Move2400;
+				ac = 20000;
+			} else if (n == 9) {	//ダイクストラ コーナー2400 直線6000 加速23000
+				run = Short_Dijkstra_Move2400;
+				ac = 23000;
+			}
+			if ((run != NULL) && (Sensor_Enter() == 1)) {
+				Maze_Shortest_Run(run, 6000, ac);
 			}
 		} else if (Encorder_mode_out() == 2) {		//サーキ�?�?
 
@@ -1580,7 +1485,7 @@ static void Maze_Search(int flags) {
 	if (Failsafe_Flag() == 0) {
 		Maze_Save();
 		if ((flags & SEARCH_SHORTEST) && !(flags & SEARCH_ONEWAY)) {
-			//最短走行(モード1 No.3と同じ: ダイクストラ、直線6000mm/s、加速20000)
+			//最短走行(モード1 No.5と同じ: ダイクストラ、コーナー2000、直線6000mm/s、加速20000)
 			HAL_Delay(2000);
 			Motor_Setup();
 			Motor_Stop();
@@ -1593,6 +1498,20 @@ static void Maze_Search(int flags) {
 	}
 	Motor_Free();
 	LED_Reset();
+	Encorder_count_reset();
+}
+
+/* モード1の最短走行。run に Short_*_Move* を渡す */
+static void Maze_Shortest_Run(void (*run)(int, int), int max, int ac) {
+	Buzzer_Enter();
+	Sensor_Start();
+
+	Motor_Setup();
+	Motor_Stop();
+	run(max, ac);
+	Motor_Free();
+	LED_Reset();
+	HAL_Delay(500);
 	Encorder_count_reset();
 }
 

@@ -544,6 +544,10 @@ void Short_NANAME_Move2000(int MAX, int AC) {
 
 }
 
+/* 1にすると Short_NANAME_Move2400 がダイクストラの経路を走る
+ * (Short_Dijkstra_Move2400 から使う) */
+static int Short_Use_Dijkstra = 0;
+
 void Short_NANAME_Move2400(int MAX, int AC) {
 	Maze_Road();
 	Maze_Wall_fill();
@@ -554,7 +558,11 @@ void Short_NANAME_Move2400(int MAX, int AC) {
 	G_Robot_Direction = 0;
 	G_MAZE_Explored[G_Gool_X][G_Gool_Y] = 0;
 	Maze_Step_Calculate();
-	Maze_Shortest_Calculation();
+	if (Short_Use_Dijkstra) {
+		Maze_Dijkstra_Calculation();
+	} else {
+		Maze_Shortest_Calculation();
+	}
 	Shortest_Pass_Compression();
 	Shortest_Pass_Compression_NANAME();
 	if (!Short_Pass_Check()) {
@@ -659,6 +667,14 @@ void Short_NANAME_Move2400(int MAX, int AC) {
 		Failsafe_Flag_OFF();
 	}
 
+}
+
+/* ダイクストラの経路を、コーナー2400の Short_NANAME_Move2400 と同じ動きで走る。
+ * 命令列の形はBFSと同じなので、経路の作り方だけを切り替える */
+void Short_Dijkstra_Move2400(int MAX, int AC) {
+	Short_Use_Dijkstra = 1;
+	Short_NANAME_Move2400(MAX, AC);
+	Short_Use_Dijkstra = 0;
 }
 
 void Short_NANAME_Move2700(int MAX, int AC) {
