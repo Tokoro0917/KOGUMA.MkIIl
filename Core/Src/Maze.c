@@ -634,14 +634,14 @@ static void Known_Pass_Generation_Body(void) {
 	for (i = 0; G_Known_Pass[i] != 0; i++) {
 		Known_Pass_CP[i] = G_Known_Pass[i];
 	}
-	/* G_Known_Passの終端(0)自体はコピーされないので、この位置のKnown_Pass_CPは
-	 * 前回実行時の値が残ったまま。末尾コーナー判定の先読み用に1を置き、
-	 * 処理後に必ず0へ戻す(Shortest_Pass_Compression()と同じ手法)。
-	 * これをしないと下のループが終端を見失い前回の残骸を読み進めてしまう */
+	/* ループは実際の経路長term_idxで打ち切る。終端より先(先読み)は関数の最初で
+	 * 0にしてあるので、最後の曲がりは小回りのまま残る。
+	 * 最短走行(Shortest_Pass_Compression)と違い、ここでは先頭を1にしたり
+	 * 終端に1を置いたりしてはいけない。既知区間は区画の境界の手前から始まり、
+	 * 未探索の区画の手前で終わるので、先頭に1(半区画の直進)を置くと毎回
+	 * 90mm余分に進み、終端に1を置くと最後の小回りが大回りになって半区画先で
+	 * 終わってしまう(どちらも実機で直線が伸びる症状になった) */
 	int term_idx = i;
-	G_Known_Pass[i] = 1;
-	Known_Pass_CP[i] = 1;
-	Known_Pass_CP[0] = 1;
 	for (i = 0; i < term_idx; i++) {
 		if (Known_Pass_CP[i] == -2) {
 			if (Known_Pass_CP[i - 1] > 0) {
@@ -687,7 +687,6 @@ static void Known_Pass_Generation_Body(void) {
 
 	}
 
-	/* 先読み用に置いていた終端を正式な0へ戻す */
 	G_Known_Pass[term_idx] = 0;
 	Known_Pass_CP[term_idx] = 0;
 
