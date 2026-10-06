@@ -29,28 +29,36 @@ int G_Pass_after;
 
 int Pass_NM = 0;
 
+/* 前壁合わせ(Motor_Robot_Alignment)をしてよいか。
+ * 前壁合わせは前センサの値が FlontWall_Distance(530) になるようにモーターを
+ * 0.5秒動かすので、前に壁がないと全力で前進してしまう。地図上の壁の有無
+ * (探索時のセンサ判定)に加えて、今の前センサの値でも壁があることを確かめる */
+#define ALIGN_FRONT_MIN 200	/* 区画中心で前壁があれば約530。これより小さければ合わせない */
+
+static void Robot_Align_If_Wall(int wall_in_front) {
+	if (wall_in_front && (Wall_Flont_Av() > ALIGN_FRONT_MIN)) {
+		Motor_Robot_Alignment();
+		Motor_Stop();
+	}
+}
+
+/* その場Uターン(左90°を2回)。前に壁があれば前壁に、左90°回ったあとは
+ * 元の左の壁(今の前)があればそれに合わせる。
+ * 以前は2回目も元の「前」の壁の有無で判定していたため、前が壁で左が空いている
+ * 区画では、何もない方向に向かって前壁合わせをして急に前進していた */
 void Robot_adjustment() {
 	Motor_Stop();
-	if (G_Wall_data[0] == 1 && G_Wall_data[3] == 1) {
-		Motor_Robot_Alignment();
-		Motor_Stop();
-	}
+	Robot_Align_If_Wall(G_Wall_data[0] == 1 && G_Wall_data[3] == 1);	//前の壁
 	Motor_trapezoid_Turn(90, 600, 20000);
 	Motor_Stop();
-	if (G_Wall_data[0] == 1 && G_Wall_data[3] == 1) {
-		Motor_Robot_Alignment();
-		Motor_Stop();
-	}
+	Robot_Align_If_Wall(G_Wall_data[1] == 1);	//元の左の壁(今の前)
 	Motor_trapezoid_Turn(90, 600, 20000);
 	Motor_Stop();
 }
 
 void Robot_adjustment_180() {
 	Suction_change(20);
-	if (G_Wall_data[0] == 1 && G_Wall_data[3] == 1) {
-		Motor_Robot_Alignment();
-		Motor_Stop();
-	}
+	Robot_Align_If_Wall(G_Wall_data[0] == 1 && G_Wall_data[3] == 1);
 	Motor_trapezoid_Turn(180, 2000, 50000);
 	Motor_Stop();
 	Suction_change(35);
