@@ -20,6 +20,7 @@ int Sensor_Start();
 
 void Wall_search_LED();
 void Wall_Distance_Calibration();
+void Wall_Center_Calibration();
 
 float calWallConrol();
 float calWallConrol_NANAME();
