@@ -10,6 +10,7 @@
 
 extern int G_Wall_data[];
 extern int G_WallCtrl_Use_mm;
+extern float Wall_error;
 
 void Wall_search();
 
