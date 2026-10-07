@@ -471,6 +471,26 @@ static float Short_First_Turn(float V, int f) {
 	return v;
 }
 
+/* 最初のターンの直後の直線(vs < V のとき)。vs から V までは加速度 SHORT_FIRST_AC で上げ、
+ * 残りの距離を返す(残りはいつもどおり V から走る)。直線全体を強い加速度にすると、
+ * 最高速への加速と減速まで強くなるので、V に届くまでの区間だけにする。
+ * 直線が短くて V に届かないときは、直線の終わりで目標速度が V へ跳ぶ(以前と同じ) */
+static float Short_Catchup(float vs, float V, float X, int naname) {
+	if (vs >= V) {
+		return X;
+	}
+	float d = PI * (V * V - vs * vs) / (4 * SHORT_FIRST_AC) + 1;
+	if (d > X) {
+		d = X;
+	}
+	if (naname) {
+		Motor_NANAME_PID(vs, V, V, SHORT_FIRST_AC, d);
+	} else {
+		Motor_trapezoid_PID(vs, V, V, SHORT_FIRST_AC, d);
+	}
+	return X - d;
+}
+
 /* スタート区画からの走り出し(2026-10-07)。戻り値は最初の直線の始めの速度。
  * 最初が直線: スタート位置(区画中心の24mm後ろ)から区画の境目までの 90+24 mm で、
  *   0→V までなめらかに加速し、その半区画ぶんを走ったことにする。
@@ -533,8 +553,12 @@ void Short_NANAME_Move1000(int MAX, int AC) {
 			break;
 		}
 		if (G_Short_Pass_NANAME[i] > 0) {			//区間前進
-			Motor_trapezoid_PID(vs, MAX, 1000, AC,
-					90 * G_Short_Pass_NANAME[i]);
+			{
+				float rest = Short_Catchup(vs, 1000, 90 * G_Short_Pass_NANAME[i], 0);
+				if (rest > 0) {
+					Motor_trapezoid_PID(1000, MAX, 1000, AC, rest);
+				}
+			}
 		} else if ((G_Short_Pass_NANAME[i] <= -4)
 				&& (G_Short_Pass_NANAME[i] > -50)) {
 			if (G_Short_Pass_CP[i] == -4) {			//左大廻９０
@@ -599,8 +623,12 @@ void Short_NANAME_Move1000(int MAX, int AC) {
 				Motor_Sula_COS(1000, -88.5, 800, 20000);
 				Motor_Wallcut_END_NANAME(1000, 27, 1);
 			} else if (G_Short_Pass_NANAME[i] % 50 == 0) {			//直線
-				Motor_NANAME_PID(vs, MAX, 1000, AC - 5000,
-						127.3 * G_Short_Pass_NANAME[i] / -50);
+				{
+					float rest = Short_Catchup(vs, 1000, 127.3 * G_Short_Pass_NANAME[i] / -50, 1);
+					if (rest > 0) {
+						Motor_NANAME_PID(1000, MAX, 1000, AC - 5000, rest);
+					}
+				}
 
 			}
 		}
@@ -654,8 +682,12 @@ void Short_NANAME_Move2000(int MAX, int AC) {
 		}
 		if (G_Short_Pass_NANAME[i] > 0) {			//区間前進
 			//Suction_change(30);
-			Motor_trapezoid_Asymmetric_PID(vs, MAX, 2000, AC,
-					90 * G_Short_Pass_NANAME[i]);
+			{
+				float rest = Short_Catchup(vs, 2000, 90 * G_Short_Pass_NANAME[i], 0);
+				if (rest > 0) {
+					Motor_trapezoid_Asymmetric_PID(2000, MAX, 2000, AC, rest);
+				}
+			}
 			//Suction_change(50);
 		} else if ((G_Short_Pass_NANAME[i] <= -4)
 				&& (G_Short_Pass_NANAME[i] > -50)) {
@@ -719,8 +751,12 @@ void Short_NANAME_Move2000(int MAX, int AC) {
 				Motor_Sula_COS(2000, -90, 2000, 130000);
 				Motor_Wallcut_END_NANAME(2000, 80, 1);
 			} else if (G_Short_Pass_NANAME[i] % 50 == 0) {			//直線
-				Motor_NANAME_PID(vs, MAX, 2000, AC - 5000,
-						127.3 * G_Short_Pass_NANAME[i] / -50);
+				{
+					float rest = Short_Catchup(vs, 2000, 127.3 * G_Short_Pass_NANAME[i] / -50, 1);
+					if (rest > 0) {
+						Motor_NANAME_PID(2000, MAX, 2000, AC - 5000, rest);
+					}
+				}
 
 			}
 		}
@@ -777,8 +813,12 @@ void Short_NANAME_Move2400(int MAX, int AC) {
 			break;
 		}
 		if (G_Short_Pass_NANAME[i] > 0) {			//区間前進
-			Motor_trapezoid_Asymmetric_PID(vs, MAX, 2400, AC,
-					90 * G_Short_Pass_NANAME[i]);
+			{
+				float rest = Short_Catchup(vs, 2400, 90 * G_Short_Pass_NANAME[i], 0);
+				if (rest > 0) {
+					Motor_trapezoid_Asymmetric_PID(2400, MAX, 2400, AC, rest);
+				}
+			}
 		} else if ((G_Short_Pass_NANAME[i] <= -4)
 				&& (G_Short_Pass_NANAME[i] > -50)) {
 			if (G_Short_Pass_CP[i] == -4) {			//左大廻９０
@@ -843,8 +883,12 @@ void Short_NANAME_Move2400(int MAX, int AC) {
 				Motor_Sula_COS(2400, -87, 2600, 150000);
 				Motor_Wallcut_END_NANAME(2400, 90, 1);
 			} else if (G_Short_Pass_NANAME[i] % 50 == 0) {			//直線
-				Motor_NANAME_PID(vs, MAX, 2400, AC - 10000,
-						127.3 * G_Short_Pass_NANAME[i] / -50);
+				{
+					float rest = Short_Catchup(vs, 2400, 127.3 * G_Short_Pass_NANAME[i] / -50, 1);
+					if (rest > 0) {
+						Motor_NANAME_PID(2400, MAX, 2400, AC - 10000, rest);
+					}
+				}
 
 			}
 		}
@@ -901,8 +945,12 @@ void Short_NANAME_Move2700(int MAX, int AC) {
 			break;
 		}
 		if (G_Short_Pass_NANAME[i] > 0) {			//区間前進
-			Motor_trapezoid_PID(vs, MAX, 2700, AC,
-					90 * G_Short_Pass_NANAME[i]);
+			{
+				float rest = Short_Catchup(vs, 2700, 90 * G_Short_Pass_NANAME[i], 0);
+				if (rest > 0) {
+					Motor_trapezoid_PID(2700, MAX, 2700, AC, rest);
+				}
+			}
 		} else if ((G_Short_Pass_NANAME[i] <= -4)
 				&& (G_Short_Pass_NANAME[i] > -50)) {
 			if (G_Short_Pass_CP[i] == -4) {			//左大廻９０
@@ -965,8 +1013,12 @@ void Short_NANAME_Move2700(int MAX, int AC) {
 				Motor_Sula_COS(2700, -82, 2800, 180000);
 				Motor_Wallcut_END_NANAME(2700, 97, 1);
 			} else if (G_Short_Pass_NANAME[i] % 50 == 0) {			//直線
-				Motor_NANAME_PID(vs, MAX, 2700, AC - 10000,
-						127.3 * G_Short_Pass_NANAME[i] / -50);
+				{
+					float rest = Short_Catchup(vs, 2700, 127.3 * G_Short_Pass_NANAME[i] / -50, 1);
+					if (rest > 0) {
+						Motor_NANAME_PID(2700, MAX, 2700, AC - 10000, rest);
+					}
+				}
 
 			}
 		}
@@ -1019,8 +1071,12 @@ void Short_Dijkstra_Move2000(int MAX, int AC) {
 			break;
 		}
 		if (G_Short_Pass_NANAME[i] > 0) {			//区間前進
-			Motor_trapezoid_PID(vs, MAX, 2000, AC,
-					90 * G_Short_Pass_NANAME[i]);
+			{
+				float rest = Short_Catchup(vs, 2000, 90 * G_Short_Pass_NANAME[i], 0);
+				if (rest > 0) {
+					Motor_trapezoid_PID(2000, MAX, 2000, AC, rest);
+				}
+			}
 		} else if ((G_Short_Pass_NANAME[i] <= -4)
 				&& (G_Short_Pass_NANAME[i] > -50)) {
 			if (G_Short_Pass_CP[i] == -4) {			//左大廻９０
@@ -1083,8 +1139,12 @@ void Short_Dijkstra_Move2000(int MAX, int AC) {
 				Motor_Sula_COS(2000, -84, 2000, 80000);
 				Motor_Wallcut_END_NANAME(2000, 35, 1);
 			} else if (G_Short_Pass_NANAME[i] % 50 == 0) {			//直線
-				Motor_NANAME_PID(vs, MAX, 2000, AC - 5000,
-						127.3 * G_Short_Pass_NANAME[i] / -50);
+				{
+					float rest = Short_Catchup(vs, 2000, 127.3 * G_Short_Pass_NANAME[i] / -50, 1);
+					if (rest > 0) {
+						Motor_NANAME_PID(2000, MAX, 2000, AC - 5000, rest);
+					}
+				}
 
 			}
 		}
