@@ -406,27 +406,30 @@ static int Short_Pass_Check(void) {
 #define SHORT_FIRST_AC 50000.0f
 #define SHORT_START_X 24.0f	//スタート位置から区画中心まで
 
-static float Short_First_Turn(float V) {
-	int code = G_Short_Pass_NANAME[0];
-	int cp = G_Short_Pass_CP[0];
+static float Short_First_Turn(float V, int f) {
+	int code = G_Short_Pass_NANAME[f];
+	int cp = G_Short_Pass_CP[f];
 	float pre, ang, w, post;
 	int dir, naname;
-	if (code > -50) {	//大回り
-		if (cp == -4 || cp == -6) {	//90
-			pre = 48; ang = 88; w = 600; post = 35;
-		} else {	//180 (-5, -7)
-			pre = 60; ang = 179; w = 650; post = 40;
-		}
-		dir = (cp == -4 || cp == -5) ? 0 : 1;
+	if (code <= -4 && code > -50 && (cp == -4 || cp == -6)) {	//大回り90
+		pre = 48; ang = 88; w = 600; post = 35;
+		dir = (cp == -4) ? 0 : 1;
 		naname = 0;
-	} else {	//斜め入り
-		if (code == -51 || code == -53) {	//45
-			pre = 15; ang = 44; w = 750; post = 42;
-		} else {	//135 (-52, -54)
-			pre = 38; ang = 134; w = 800; post = 8;
-		}
-		dir = (code == -51 || code == -52) ? 0 : 1;
+	} else if (code <= -4 && code > -50 && (cp == -5 || cp == -7)) {	//大回り180
+		pre = 60; ang = 179; w = 650; post = 40;
+		dir = (cp == -5) ? 0 : 1;
+		naname = 0;
+	} else if (code == -51 || code == -53) {	//斜め入り45
+		pre = 15; ang = 44; w = 750; post = 42;
+		dir = (code == -51) ? 0 : 1;
 		naname = 1;
+	} else if (code == -52 || code == -54) {	//斜め入り135
+		pre = 38; ang = 134; w = 800; post = 8;
+		dir = (code == -52) ? 0 : 1;
+		naname = 1;
+	} else {	//ここには来ないはず(test_shortpath で確認)。曲がらずに区画中心まで出るだけにする
+		Motor_trapezoid_PID(0, V, V, 60000, SHORT_START_X);
+		return V;	//命令は飛ばさない(ループでいつもどおり走る)
 	}
 	float v1 = SHORT_FIRST_V;
 	float v_reach = sqrt(4 * SHORT_FIRST_AC * (SHORT_START_X + pre) / PI);
@@ -446,6 +449,7 @@ static float Short_First_Turn(float V) {
 	} else {
 		Motor_Wallcut_END_Accel(v1, V, SHORT_FIRST_AC, post, dir);
 	}
+	G_Short_Pass_NANAME[f] = -1;	//最初のターンは走ったので飛ばす
 	return G_Motor_V_Target;
 }
 
@@ -457,20 +461,24 @@ static float Short_First_Turn(float V) {
  *   1.5区画以上の直線も、ここで加速してから残りを走る(以前は10mmで加速しようとして届かず、14mm短かった)。
  * 最初がターン: Short_First_Turn() */
 static float Short_Start(float V) {
-	if (G_Short_Pass_NANAME[0] >= 1) {
+	/* 圧縮で0になった直線は -1(飛ばす)として残るので、最初が
+	 * ターンの経路では先頭が -1 になり、ターンは2番目以降にある */
+	int f = 0;
+	while (G_Short_Pass_NANAME[f] == -1) {
+		f++;
+	}
+	if (G_Short_Pass_NANAME[f] >= 1) {
 		const float d = 90 + SHORT_START_X;
 		float ac = PI * V * V / (4 * d) + 1;
 		Motor_trapezoid_PID(0, V, V, ac, d);
-		if (G_Short_Pass_NANAME[0] == 1) {
-			G_Short_Pass_NANAME[0] = -1;
+		if (G_Short_Pass_NANAME[f] == 1) {
+			G_Short_Pass_NANAME[f] = -1;
 		} else {
-			G_Short_Pass_NANAME[0] -= 1;
+			G_Short_Pass_NANAME[f] -= 1;
 		}
 		return V;
 	}
-	float v = Short_First_Turn(V);
-	G_Short_Pass_NANAME[0] = -1;	//最初のターンは走ったので飛ばす
-	return v;
+	return Short_First_Turn(V, f);
 }
 
 void Short_NANAME_Move1000(int MAX, int AC) {
@@ -500,7 +508,9 @@ void Short_NANAME_Move1000(int MAX, int AC) {
 
 	for (int i = 0; G_Short_Pass_NANAME[i] != 0; i++) {
 		float vs = v_in;	//この区間の始めの速度(最初のターンの直後だけVより遅い)
-		v_in = 1000;
+		if (G_Short_Pass_NANAME[i] != -1) {	//飛ばす命令(-1)では持ち越す
+			v_in = 1000;
+		}
 		if (Failsafe_Flag() == 1) {
 			break;
 		}
@@ -618,7 +628,9 @@ void Short_NANAME_Move2000(int MAX, int AC) {
 
 	for (int i = 0; G_Short_Pass_NANAME[i] != 0; i++) {
 		float vs = v_in;	//この区間の始めの速度(最初のターンの直後だけVより遅い)
-		v_in = 2000;
+		if (G_Short_Pass_NANAME[i] != -1) {	//飛ばす命令(-1)では持ち越す
+			v_in = 2000;
+		}
 		if (Failsafe_Flag() == 1) {
 			break;
 		}
@@ -740,7 +752,9 @@ void Short_NANAME_Move2400(int MAX, int AC) {
 	float v_in = Short_Start(2400);	//最初の直線の始めの速度
 	for (int i = 0; G_Short_Pass_NANAME[i] != 0; i++) {
 		float vs = v_in;	//この区間の始めの速度(最初のターンの直後だけVより遅い)
-		v_in = 2400;
+		if (G_Short_Pass_NANAME[i] != -1) {	//飛ばす命令(-1)では持ち越す
+			v_in = 2400;
+		}
 		if (Failsafe_Flag() == 1) {
 			break;
 		}
@@ -862,7 +876,9 @@ void Short_NANAME_Move2700(int MAX, int AC) {
 	float v_in = Short_Start(2700);	//最初の直線の始めの速度
 	for (int i = 0; G_Short_Pass_NANAME[i] != 0; i++) {
 		float vs = v_in;	//この区間の始めの速度(最初のターンの直後だけVより遅い)
-		v_in = 2700;
+		if (G_Short_Pass_NANAME[i] != -1) {	//飛ばす命令(-1)では持ち越す
+			v_in = 2700;
+		}
 		if (Failsafe_Flag() == 1) {
 			break;
 		}
@@ -978,7 +994,9 @@ void Short_Dijkstra_Move2000(int MAX, int AC) {
 
 	for (int i = 0; G_Short_Pass_NANAME[i] != 0; i++) {
 		float vs = v_in;	//この区間の始めの速度(最初のターンの直後だけVより遅い)
-		v_in = 2000;
+		if (G_Short_Pass_NANAME[i] != -1) {	//飛ばす命令(-1)では持ち越す
+			v_in = 2000;
+		}
 		if (Failsafe_Flag() == 1) {
 			break;
 		}
