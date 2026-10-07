@@ -400,10 +400,10 @@ static int Short_Pass_Check(void) {
  * 同じ前距離・角度・後距離)を、速度 v1 に合わせて曲がる。軌跡の形を変えないように
  * 最大角速度は k 倍、角加速度は k² 倍(k = v1 / 1000)。
  * 前距離までに 0→v1、後距離で v1→V へ、どちらも加速度 SHORT_FIRST_AC で cos加速する。
- * v1 は SHORT_FIRST_V と、24mm+前距離で届く速度の小さいほう(右斜め入り45は約1410)。
+ * v1 は SHORT_FIRST_V と、24mm+前距離で届く速度の小さいほう(加速度50000なら全パターンで1500に届く)。
  * 戻り値は後距離の終わりの速度(Vに届かないことが多い。次の直線がこの速度から加速する) */
 #define SHORT_FIRST_V 1500.0f
-#define SHORT_FIRST_AC 40000.0f
+#define SHORT_FIRST_AC 50000.0f
 #define SHORT_START_X 24.0f	//スタート位置から区画中心まで
 
 static float Short_First_Turn(float V) {
