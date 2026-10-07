@@ -448,23 +448,48 @@ float Short_First_Turn_Run(int kind, int dir, float V) {
 	return G_Motor_V_Target;
 }
 
-static float Short_First_Turn(float V, int f) {
+/* 経路の f 番目の命令が最初のターンとしてどれか(kind: FIRST_TURN_*、dir: 0 左 / 1 右)。
+ * どれにも当てはまらなければ0を返す */
+static int Short_First_Turn_Kind(int f, int *kind, int *dir) {
 	int code = G_Short_Pass_NANAME[f];
 	int cp = G_Short_Pass_CP[f];
-	int kind, dir;
 	if (code <= -4 && code > -50 && (cp == -4 || cp == -6)) {
-		kind = FIRST_TURN_BIG90;
-		dir = (cp == -4) ? 0 : 1;
+		*kind = FIRST_TURN_BIG90;
+		*dir = (cp == -4) ? 0 : 1;
 	} else if (code <= -4 && code > -50 && (cp == -5 || cp == -7)) {
-		kind = FIRST_TURN_BIG180;
-		dir = (cp == -5) ? 0 : 1;
+		*kind = FIRST_TURN_BIG180;
+		*dir = (cp == -5) ? 0 : 1;
 	} else if (code == -51 || code == -53) {
-		kind = FIRST_TURN_IN45;
-		dir = (code == -51) ? 0 : 1;
+		*kind = FIRST_TURN_IN45;
+		*dir = (code == -51) ? 0 : 1;
 	} else if (code == -52 || code == -54) {
-		kind = FIRST_TURN_IN135;
-		dir = (code == -52) ? 0 : 1;
-	} else {	//ここには来ないはず(test_shortpath で確認)。曲がらずに区画中心まで出るだけにする
+		*kind = FIRST_TURN_IN135;
+		*dir = (code == -52) ? 0 : 1;
+	} else {
+		return 0;
+	}
+	return 1;
+}
+
+/* Short_First_Turn_Run(kind, dir, V) の後距離の終わりで出せる速度(V を超えない) */
+static float Short_First_Turn_Reach(int kind, float V) {
+	const FirstTurnParam *p = &G_First_Turn[kind];
+	float v1 = p->v;
+	float v_reach = sqrt(4 * SHORT_FIRST_AC * (SHORT_START_X + p->pre) / PI);
+	if (v1 > v_reach) {
+		v1 = v_reach;
+	}
+	if (v1 > V) {
+		v1 = V;
+	}
+	float v_end = sqrt(v1 * v1 + 4 * SHORT_FIRST_AC * p->post / PI);
+	return (v_end < V) ? v_end : V;
+}
+
+static float Short_First_Turn(float V, int f) {
+	int kind, dir;
+	if (!Short_First_Turn_Kind(f, &kind, &dir)) {
+		//ここには来ないはず(test_shortpath で確認)。曲がらずに区画中心まで出るだけにする
 		Motor_trapezoid_PID(0, V, V, 60000, SHORT_START_X);
 		return V;	//命令は飛ばさない(ループでいつもどおり走る)
 	}
@@ -1167,24 +1192,38 @@ void Short_Dijkstra_Move2000(int MAX, int AC) {
 
 
 /*
- * ターンごとに通過速度を変える最短走行。
+ * ターンごとに通過速度を変える最短走行(2026-10-07、2400基準に作り直し)。
  *
- * Short_NANAME_Move2000 と同じ走り方で、ターンの種類ごとに通過速度を持つ。
- * 直線の始点・終点速度は、前後のターンの速度に合わせる(SpeedPlan.c)。
- * 直線が短くて加減速しきれないときや、ターンが直接つながるときは、
- * 速度計画が遅い方に合わせて速度を下げる。
+ * Short_NANAME_Move2400 と同じ走り方で、ターンの種類ごとに通過速度を持つ。
+ * 2400は一番きついターン(V90)に合わせた速度なので、横加速度に余裕のあるターンは速く、
+ * きついターンは遅く回る。
  *
- * ターンのパラメータは Short_NANAME_Move2000 の値(V_BASE=2000で調整済み)を基準にし、
- * 通過速度Vに合わせて 角速度 x (V/V_BASE)、角加速度 x (V/V_BASE)^2 に換算する。
- * こうすると理想的には同じ軌跡(同じ旋回半径)になる。横加速度は (V/V_BASE)^2 倍になる。
- * 前後のオフセット距離は理想的には変わらないが、実機では遅れで変わるので、
- * 速度を変えたターンは offset_st / offset_end の調整が必要。
+ * ターンのパラメータは Short_NANAME_Move2400 の値(TURNV_V_BASE=2400で調整済み)を基準にし、
+ * 通過速度Vに合わせて 角速度 x (V/2400)、角加速度 x (V/2400)^2 に換算する。
+ * こうすると理想的には同じ軌跡(同じ旋回半径)になる。横加速度は (V/2400)^2 倍になる。
+ * 前後のオフセット距離は理想的には変わらないが、実機では滑りや遅れで変わるので、
+ * 速度を変えたターンは offset_st / offset_end を調整する(モード10 No.1〜7)。
  *
- * TurnV_Table の v を全部 2000 にすると Short_NANAME_Move2000 と同じ走りになる。
+ * 速度のつなぎ方(SpeedPlan.c):
+ * - 間に直線があるとき: 後距離はそのターンの速度で一定に走り、直線で次のターンの速度に合わせる。
+ *   直線が短くて加減速しきれなければ、その範囲まで前後のターンの速度を下げる。
+ * - ターンが直線を挟まずにつながるとき: 前のターンの後距離のうちに、次のターンの速度へ
+ *   加速度 TURNV_AC_BACK で変える(後距離の8割で変えきる。壁切れで後距離が早く終わる分の余裕)。
+ *   次のターンの前距離は、そのターンの速度で一定に走る。
+ *   変えきれないときは、変えきれる速度まで速い方のターンを下げる。
+ *
+ * TurnV_Table の v を全部 2400 にすると Short_NANAME_Move2400 と同じ走りになる。
+ *
+ * 速度の初期値の考え方(README「ターンごとの通過速度」):
+ *   2400 のパラメータでのピーク横加速度は V90 が最大(約109m/s^2)。V90 の限界を2200とすると
+ *   限界は約91.5m/s^2 で、そこに届く速度は 大回り90 約2800、大回り180 約2900、斜め出45 約2980、
+ *   斜め入り45 約2420、斜め出135 約2450、斜め入り135 約2510。
+ *   初期値はそこから控えめにした(大回り180はほかの人も遅めにしているので特に控えめ)。
  */
-#define TURNV_V_BASE 2000.0f
-#define TURNV_V_START 2000.0f	/* スタート区間の終わりの速度の上限 */
-#define TURNV_V_GOAL 2000.0f	/* ゴール停止区間に入る速度の上限 */
+#define TURNV_V_BASE 2400.0f
+#define TURNV_V_START 2400.0f	/* スタート区間の終わりの速度の上限 */
+#define TURNV_V_GOAL 2400.0f	/* ゴール停止区間に入る速度の上限 */
+#define TURNV_AC_BACK 30000.0f	/* 後距離で次のターンの速度へ変えるときの加速度 */
 
 #define WC_NORMAL 0
 #define WC_NANAME 1
@@ -1211,15 +1250,16 @@ enum {
 	TV_NUM
 };
 
+/* 角度・角速度・角加速度・オフセットは Short_NANAME_Move2400 と同じ値 */
 static TurnV_Param TurnV_Table[TV_NUM] = {
 	/*            v     angle  w_max  w_ac     st_kind    st   end_kind   end */
-	[TV_BIG90]  = {2000,  90, 2000,  40000, WC_NORMAL, 10, WC_NORMAL,  75},
-	[TV_BIG180] = {2000, 180, 1220,  40000, WC_NORMAL,  5, WC_NORMAL,  73},
-	[TV_IN45]   = {2000,  45, 1900, 120000, WC_NORMAL,  5, WC_NANAME, 112},
-	[TV_IN135]  = {2000, 135, 1500,  80000, WC_NORMAL, 31, WC_NANAME,  98},
-	[TV_OUT45]  = {2000,  45, 1500,  40000, WC_NANAME, 13, WC_NORMAL,  25},
-	[TV_OUT135] = {2000, 135, 1350,  70000, WC_NANAME, 10, WC_NORMAL,  90},
-	[TV_V90]    = {2000,  90, 2000, 130000, WC_NANAME, 13, WC_NANAME,  80},
+	[TV_BIG90]  = {2600,  90, 1600,  80000, WC_NORMAL, 25, WC_NORMAL, 100},
+	[TV_BIG180] = {2500, 180, 1500,  70000, WC_NORMAL, 15, WC_NORMAL,  88},
+	[TV_IN45]   = {2400,  45, 2500, 160000, WC_NORMAL,  3, WC_NANAME, 113},
+	[TV_IN135]  = {2400, 135, 2000,  55000, WC_NORMAL, 15, WC_NANAME,  85},
+	[TV_OUT45]  = {2600,  45, 1550,  70000, WC_NANAME,  8, WC_NORMAL,  40},
+	[TV_OUT135] = {2400, 135, 2100,  80000, WC_NANAME, 17, WC_NORMAL, 123},
+	[TV_V90]    = {2200,  87, 2600, 150000, WC_NANAME,  5, WC_NANAME,  90},
 };
 
 /* パスのコード -> テーブル番号と向き(0:左 1:右)。ターンでなければ -1 */
@@ -1249,7 +1289,15 @@ static float TurnV_Speed(int16_t code) {
 	return (k >= 0) ? TurnV_Table[k].v : TURNV_V_BASE;
 }
 
-static void TurnV_Run(int16_t code, float V) {
+static float TurnV_Back(int16_t code) {
+	int dir;
+	int k = TurnV_Lookup(code, &dir);
+	return (k >= 0) ? TurnV_Table[k].offset_end : 0;
+}
+
+/* ターンを1つ走る。V: 前距離とターンの速度、V_out: 後距離の終わりの速度
+ * (V と違えば後距離のうちに加速度 TURNV_AC_BACK で変える) */
+static void TurnV_Run(int16_t code, float V, float V_out) {
 	int dir;
 	int k = TurnV_Lookup(code, &dir);
 	if (k < 0) {
@@ -1265,12 +1313,24 @@ static void TurnV_Run(int16_t code, float V) {
 		Motor_Wallcut_ST(V, p->offset_st, dir);
 	}
 	Motor_Sula_COS(V, angle, p->w_max * s, p->w_ac * s * s);
-	if (p->end_kind == WC_NANAME) {
-		Motor_Wallcut_END_NANAME(V, p->offset_end, dir);
+	if (V_out == V) {
+		if (p->end_kind == WC_NANAME) {
+			Motor_Wallcut_END_NANAME(V, p->offset_end, dir);
+		} else {
+			Motor_Wallcut_END(V, p->offset_end, dir);
+		}
 	} else {
-		Motor_Wallcut_END(V, p->offset_end, dir);
+		if (p->end_kind == WC_NANAME) {
+			Motor_Wallcut_END_NANAME_Accel(V, V_out, TURNV_AC_BACK, p->offset_end, dir);
+		} else {
+			Motor_Wallcut_END_Accel(V, V_out, TURNV_AC_BACK, p->offset_end, dir);
+		}
 	}
 }
+
+/* 1にすると Short_NANAME_MoveTurnV がダイクストラの経路を走る
+ * (Short_Dijkstra_MoveTurnV から使う) */
+static int TurnV_Use_Dijkstra = 0;
 
 void Short_NANAME_MoveTurnV(int MAX, int AC) {
 	static SpeedPlan_t plan;
@@ -1284,39 +1344,65 @@ void Short_NANAME_MoveTurnV(int MAX, int AC) {
 	G_Robot_Direction = 0;
 	G_MAZE_Explored[G_Gool_X][G_Gool_Y] = 0;
 	Maze_Step_Calculate();
-
-	Maze_Shortest_Calculation();
-
+	if (TurnV_Use_Dijkstra) {
+		Maze_Dijkstra_Calculation();
+	} else {
+		Maze_Shortest_Calculation();
+	}
 	Shortest_Pass_Compression();
 	Shortest_Pass_Compression_NANAME();
 	if (!Short_Pass_Check()) {
 		return;
 	}
 
-	/* 最初の半区画はスタート区間に含める(Short_NANAME_Move2000と同じ) */
-	int start_half = (G_Short_Pass_NANAME[0] == 1);
-	if (start_half) {
-		G_Short_Pass_NANAME[0] = -1;
+	/* 走り出し(Short_Start と同じ動き)。速度計画より前に命令列を書き換えておく。
+	 * 最初が直線: 区画の境目までの半区画ぶんをスタート区間に含める。
+	 * 最初がターン: 最初のターン(Short_First_Turn_Run)をスタート区間に含め、
+	 *   後距離の終わりで出せる速度をスタート区間の終わりの速度の上限にする */
+	int f = 0;
+	while (G_Short_Pass_NANAME[f] == -1) {
+		f++;
+	}
+	enum { START_STRAIGHT, START_TURN, START_OTHER } start_mode = START_OTHER;
+	int first_kind = 0, first_dir = 0;
+	float v_start = TURNV_V_START;
+	if (G_Short_Pass_NANAME[f] >= 1) {
+		start_mode = START_STRAIGHT;
+		if (G_Short_Pass_NANAME[f] == 1) {
+			G_Short_Pass_NANAME[f] = -1;
+		} else {
+			G_Short_Pass_NANAME[f] -= 1;
+		}
+	} else if (Short_First_Turn_Kind(f, &first_kind, &first_dir)) {
+		start_mode = START_TURN;
+		G_Short_Pass_NANAME[f] = -1;
+		v_start = Short_First_Turn_Reach(first_kind, TURNV_V_START);
 	}
 
 	plan.turn_v = TurnV_Speed;
 	plan.v_max = MAX;
 	plan.ac = AC;
-	plan.v_start = TURNV_V_START;
+	plan.ac_diag = AC - 10000;	/* Short_NANAME_Move2400 の斜め直線と同じ */
+	plan.v_start = v_start;
 	plan.v_goal = TURNV_V_GOAL;
+	plan.turn_back = TurnV_Back;
+	plan.ac_back = TURNV_AC_BACK;
 	if (SpeedPlan_Make(G_Short_Pass_NANAME, &plan) != 0) {
 		return;
 	}
 
-	Suction_Start(50);
+	Suction_Start(70);
 	HAL_Delay(500);
 
 	Motor_Setup();
 	float v0 = plan.v_start_out;
-	if (start_half) {
-		Motor_trapezoid_PID(0, v0, v0, 30000, 90 + 24);
-	} else {
-		Motor_trapezoid_PID(0, v0, v0, 70000, 10);
+	if (start_mode == START_TURN) {
+		Short_First_Turn_Run(first_kind, first_dir, v0);
+	} else if (start_mode == START_STRAIGHT) {
+		const float d = 90 + SHORT_START_X;
+		Motor_trapezoid_PID(0, v0, v0, PI * v0 * v0 / (4 * d) + 1, d);
+	} else {	//ここには来ないはず(test_shortpath で確認)。区画中心まで出るだけにする
+		Motor_trapezoid_PID(0, v0, v0, 60000, SHORT_START_X);
 	}
 
 	for (int i = 0; G_Short_Pass_NANAME[i] != 0; i++) {
@@ -1330,11 +1416,11 @@ void Short_NANAME_MoveTurnV(int MAX, int AC) {
 					AC, 90 * code);
 			break;
 		case SP_DIAGONAL:			//斜め直線
-			Motor_NANAME_PID(plan.v_in[i], MAX, plan.v_out[i], AC - 5000,
+			Motor_NANAME_PID(plan.v_in[i], MAX, plan.v_out[i], plan.ac_diag,
 					127.3 * code / -50);
 			break;
 		case SP_TURN:
-			TurnV_Run(code, plan.v_in[i]);
+			TurnV_Run(code, plan.v_in[i], plan.v_out[i]);
 			break;
 		default:
 			break;
@@ -1342,7 +1428,7 @@ void Short_NANAME_MoveTurnV(int MAX, int AC) {
 	}
 	if (Failsafe_Flag() == 0) {
 		float vg = plan.v_goal_in;
-		Motor_trapezoid_PID(vg, vg, 0, 15000, 180);
+		Motor_trapezoid_PID(vg, vg, 0, 30000, 180);
 		Motor_Stop();
 		Suction_Stop();
 
@@ -1350,5 +1436,48 @@ void Short_NANAME_MoveTurnV(int MAX, int AC) {
 		LED_Goal();
 	} else {
 		Failsafe_Flag_OFF();
+	}
+}
+
+/* ダイクストラの経路を、Short_NANAME_MoveTurnV と同じ動きで走る */
+void Short_Dijkstra_MoveTurnV(int MAX, int AC) {
+	TurnV_Use_Dijkstra = 1;
+	Short_NANAME_MoveTurnV(MAX, AC);
+	TurnV_Use_Dijkstra = 0;
+}
+
+/* ターンを1つだけ、TurnV_Table の速度とパラメータで走る(モード10 No.1〜7、左旋回)。
+ * モード7(2.4m/s の旋回パターンテスト)と同じく壁切れを使わず、前距離・後距離は固定の距離で走る。
+ * kind: 0 大回り90、1 大回り180、2 斜め入り45、3 斜め入り135、4 斜め出45、5 斜め出135、6 V90。
+ * 斜めから入るターン(斜め出45/135・V90)は、斜め入り45(表の速度)で斜めに入ってから、
+ * 斜めの直線1区間で表の速度に合わせて走る */
+void TurnV_Test(int kind) {
+	if (kind < 0 || kind >= TV_NUM) {
+		return;
+	}
+	const TurnV_Param *p = &TurnV_Table[kind];
+	float V = p->v;
+	float s = V / TURNV_V_BASE;
+
+	if (p->st_kind == WC_NANAME) {
+		const TurnV_Param *q = &TurnV_Table[TV_IN45];
+		float V1 = q->v;
+		float s1 = V1 / TURNV_V_BASE;
+		Motor_trapezoid_PID(0, V1, V1, 30000, 90 + 90 + 180);
+		Motor_trapezoid_PID(V1, V1, V1, 15000, q->offset_st);
+		Motor_Sula_COS(V1, q->angle, q->w_max * s1, q->w_ac * s1 * s1);
+		Motor_trapezoid(V1, V1, V1, 15000, q->offset_end);
+		Motor_NANAME_PID(V1, V, V, 30000, 127.3);
+		Motor_trapezoid(V, V, V, 15000, p->offset_st);
+	} else {
+		Motor_trapezoid_PID(0, V, V, 30000, 90 + 90 + 180);
+		Motor_trapezoid_PID(V, V, V, 15000, p->offset_st);
+	}
+	Motor_Sula_COS(V, p->angle, p->w_max * s, p->w_ac * s * s);
+	Motor_trapezoid(V, V, V, 15000, p->offset_end);
+	if (p->end_kind == WC_NANAME) {
+		Motor_trapezoid(V, V, 0, 30000, 127.3 * 2);
+	} else {
+		Motor_trapezoid(V, V, 0, 30000, 180);
 	}
 }

@@ -20,6 +20,7 @@
 int SpeedPlan_Kind(int16_t code);
 
 #define SPEEDPLAN_MAX_ELEM 256	/* 圧縮後のパスの要素数の上限 */
+#define SPEEDPLAN_BACK_MARGIN 0.8f	/* 後距離のうち速度の変化に使ってよい割合(壁切れで早く終わる分の余裕) */
 
 typedef struct {
 	/* 入力 */
@@ -28,7 +29,15 @@ typedef struct {
 	float ac;			/* 直線の加速度(= AC) */
 	float v_start;		/* スタート区間の終わりの速度の上限 */
 	float v_goal;		/* ゴール停止区間に入る速度の上限 */
-	/* 出力(要素ごと。ターンは v_in == v_out) */
+	float ac_diag;		/* 斜め直線の加速度。0以下なら ac - 5000 */
+	/* ターンが直線を挟まずにつながるときの速度の変え方。
+	 * turn_back が NULL か ac_back が0以下なら、前後のターンは遅い方にそろう。
+	 * そうでなければ、前のターンの後距離(turn_back の値)のうち SPEEDPLAN_BACK_MARGIN の割合で、
+	 * 加速度 ac_back で次のターンの速度へ変える(変えきれない分だけ速い方を下げる) */
+	float (*turn_back)(int16_t code);	/* ターンの後距離[mm] */
+	float ac_back;		/* 後距離で速度を変えるときの加速度 */
+	/* 出力(要素ごと)。ターンは v_in が通過速度で、v_out は後距離の終わりの速度
+	 * (次がターンに直結していれば次のターンの速度、そうでなければ v_in と同じ) */
 	float v_in[SPEEDPLAN_MAX_ELEM];
 	float v_out[SPEEDPLAN_MAX_ELEM];
 	float v_start_out;	/* スタート区間の終わりの速度 */
