@@ -21,6 +21,19 @@ static int fail_count = 0;
 static const char *name[4] = { "FL", "R", "L", "FR" };
 
 int main(void) {
+	/* 表そのものを確かめるので、会場ごとの倍率(WallDist_Scale、WallDistance.c で
+	 * 会場の値に書き換える)は1にしておく。倍率の働きは下で別に確かめる */
+	float scale_saved[4];
+	for (int s = 0; s < 4; s++) {
+		scale_saved[s] = WallDist_Scale[s];
+		WallDist_Scale[s] = 1.0f;
+	}
+	/* 書き写した倍率が明らかにおかしくないか(0.5〜2倍) */
+	for (int s = 0; s < 4; s++) {
+		CHECK(scale_saved[s] > 0.5f && scale_saved[s] < 2.0f,
+				"%s: WallDist_Scale = %.2f が範囲外", name[s], scale_saved[s]);
+	}
+
 	for (int s = 0; s < 4; s++) {
 		/* センサ値が増えるほど距離は縮む(増えない)。表の並び間違いはここで引っかかる */
 		float prev = WallDist_mm(s, 0);
