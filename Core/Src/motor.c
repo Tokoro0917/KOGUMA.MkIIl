@@ -1026,6 +1026,140 @@ void Motor_Wallcut_END_NANAME(float Vmax, float X, int direction) {
 	PID_Mode = 0;
 }
 
+/* ---- 加速しながらの前距離・後距離(2026-10-07、最短走行の最初のターン用) ----
+ * Motor_Wallcut_ST / Motor_Wallcut_END / Motor_Wallcut_END_NANAME と同じ動きを、
+ * Vst から Vmax まで cos加速(Motor_trapezoid の加速と同じ形、加速度 Ac)しながら行う。
+ * 加速は関数の最初からの経過時間で決める。終わったときの目標速度は G_Motor_V_Target に残る */
+static void Accel_Target_Update(float Vst, float Vmax, float Ac) {
+	float Df = Vmax - Vst;
+	if (Df <= 0 || Ac <= 0) {
+		G_Motor_V_Target = Vmax;
+		G_Motor_Ac = 0;
+		return;
+	}
+	float t1 = PI * Df / 2 / Ac;
+	if (G_Motor_Count < t1) {
+		G_Motor_V_Target = Df / 2 * (1 - cos(2 * Ac / Df * G_Motor_Count)) + Vst;
+		G_Motor_Ac = Ac * sin(2 * Ac / Df * G_Motor_Count);
+	} else {
+		G_Motor_V_Target = Vmax;
+		G_Motor_Ac = 0;
+	}
+}
+
+static void Accel_Start(float Vst, int pid_mode) {
+	G_Motor_Flag = 1;
+	PID_Mode = pid_mode;
+	G_Motor_V_Target = Vst;
+	G_Motor_Ac = 0;
+	G_Motor_Angle = 0;
+	G_Motor_W_Ac = 0;
+	G_Motor_W_Target = 0;
+	Enc_Sigma_error = 0;
+	Gyro_Sigma_error = 0;
+	G_Motor_Count = 0;
+	G_Motor_X = 0;
+}
+
+/* Motor_Wallcut_ST の加速版。X_pre は前距離の前に足す距離(スタート位置から区画中心までの24mmなど) */
+void Motor_Wallcut_ST_Accel(float Vst, float Vmax, float Ac, float X_pre,
+		float X, int direction) {
+	Accel_Start(Vst, 1);
+	float X_act = 0;
+	while (1) {
+		Accel_Target_Update(Vst, Vmax, Ac);
+		if (G_Motor_X > X_pre + X * 0.50) {
+			X_act = G_Motor_X - X_pre;
+			break;
+		}
+	}
+	if (direction == 0) { //左旋回
+		if (G_Wall_data[1] == 1) {
+			while (1) {
+				Accel_Target_Update(Vst, Vmax, Ac);
+				if (g_sensor_av[2] < Cut_L) {
+					break;
+				}
+				LED_ON_L();
+			}
+		}
+	} else if (direction == 1) { //右旋回
+		if (G_Wall_data[2] == 1) {
+			while (1) {
+				Accel_Target_Update(Vst, Vmax, Ac);
+				if (g_sensor_av[1] < Cut_R) {
+					break;
+				}
+				LED_ON_R();
+			}
+		}
+	}
+	LED_Reset();
+	float X0 = G_Motor_X;
+	while (1) {
+		Accel_Target_Update(Vst, Vmax, Ac);
+		if (G_Motor_X - X0 > X - X_act) {
+			break;
+		}
+	}
+	PID_Mode = 0;
+}
+
+/* Motor_Wallcut_END の加速版 */
+void Motor_Wallcut_END_Accel(float Vst, float Vmax, float Ac, float X,
+		int direction) {
+	Accel_Start(Vst, 1);
+	Wall_search();
+	int Wall_L = G_Wall_data[1];
+	int Wall_R = G_Wall_data[2];
+	while (1) {
+		Accel_Target_Update(Vst, Vmax, Ac);
+		if (G_Motor_X > X) {
+			break;
+		}
+		if (Wall_L == 1) {
+			if (g_sensor_av[2] < Cut_L) {
+				break;
+			}
+		}
+		if (Wall_R == 1) {
+			if (g_sensor_av[1] < Cut_R) {
+				break;
+			}
+		}
+	}
+	PID_Mode = 0;
+}
+
+/* Motor_Wallcut_END_NANAME の加速版 */
+void Motor_Wallcut_END_NANAME_Accel(float Vst, float Vmax, float Ac, float X,
+		int direction) {
+	Accel_Start(Vst, 2);
+	while (1) {
+		Accel_Target_Update(Vst, Vmax, Ac);
+		if (G_Motor_X > X) {
+			break;
+		}
+	}
+	Wall_search();
+	if (G_Wall_data[2] == 1 && direction == 0) {
+		while (1) {
+			Accel_Target_Update(Vst, Vmax, Ac);
+			if (g_sensor_av[1] < Cut_R_NA) {
+				break;
+			}
+		}
+	} else if (G_Wall_data[1] == 1 && direction == 1) {
+		while (1) {
+			Accel_Target_Update(Vst, Vmax, Ac);
+			if (g_sensor_av[2] < Cut_L_NA) {
+				break;
+			}
+		}
+	}
+	PID_Mode = 0;
+}
+
 void Motor_Robot_Alignment() {
 	G_Motor_Flag = 4;
 	PID_Mode = 3;
