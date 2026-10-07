@@ -433,6 +433,41 @@ static void plan(int dijkstra) {
 	Shortest_Pass_Compression_NANAME();
 }
 
+/* 最短走行の走り出し(Move.c の Short_Start)が読む、最初の命令の形を確かめる。
+ * 先頭の -1(圧縮で0になった直線)は飛ばし、最初の命令は
+ * 直線(>0)、大回り(-4..-7、CP側も同じ番号)、斜め入り(-51..-54)のどれかであること */
+static int start_stat[8];	/* 0:直線 1:大回り90 2:大回り180 3:斜め入り45 4:斜め入り135 5:先頭に-1あり */
+static int check_start_token(void) {
+	int f = 0;
+	while (G_Short_Pass_NANAME[f] == -1)
+		f++;
+	if (f > 0)
+		start_stat[5]++;
+	int t = G_Short_Pass_NANAME[f];
+	int cp = G_Short_Pass_CP[f];
+	if (t > 0) {
+		start_stat[0]++;
+		return 1;
+	}
+	if (t <= -4 && t > -50 && (cp == -4 || cp == -6)) {
+		start_stat[1]++;
+		return 1;
+	}
+	if (t <= -4 && t > -50 && (cp == -5 || cp == -7)) {
+		start_stat[2]++;
+		return 1;
+	}
+	if (t == -51 || t == -53) {
+		start_stat[3]++;
+		return 1;
+	}
+	if (t == -52 || t == -54) {
+		start_stat[4]++;
+		return 1;
+	}
+	return snprintf(g_msg, sizeof(g_msg), "start token [%d]=%d cp=%d", f, t, cp), 0;
+}
+
 /* G_Short_Pass(圧縮前)が何マス進むか: 直進2で1マス、小回り1回で1マス */
 static int raw_cells(void) {
 	int c = 0;
@@ -463,6 +498,8 @@ static int run_suite(const char *name, int dijkstra, int count, int loops,
 		} else {
 			ok = run_tokens();
 		}
+		if (ok)
+			ok = check_start_token();
 		if (ok && !dijkstra) {
 			/* スタートマスから入るので、最初の1マスは数に入らない */
 			int rc = raw_cells() + 1;
@@ -644,6 +681,8 @@ int main(int argc, char **argv) {
 	run_suite("BFS  maze with loops", 0, n, N * 3, 2000, 3);
 	run_suite("Dijkstra perfect maze", 1, n, 0, 1000, 3);
 	run_suite("Dijkstra maze with loops", 1, n, N * 3, 2000, 3);
+	printf("start token: straight %d, big90 %d, big180 %d, in45 %d, in135 %d (leading -1: %d)\n",
+			start_stat[0], start_stat[1], start_stat[2], start_stat[3], start_stat[4], start_stat[5]);
 	if (fail_count) {
 		printf("FAILED: %d\n", fail_count);
 		return 1;
