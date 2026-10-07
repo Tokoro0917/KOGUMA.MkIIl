@@ -406,51 +406,69 @@ static int Short_Pass_Check(void) {
 #define SHORT_FIRST_AC 50000.0f
 #define SHORT_START_X 24.0f	//スタート位置から区画中心まで
 
-static float Short_First_Turn(float V, int f) {
-	int code = G_Short_Pass_NANAME[f];
-	int cp = G_Short_Pass_CP[f];
-	float pre, ang, w, post;
-	int dir, naname;
-	if (code <= -4 && code > -50 && (cp == -4 || cp == -6)) {	//大回り90
-		pre = 48; ang = 88; w = 600; post = 35;
-		dir = (cp == -4) ? 0 : 1;
-		naname = 0;
-	} else if (code <= -4 && code > -50 && (cp == -5 || cp == -7)) {	//大回り180
-		pre = 60; ang = 179; w = 650; post = 40;
-		dir = (cp == -5) ? 0 : 1;
-		naname = 0;
-	} else if (code == -51 || code == -53) {	//斜め入り45
-		pre = 15; ang = 44; w = 750; post = 42;
-		dir = (code == -51) ? 0 : 1;
-		naname = 1;
-	} else if (code == -52 || code == -54) {	//斜め入り135
-		pre = 38; ang = 134; w = 800; post = 8;
-		dir = (code == -52) ? 0 : 1;
-		naname = 1;
-	} else {	//ここには来ないはず(test_shortpath で確認)。曲がらずに区画中心まで出るだけにする
-		Motor_trapezoid_PID(0, V, V, 60000, SHORT_START_X);
-		return V;	//命令は飛ばさない(ループでいつもどおり走る)
-	}
+/* 最初のターンのパラメータ(速度 SHORT_FIRST_V = 1500 のとき)。実機で合わせるのはここ。
+ * 前距離・後距離[mm]、角度[deg]、最大角速度[deg/s]、角加速度[deg/s^2]。
+ * 初期値は Short_NANAME_Move1000 のターンを1500に合わせたもの
+ * (前距離・角度・後距離はそのまま、最大角速度×1.5、角加速度×2.25)。
+ * 調整はモード4 No.9〜No.11(スタート位置から最初のターンだけ走る) */
+FirstTurnParam G_First_Turn[FIRST_TURN_NUM] = {
+	{ 48, 88, 900, 22500, 35 },	//FIRST_TURN_BIG90  大回り90
+	{ 60, 179, 975, 22500, 40 },	//FIRST_TURN_BIG180 大回り180(スタートからは出ない)
+	{ 15, 44, 1125, 22500, 42 },	//FIRST_TURN_IN45   斜め入り45
+	{ 38, 134, 1200, 22500, 8 },	//FIRST_TURN_IN135  斜め入り135
+};
+
+/* 最初のターンを走る。kind: FIRST_TURN_*、dir: 0 左 / 1 右、V: このあとの最高速。
+ * スタート位置から24mm+前距離で 0→v1、ターン、後距離で v1→V(加速度 SHORT_FIRST_AC)。
+ * v1 は SHORT_FIRST_V(24mm+前距離で届かなければ届く速度。そのときは角速度×k、角加速度×k²)。
+ * 戻り値は後距離の終わりの速度 */
+float Short_First_Turn_Run(int kind, int dir, float V) {
+	const FirstTurnParam *p = &G_First_Turn[kind];
+	int naname = (kind == FIRST_TURN_IN45 || kind == FIRST_TURN_IN135);
 	float v1 = SHORT_FIRST_V;
-	float v_reach = sqrt(4 * SHORT_FIRST_AC * (SHORT_START_X + pre) / PI);
+	float v_reach = sqrt(4 * SHORT_FIRST_AC * (SHORT_START_X + p->pre) / PI);
 	if (v1 > v_reach) {
 		v1 = v_reach;
 	}
 	if (v1 > V) {
 		v1 = V;
 	}
-	float k = v1 / 1000;
+	float k = v1 / SHORT_FIRST_V;
 
 	LOG_get_start();	//最初のターンの調査用(2秒、モード4 No.7で出力)
-	Motor_Wallcut_ST_Accel(0, v1, SHORT_FIRST_AC, SHORT_START_X, pre, dir);
-	Motor_Sula_COS(v1, dir == 0 ? ang : -ang, w * k, 10000 * k * k);
+	Motor_Wallcut_ST_Accel(0, v1, SHORT_FIRST_AC, SHORT_START_X, p->pre, dir);
+	Motor_Sula_COS(v1, dir == 0 ? p->ang : -p->ang, p->w * k, p->w_ac * k * k);
 	if (naname) {
-		Motor_Wallcut_END_NANAME_Accel(v1, V, SHORT_FIRST_AC, post, dir);
+		Motor_Wallcut_END_NANAME_Accel(v1, V, SHORT_FIRST_AC, p->post, dir);
 	} else {
-		Motor_Wallcut_END_Accel(v1, V, SHORT_FIRST_AC, post, dir);
+		Motor_Wallcut_END_Accel(v1, V, SHORT_FIRST_AC, p->post, dir);
 	}
-	G_Short_Pass_NANAME[f] = -1;	//最初のターンは走ったので飛ばす
 	return G_Motor_V_Target;
+}
+
+static float Short_First_Turn(float V, int f) {
+	int code = G_Short_Pass_NANAME[f];
+	int cp = G_Short_Pass_CP[f];
+	int kind, dir;
+	if (code <= -4 && code > -50 && (cp == -4 || cp == -6)) {
+		kind = FIRST_TURN_BIG90;
+		dir = (cp == -4) ? 0 : 1;
+	} else if (code <= -4 && code > -50 && (cp == -5 || cp == -7)) {
+		kind = FIRST_TURN_BIG180;
+		dir = (cp == -5) ? 0 : 1;
+	} else if (code == -51 || code == -53) {
+		kind = FIRST_TURN_IN45;
+		dir = (code == -51) ? 0 : 1;
+	} else if (code == -52 || code == -54) {
+		kind = FIRST_TURN_IN135;
+		dir = (code == -52) ? 0 : 1;
+	} else {	//ここには来ないはず(test_shortpath で確認)。曲がらずに区画中心まで出るだけにする
+		Motor_trapezoid_PID(0, V, V, 60000, SHORT_START_X);
+		return V;	//命令は飛ばさない(ループでいつもどおり走る)
+	}
+	float v = Short_First_Turn_Run(kind, dir, V);
+	G_Short_Pass_NANAME[f] = -1;	//最初のターンは走ったので飛ばす
+	return v;
 }
 
 /* スタート区画からの走り出し(2026-10-07)。戻り値は最初の直線の始めの速度。

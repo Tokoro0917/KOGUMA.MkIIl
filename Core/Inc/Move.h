@@ -32,6 +32,22 @@ void Short_NANAME_MoveTurnV(int, int);
 void Short_Dijkstra_Move2000(int, int);
 void Short_Dijkstra_Move2400(int, int);
 
+/* 最短走行の最初のターン(Move.c)。モード4 No.9〜No.11 の調整用にも使う */
+#define FIRST_TURN_BIG90 0
+#define FIRST_TURN_BIG180 1
+#define FIRST_TURN_IN45 2
+#define FIRST_TURN_IN135 3
+#define FIRST_TURN_NUM 4
+typedef struct {
+	float pre;	//前距離[mm](区画中心から)
+	float ang;	//角度[deg]
+	float w;	//最大角速度[deg/s]
+	float w_ac;	//角加速度[deg/s^2]
+	float post;	//後距離[mm]
+} FirstTurnParam;
+extern FirstTurnParam G_First_Turn[FIRST_TURN_NUM];
+float Short_First_Turn_Run(int kind, int dir, float V);
+
 extern void (*G_Stop_Hook)(void);	//区画の中央で止まっているあいだに呼ぶ計算
 void Robot_Maze_Go_From_Stop(float, float);
 void Robot_Maze_Stop_And_Go(int);
