@@ -438,6 +438,7 @@ static float Short_First_Turn(float V) {
 	}
 	float k = v1 / 1000;
 
+	LOG_get_start();	//最初のターンの調査用(2秒、モード4 No.7で出力)
 	Motor_Wallcut_ST_Accel(0, v1, SHORT_FIRST_AC, SHORT_START_X, pre, dir);
 	Motor_Sula_COS(v1, dir == 0 ? ang : -ang, w * k, 10000 * k * k);
 	if (naname) {
