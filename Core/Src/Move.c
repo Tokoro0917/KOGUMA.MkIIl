@@ -394,21 +394,26 @@ static int Short_Pass_Check(void) {
 }
 
 /* スタート区画からの走り出し(2026-10-07)。
- * スタート位置(区画中心の24mm後ろ)から区画の境目までの 90+24 mm で、0→V まで
- * なめらかに加速する。cos加速の加速距離は π V² / (4 Ac) なので、
- * Ac = π V² / (4 × 114)(1000: 約6900、2000: 約27600、2400: 約39700、2700: 約50200)。
- * 以前は最初がターンだと10mmで0→Vに加速しようとして届かず(2400で約75mm必要)、
- * 目標速度がVへ跳んで、壁の切れ目を待つあいだPIDが力ずくで埋めていた。
- * 経路の最初が直線なら、その半区画ぶんをここで走ったことにする。
- * 最初がターンなら、境目からいつもどおり Motor_Wallcut_ST で壁の切れ目を見てから曲がる */
-static void Short_Start(float V) {
-	const float d = 90 + 24;
-	float ac = PI * V * V / (4 * d) + 1;
-	Motor_trapezoid_PID(0, V, V, ac, d);
-	if (G_Short_Pass_NANAME[0] == 1) {
-		G_Short_Pass_NANAME[0] = -1;
-	} else if (G_Short_Pass_NANAME[0] > 1) {
-		G_Short_Pass_NANAME[0] -= 1;
+ * 最初が直線: スタート位置(区画中心の24mm後ろ)から区画の境目までの 90+24 mm で、
+ *   0→V までなめらかに加速し、その半区画ぶんを走ったことにする。
+ *   cos加速の加速距離は π V² / (4 Ac) なので Ac = π V² / (4 × 114)
+ *   (1000: 約6900、2000: 約27600、2400: 約39700、2700: 約50200)。
+ *   最初が1.5区画以上の直線のときも、ここで加速してから残りを走る(以前は10mmで加速しようとして届かず、14mm短かった)。
+ * 最初がターン: 以前と同じ(turn_ac で turn_x mm 加速してから、ターンの前距離 Motor_Wallcut_ST へ)。
+ *   本来はスタート位置から24mmで区画中心、そこからターンの前距離・ターン・後距離。
+ *   24mm+前距離では最高速まで加速できないのが「初手ターンが間に合わない」原因(TODO.md) */
+static void Short_Start(float V, float turn_ac, float turn_x) {
+	if (G_Short_Pass_NANAME[0] >= 1) {
+		const float d = 90 + 24;
+		float ac = PI * V * V / (4 * d) + 1;
+		Motor_trapezoid_PID(0, V, V, ac, d);
+		if (G_Short_Pass_NANAME[0] == 1) {
+			G_Short_Pass_NANAME[0] = -1;
+		} else {
+			G_Short_Pass_NANAME[0] -= 1;
+		}
+	} else {
+		Motor_trapezoid_PID(0, V, V, turn_ac, turn_x);
 	}
 }
 
@@ -435,7 +440,7 @@ void Short_NANAME_Move1000(int MAX, int AC) {
 	HAL_Delay(500);
 
 	Motor_Setup();
-	Short_Start(1000);
+	Short_Start(1000, 20000, 24);
 
 	for (int i = 0; G_Short_Pass_NANAME[i] != 0; i++) {
 		if (Failsafe_Flag() == 1) {
@@ -551,7 +556,7 @@ void Short_NANAME_Move2000(int MAX, int AC) {
 	HAL_Delay(500);
 
 	Motor_Setup();
-	Short_Start(2000);
+	Short_Start(2000, 70000, 10);
 
 	for (int i = 0; G_Short_Pass_NANAME[i] != 0; i++) {
 		if (Failsafe_Flag() == 1) {
@@ -672,7 +677,7 @@ void Short_NANAME_Move2400(int MAX, int AC) {
 	HAL_Delay(500);
 
 	Motor_Setup();
-	Short_Start(2400);
+	Short_Start(2400, 60000, 10);
 	for (int i = 0; G_Short_Pass_NANAME[i] != 0; i++) {
 		if (Failsafe_Flag() == 1) {
 			break;
@@ -792,7 +797,7 @@ void Short_NANAME_Move2700(int MAX, int AC) {
 	HAL_Delay(500);
 
 	Motor_Setup();
-	Short_Start(2700);
+	Short_Start(2700, 60000, 10);
 	for (int i = 0; G_Short_Pass_NANAME[i] != 0; i++) {
 		if (Failsafe_Flag() == 1) {
 			break;
@@ -905,7 +910,7 @@ void Short_Dijkstra_Move2000(int MAX, int AC) {
 	HAL_Delay(500);
 
 	Motor_Setup();
-	Short_Start(2000);
+	Short_Start(2000, 70000, 10);
 
 	for (int i = 0; G_Short_Pass_NANAME[i] != 0; i++) {
 		if (Failsafe_Flag() == 1) {
