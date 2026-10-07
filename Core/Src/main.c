@@ -409,9 +409,9 @@ int main(void) {
 					HAL_Delay(1000);
 
 				}
-			} else if (Encorder_number_out() == 8) {		//直進(横壁制御を距離[mm]で)
-				/* No.1と同じ直進を、この走行のあいだだけ G_WallCtrl_Use_mm = 1 で走る。
-				 * ゲインは Wallsensor.c の Kp_mm / Kd_mm */
+			} else if (Encorder_number_out() == 8) {		//直進(横壁制御をセンサ値版で)
+				/* No.1と同じ直進を、この走行のあいだだけ G_WallCtrl_Use_mm = 0
+				 * (従来のセンサ値版、ゲインは Kp / Kd)で走る。標準(距離版)との比較・切り戻し用 */
 				if (Sensor_Enter() == 1) {
 					Buzzer_Enter();
 					Sensor_Start();
@@ -419,7 +419,7 @@ int main(void) {
 					Suction_Start(35);
 					LOG_get_start();
 					int use_mm_prev = G_WallCtrl_Use_mm;
-					G_WallCtrl_Use_mm = 1;
+					G_WallCtrl_Use_mm = 0;
 					Motor_trapezoid_PID(0, 3000, 0, 10000, 180*8);
 					Motor_Stop();
 					G_WallCtrl_Use_mm = use_mm_prev;
