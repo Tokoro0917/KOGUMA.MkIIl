@@ -10,6 +10,7 @@
 
 extern int G_Wall_data[];
 extern int G_WallCtrl_Use_mm;
+extern float Wall_error;
 
 void Wall_search();
 
@@ -23,6 +24,7 @@ void Wall_Distance_Calibration();
 void Wall_Center_Calibration();
 
 float calWallConrol();
+float Wall_Control_Update();
 float calWallConrol_NANAME();
 float calWallConrol_Flontwall_ST();
 float calWallConrol_Flontwall_Turn();

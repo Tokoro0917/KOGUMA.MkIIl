@@ -207,7 +207,21 @@ void Wall_Center_Calibration() {
 	}
 }
 
+/* 横壁制御の出力。Wall_Control_Update() が1msに1回計算し、
+ * calWallConrol() はその値を返す */
+static float G_Wall_PID = 0;
+
+/* 直進中の横壁制御の値を返す(1msの中で何回呼んでも同じ値)。
+ * 計算は Motor_Speed_PID_ST() の中の Wall_Control_Update() で1回だけ行う */
 float calWallConrol() {
+	return G_Wall_PID;
+}
+
+/* 横壁制御を計算する。1msに1回だけ呼ぶこと。
+ * 以前は calWallConrol() の中で計算していて、1msに3回(左PWM・右PWM・ジャイロ目標)
+ * 呼ばれていたため、2回目以降は Wall_old_error が更新済みでD項が0になり、
+ * D項が左のPWMにしか効いていなかった */
+float Wall_Control_Update() {
 
 	int Sensor_diff_L = abs(g_sensor[2][0] - g_sensor[2][1]);
 	int Sensor_diff_R = abs(g_sensor[1][0] - g_sensor[1][1]);
@@ -282,6 +296,7 @@ float calWallConrol() {
 
 	PID_Wall = KP * Wall_error + KD * Wall_Delta_error;
 
+	G_Wall_PID = PID_Wall;
 	return PID_Wall;
 }
 

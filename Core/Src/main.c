@@ -409,6 +409,24 @@ int main(void) {
 					HAL_Delay(1000);
 
 				}
+			} else if (Encorder_number_out() == 8) {		//直進(横壁制御を距離[mm]で)
+				/* No.1と同じ直進を、この走行のあいだだけ G_WallCtrl_Use_mm = 1 で走る。
+				 * ゲインは Wallsensor.c の Kp_mm / Kd_mm */
+				if (Sensor_Enter() == 1) {
+					Buzzer_Enter();
+					Sensor_Start();
+					Motor_Setup();
+					Suction_Start(35);
+					LOG_get_start();
+					int use_mm_prev = G_WallCtrl_Use_mm;
+					G_WallCtrl_Use_mm = 1;
+					Motor_trapezoid_PID(0, 3000, 0, 10000, 180*8);
+					Motor_Stop();
+					G_WallCtrl_Use_mm = use_mm_prev;
+					Suction_Stop();
+					LOG_get_end();
+					Encorder_count_reset();
+				}
 			}
 		} else if (Encorder_mode_out() == 5) {		//1m/s
 			if (Encorder_number_out() == 0) {		//90小回�?

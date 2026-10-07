@@ -271,8 +271,9 @@ void Motor_Speed_PID_ST(int V, int Ac) { // mm/s
 //			Motor_PWM_L = Motor_FF_ST + Motor_FB_ST + calWallConrol(); //
 //			Motor_PWM_R = Motor_FF_ST + Motor_FB_ST - calWallConrol(); //
 //		} else {
-		Motor_PWM_L = Motor_FF_ST + Motor_FB_ST + calWallConrol(); //
-		Motor_PWM_R = Motor_FF_ST + Motor_FB_ST - calWallConrol(); //
+		float wall = Wall_Control_Update();	//横壁制御はここで1msに1回だけ計算する
+		Motor_PWM_L = Motor_FF_ST + Motor_FB_ST + wall; //
+		Motor_PWM_R = Motor_FF_ST + Motor_FB_ST - wall; //
 //		}
 	} else if (PID_Mode == 2) {
 		Motor_PWM_L = Motor_FB_ST + Motor_FF_ST + calWallConrol_NANAME();
@@ -300,7 +301,11 @@ void Motor_Speed_PID_Turn(float W, float W_Ac) {
 	Motor_FF_ST = (((MOTORR * T) / KT) + (w * KE)) / Run_Voltage * 7;
 	//Motor_FF_Turn = 0;
 
-	if (Turn_Mode == 1) { //右向き
+	if (G_Motor_Flag == 1) { //直線: W は横壁制御(左の壁に近いと正 -> 右へ回す)
+		/* 以前は直前のターンの向き(Turn_Mode)で符号が決まり、左ターンのあとは
+		 * 壁に寄る向きに効いて、左右のPWMへの横壁制御と打ち消し合っていた */
+		Gyro_error = -W - G_Gyro_Z;
+	} else if (Turn_Mode == 1) { //右向き
 		Gyro_error = -W - G_Gyro_Z;
 	} else { //左向き
 		Gyro_error = W - G_Gyro_Z;
