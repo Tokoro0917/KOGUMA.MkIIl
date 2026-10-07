@@ -55,6 +55,12 @@ float FlontWall_Distance = 636; //530
 
 int Sensor_diff_TH = 50;
 
+/* 距離版(G_WallCtrl_Use_mm = 1)の横壁制御だけで使う値(2026-10-07、ログから決めた)。
+ * 遠い壁や壁の切れ目では mm の誤差が大きくなり、センサ値版の約2倍のキックが出ていた */
+float WallCtrl_mm_MaxDist = 104;	//これより遠い壁は使わない(区画中心から±20mm)
+float WallCtrl_mm_ErrMax = 20;	//片側の誤差の頭打ち[mm]
+int Sensor_diff_TH_mm = 25;	//壁の切れ目の判定(1msの変化)。3000mm/sでは切れ目で20〜40しか変わらない
+
 float Wall_error = 0;
 float Wall_old_error = 0;
 float Wall_Delta_error = 0;
@@ -227,7 +233,14 @@ float Wall_Control_Update() {
 	int Sensor_diff_R = abs(g_sensor[1][0] - g_sensor[1][1]);
 	float PID_Wall = 0;
 	int Wall_st = 0;
-	if ((g_sensor_av[2] > Wall_TH_L) && (Sensor_diff_L < Sensor_diff_TH)) { //左あり
+	if (G_WallCtrl_Use_mm) {
+		/* 距離版: 近い壁(WallCtrl_mm_MaxDist以内)で、切れ目でないものだけ使う */
+		float dL = WallDist_mm(WALLDIST_L, g_sensor[2][0]);
+		float dR = WallDist_mm(WALLDIST_R, g_sensor[1][0]);
+		int use_L = (dL <= WallCtrl_mm_MaxDist) && (Sensor_diff_L < Sensor_diff_TH_mm);
+		int use_R = (dR <= WallCtrl_mm_MaxDist) && (Sensor_diff_R < Sensor_diff_TH_mm);
+		Wall_st = (use_L ? 1 : 0) + (use_R ? 2 : 0);
+	} else if ((g_sensor_av[2] > Wall_TH_L) && (Sensor_diff_L < Sensor_diff_TH)) { //左あり
 		if ((g_sensor_av[1] > Wall_TH_R) && (Sensor_diff_R < Sensor_diff_TH)) { //右あり
 			Wall_st = 3;
 		} else { //右なし
@@ -267,6 +280,10 @@ float Wall_Control_Update() {
 	if (G_WallCtrl_Use_mm) {
 		Err_L = WALLDIST_CENTER_MM - WallDist_mm(WALLDIST_L, g_sensor[2][0]);
 		Err_R = WALLDIST_CENTER_MM - WallDist_mm(WALLDIST_R, g_sensor[1][0]);
+		if (Err_L > WallCtrl_mm_ErrMax) Err_L = WallCtrl_mm_ErrMax;
+		if (Err_L < -WallCtrl_mm_ErrMax) Err_L = -WallCtrl_mm_ErrMax;
+		if (Err_R > WallCtrl_mm_ErrMax) Err_R = WallCtrl_mm_ErrMax;
+		if (Err_R < -WallCtrl_mm_ErrMax) Err_R = -WallCtrl_mm_ErrMax;
 	} else {
 		Err_L = Sensor_L - Wall_L;
 		Err_R = Sensor_R - Wall_R;
@@ -290,6 +307,13 @@ float Wall_Control_Update() {
 		Wall_error = 0;
 		Wall_old_error = 0;
 	}
+
+	/* 距離版: 壁の有無が切り替わった瞬間は誤差が段差で変わるので、D項を出さない */
+	static int Wall_st_prev = 0;
+	if (G_WallCtrl_Use_mm && Wall_st != Wall_st_prev) {
+		Wall_old_error = Wall_error;
+	}
+	Wall_st_prev = Wall_st;
 
 	Wall_Delta_error = Wall_error - Wall_old_error;
 	Wall_old_error = Wall_error;
