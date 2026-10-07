@@ -185,7 +185,7 @@ int main(void) {
 				Maze_Search(flags);
 			}
 		} else if (Encorder_mode_out() == 1) {		//�?短
-			/* 最短走行。No.0 と No.10〜15 は何もしない */
+			/* 最短走行。No.0 と No.12〜15 は何もしない */
 			int n = Encorder_number_out();
 			void (*run)(int, int) = NULL;
 			int ac = 0;
@@ -216,6 +216,12 @@ int main(void) {
 			} else if (n == 9) {	//ダイクストラ コーナー2400 直線6000 加速23000
 				run = Short_Dijkstra_Move2400;
 				ac = 23000;
+			} else if (n == 10) {	//BFS ターンごとの通過速度(2400基準) 直線6000 加速20000
+				run = Short_NANAME_MoveTurnV;
+				ac = 20000;
+			} else if (n == 11) {	//ダイクストラ ターンごとの通過速度(2400基準) 直線6000 加速20000
+				run = Short_Dijkstra_MoveTurnV;
+				ac = 20000;
 			}
 			if ((run != NULL) && (Sensor_Enter() == 1)) {
 				Maze_Shortest_Run(run, 6000, ac);
@@ -1351,6 +1357,29 @@ int main(void) {
 					Buzzer_Enter();
 					Sensor_Start();
 				}
+			}
+		} else if (Encorder_mode_out() == 10) {		//ターンごとの通過速度のターン単体テスト
+			/* No.1〜7: Short_NANAME_MoveTurnV の TurnV_Table の速度とパラメータで、ターンを1つ(左)。
+			 * 1=大回り90, 2=大回り180, 3=斜め入り45, 4=斜め入り135, 5=斜め出45, 6=斜め出135, 7=V90 */
+			int n = Encorder_number_out();
+			if ((n >= 1) && (n <= 7) && (Sensor_Enter() == 1)) {
+				Buzzer_Enter();
+				Sensor_Start();
+
+				Motor_Setup();
+				Suction_Start(70);
+
+				HAL_Delay(1000);
+				LOG_get_start();
+				TurnV_Test(n - 1);
+
+				Motor_Stop();
+
+				HAL_Delay(500);
+				Suction_Stop();
+				LOG_get_end();
+
+				Encorder_count_reset();
 			}
 		}
 	}

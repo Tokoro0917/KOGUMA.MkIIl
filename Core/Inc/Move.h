@@ -31,6 +31,8 @@ void Short_NANAME_MoveTurnV(int, int);
 
 void Short_Dijkstra_Move2000(int, int);
 void Short_Dijkstra_Move2400(int, int);
+void Short_Dijkstra_MoveTurnV(int, int);
+void TurnV_Test(int kind);	/* モード10 No.1〜7: ターン単体を TurnV_Table の速度で */
 
 /* 最短走行の最初のターン(Move.c)。モード4 No.9〜No.11 の調整用にも使う */
 #define FIRST_TURN_BIG90 0

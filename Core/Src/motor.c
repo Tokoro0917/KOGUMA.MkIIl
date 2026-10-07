@@ -1029,18 +1029,20 @@ void Motor_Wallcut_END_NANAME(float Vmax, float X, int direction) {
 /* ---- 加速しながらの前距離・後距離(2026-10-07、最短走行の最初のターン用) ----
  * Motor_Wallcut_ST / Motor_Wallcut_END / Motor_Wallcut_END_NANAME と同じ動きを、
  * Vst から Vmax まで cos加速(Motor_trapezoid の加速と同じ形、加速度 Ac)しながら行う。
- * 加速は関数の最初からの経過時間で決める。終わったときの目標速度は G_Motor_V_Target に残る */
+ * Vmax < Vst なら同じ形で減速する(2026-10-07、ターンごとの速度で後距離のうちに次のターンの速度へ変える用)。
+ * 加減速は関数の最初からの経過時間で決める。終わったときの目標速度は G_Motor_V_Target に残る */
 static void Accel_Target_Update(float Vst, float Vmax, float Ac) {
 	float Df = Vmax - Vst;
-	if (Df <= 0 || Ac <= 0) {
+	if (Df == 0 || Ac <= 0) {
 		G_Motor_V_Target = Vmax;
 		G_Motor_Ac = 0;
 		return;
 	}
-	float t1 = PI * Df / 2 / Ac;
+	float Dabs = fabs(Df);
+	float t1 = PI * Dabs / 2 / Ac;
 	if (G_Motor_Count < t1) {
-		G_Motor_V_Target = Df / 2 * (1 - cos(2 * Ac / Df * G_Motor_Count)) + Vst;
-		G_Motor_Ac = Ac * sin(2 * Ac / Df * G_Motor_Count);
+		G_Motor_V_Target = Df / 2 * (1 - cos(2 * Ac / Dabs * G_Motor_Count)) + Vst;
+		G_Motor_Ac = (Df > 0 ? Ac : -Ac) * sin(2 * Ac / Dabs * G_Motor_Count);
 	} else {
 		G_Motor_V_Target = Vmax;
 		G_Motor_Ac = 0;
