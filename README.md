@@ -15,6 +15,7 @@ Drivers/             STM32 HAL / CMSIS
 KOGUMA.MkII/          旧バージョン一式(参考用に同梱)
 test/                ホスト(PC)上で走るテスト(迷路・距離変換・速度計画)
 sim/                 PC上の探索シミュレータとブラウザ用の可視化
+docs/                調べたことのメモ(他の人のターン速度の決め方など)
 .github/workflows/   CI設定
 *.ioc                STM32CubeMX設定
 STM32F446RETX_*.ld   リンカスクリプト
