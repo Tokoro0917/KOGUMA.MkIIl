@@ -23,6 +23,7 @@ void Wall_Distance_Calibration();
 void Wall_Center_Calibration();
 
 float calWallConrol();
+float Wall_Control_Update();
 float calWallConrol_NANAME();
 float calWallConrol_Flontwall_ST();
 float calWallConrol_Flontwall_Turn();
