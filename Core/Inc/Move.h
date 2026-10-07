@@ -44,6 +44,7 @@ typedef struct {
 	float w;	//最大角速度[deg/s]
 	float w_ac;	//角加速度[deg/s^2]
 	float post;	//後距離[mm]
+	float v;	//速度[mm/s](角速度・角加速度はこの速度のときの値)
 } FirstTurnParam;
 extern FirstTurnParam G_First_Turn[FIRST_TURN_NUM];
 float Short_First_Turn_Run(int kind, int dir, float V);
