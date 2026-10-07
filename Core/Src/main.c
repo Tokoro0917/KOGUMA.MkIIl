@@ -427,6 +427,33 @@ int main(void) {
 					LOG_get_end();
 					Encorder_count_reset();
 				}
+			} else if ((Encorder_number_out() >= 9)
+					&& (Encorder_number_out() <= 11)) {	//最初のターンの調整
+				/* 最短走行の最初のターン(右)だけを、スタート位置から走る。
+				 * No.9: 大回り90、No.10: 斜め入り45、No.11: 斜め入り135。
+				 * ターンのあとは後距離で2400へ加速し、そのまままっすぐ(斜めは斜めに)減速して止まる。
+				 * パラメータは Move.c の G_First_Turn。ログ(2秒)はモード4 No.7で出力 */
+				if (Sensor_Enter() == 1) {
+					int no = Encorder_number_out();
+					int kind = (no == 9) ? FIRST_TURN_BIG90 :
+								(no == 10) ? FIRST_TURN_IN45 : FIRST_TURN_IN135;
+					Buzzer_Enter();
+					Sensor_Start();
+					Suction_Start(70);
+					HAL_Delay(500);
+					Motor_Setup();
+					float v = Short_First_Turn_Run(kind, 1, 2400);
+					if (kind == FIRST_TURN_BIG90) {
+						Motor_trapezoid_PID(v, v, 0, 30000, 180);
+					} else {
+						Motor_NANAME_PID(v, v, 0, 30000, 127.3 * 2);
+					}
+					Motor_Stop();
+					HAL_Delay(300);
+					Suction_Stop();
+					LOG_get_end();
+					Encorder_count_reset();
+				}
 			}
 		} else if (Encorder_mode_out() == 5) {		//1m/s
 			if (Encorder_number_out() == 0) {		//90小回�?
