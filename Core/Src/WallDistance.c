@@ -50,7 +50,7 @@ static const WallDistTable wall_dist_table[4] = {
 
 /* 会場ごとの倍率。モード3 No.5 の出力の WallDist_Scale の行を書き写す。
  * 並びは FL, R, L, FR (g_sensor と同じ) */
-float WallDist_Scale[4] = { 1.00f, 1.00f, 1.00f, 1.00f };
+float WallDist_Scale[4] = { 1.01f, 0.99f, 1.02f, 1.06f };
 
 float WallDist_Value(int sensor, float mm) {
 	const WallDistTable *t = &wall_dist_table[sensor];
