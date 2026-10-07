@@ -53,6 +53,9 @@ void Motor_Wallcut_ST(float , float, int );
 void Motor_Wallcut_END(float , float, int );
 void Motor_Wallcut_ST_NANAME(float , float, int );
 void Motor_Wallcut_END_NANAME(float , float, int );
+void Motor_Wallcut_ST_Accel(float Vst, float Vmax, float Ac, float X_pre, float X, int direction);
+void Motor_Wallcut_END_Accel(float Vst, float Vmax, float Ac, float X, int direction);
+void Motor_Wallcut_END_NANAME_Accel(float Vst, float Vmax, float Ac, float X, int direction);
 
 
 void Motor_trapezoid_Turn(float, float, float);

@@ -23,6 +23,7 @@
 #include"Failsafe.h"
 #include "SpeedPlan.h"
 #include "LOG.h"
+#include "math.h"
 
 int G_Pass_before;
 int G_Pass_after;
@@ -393,18 +394,70 @@ static int Short_Pass_Check(void) {
 	return 0;
 }
 
-/* スタート区画からの走り出し(2026-10-07)。
+/* 最初がターンの経路の、スタートから最初のターンの後距離まで(2026-10-07)。
+ * スタート位置から24mmで区画中心、そこから前距離・ターン・後距離。24mm+前距離では
+ * 最高速まで加速できないので、最初のターンだけ 1000 のターン(Short_NANAME_Move1000 と
+ * 同じ前距離・角度・後距離)を、速度 v1 に合わせて曲がる。軌跡の形を変えないように
+ * 最大角速度は k 倍、角加速度は k² 倍(k = v1 / 1000)。
+ * 前距離までに 0→v1、後距離で v1→V へ、どちらも加速度 SHORT_FIRST_AC で cos加速する。
+ * v1 は SHORT_FIRST_V と、24mm+前距離で届く速度の小さいほう(右斜め入り45は約1410)。
+ * 戻り値は後距離の終わりの速度(Vに届かないことが多い。次の直線がこの速度から加速する) */
+#define SHORT_FIRST_V 1500.0f
+#define SHORT_FIRST_AC 40000.0f
+#define SHORT_START_X 24.0f	//スタート位置から区画中心まで
+
+static float Short_First_Turn(float V) {
+	int code = G_Short_Pass_NANAME[0];
+	int cp = G_Short_Pass_CP[0];
+	float pre, ang, w, post;
+	int dir, naname;
+	if (code > -50) {	//大回り
+		if (cp == -4 || cp == -6) {	//90
+			pre = 48; ang = 88; w = 600; post = 35;
+		} else {	//180 (-5, -7)
+			pre = 60; ang = 179; w = 650; post = 40;
+		}
+		dir = (cp == -4 || cp == -5) ? 0 : 1;
+		naname = 0;
+	} else {	//斜め入り
+		if (code == -51 || code == -53) {	//45
+			pre = 15; ang = 44; w = 750; post = 42;
+		} else {	//135 (-52, -54)
+			pre = 38; ang = 134; w = 800; post = 8;
+		}
+		dir = (code == -51 || code == -52) ? 0 : 1;
+		naname = 1;
+	}
+	float v1 = SHORT_FIRST_V;
+	float v_reach = sqrt(4 * SHORT_FIRST_AC * (SHORT_START_X + pre) / PI);
+	if (v1 > v_reach) {
+		v1 = v_reach;
+	}
+	if (v1 > V) {
+		v1 = V;
+	}
+	float k = v1 / 1000;
+
+	Motor_Wallcut_ST_Accel(0, v1, SHORT_FIRST_AC, SHORT_START_X, pre, dir);
+	Motor_Sula_COS(v1, dir == 0 ? ang : -ang, w * k, 10000 * k * k);
+	if (naname) {
+		Motor_Wallcut_END_NANAME_Accel(v1, V, SHORT_FIRST_AC, post, dir);
+	} else {
+		Motor_Wallcut_END_Accel(v1, V, SHORT_FIRST_AC, post, dir);
+	}
+	return G_Motor_V_Target;
+}
+
+/* スタート区画からの走り出し(2026-10-07)。戻り値は最初の直線の始めの速度。
  * 最初が直線: スタート位置(区画中心の24mm後ろ)から区画の境目までの 90+24 mm で、
  *   0→V までなめらかに加速し、その半区画ぶんを走ったことにする。
  *   cos加速の加速距離は π V² / (4 Ac) なので Ac = π V² / (4 × 114)
  *   (1000: 約6900、2000: 約27600、2400: 約39700、2700: 約50200)。
- *   最初が1.5区画以上の直線のときも、ここで加速してから残りを走る(以前は10mmで加速しようとして届かず、14mm短かった)。
- * 最初がターン: 以前と同じ(turn_ac で turn_x mm 加速してから、ターンの前距離 Motor_Wallcut_ST へ)。
- *   本来はスタート位置から24mmで区画中心、そこからターンの前距離・ターン・後距離。
- *   24mm+前距離では最高速まで加速できないのが「初手ターンが間に合わない」原因(TODO.md) */
-static void Short_Start(float V, float turn_ac, float turn_x) {
+ *   1.5区画以上の直線も、ここで加速してから残りを走る(以前は10mmで加速しようとして届かず、14mm短かった)。
+ * 最初がターン: Short_First_Turn() */
+static float Short_Start(float V) {
 	if (G_Short_Pass_NANAME[0] >= 1) {
-		const float d = 90 + 24;
+		const float d = 90 + SHORT_START_X;
 		float ac = PI * V * V / (4 * d) + 1;
 		Motor_trapezoid_PID(0, V, V, ac, d);
 		if (G_Short_Pass_NANAME[0] == 1) {
@@ -412,9 +465,11 @@ static void Short_Start(float V, float turn_ac, float turn_x) {
 		} else {
 			G_Short_Pass_NANAME[0] -= 1;
 		}
-	} else {
-		Motor_trapezoid_PID(0, V, V, turn_ac, turn_x);
+		return V;
 	}
+	float v = Short_First_Turn(V);
+	G_Short_Pass_NANAME[0] = -1;	//最初のターンは走ったので飛ばす
+	return v;
 }
 
 void Short_NANAME_Move1000(int MAX, int AC) {
@@ -440,14 +495,16 @@ void Short_NANAME_Move1000(int MAX, int AC) {
 	HAL_Delay(500);
 
 	Motor_Setup();
-	Short_Start(1000, 20000, 24);
+	float v_in = Short_Start(1000);	//最初の直線の始めの速度
 
 	for (int i = 0; G_Short_Pass_NANAME[i] != 0; i++) {
+		float vs = v_in;	//この区間の始めの速度(最初のターンの直後だけVより遅い)
+		v_in = 1000;
 		if (Failsafe_Flag() == 1) {
 			break;
 		}
 		if (G_Short_Pass_NANAME[i] > 0) {			//区間前進
-			Motor_trapezoid_PID(1000, MAX, 1000, AC,
+			Motor_trapezoid_PID(vs, MAX, 1000, AC,
 					90 * G_Short_Pass_NANAME[i]);
 		} else if ((G_Short_Pass_NANAME[i] <= -4)
 				&& (G_Short_Pass_NANAME[i] > -50)) {
@@ -513,7 +570,7 @@ void Short_NANAME_Move1000(int MAX, int AC) {
 				Motor_Sula_COS(1000, -88.5, 800, 20000);
 				Motor_Wallcut_END_NANAME(1000, 27, 1);
 			} else if (G_Short_Pass_NANAME[i] % 50 == 0) {			//直線
-				Motor_NANAME_PID(1000, MAX, 1000, AC - 5000,
+				Motor_NANAME_PID(vs, MAX, 1000, AC - 5000,
 						127.3 * G_Short_Pass_NANAME[i] / -50);
 
 			}
@@ -556,15 +613,17 @@ void Short_NANAME_Move2000(int MAX, int AC) {
 	HAL_Delay(500);
 
 	Motor_Setup();
-	Short_Start(2000, 70000, 10);
+	float v_in = Short_Start(2000);	//最初の直線の始めの速度
 
 	for (int i = 0; G_Short_Pass_NANAME[i] != 0; i++) {
+		float vs = v_in;	//この区間の始めの速度(最初のターンの直後だけVより遅い)
+		v_in = 2000;
 		if (Failsafe_Flag() == 1) {
 			break;
 		}
 		if (G_Short_Pass_NANAME[i] > 0) {			//区間前進
 			//Suction_change(30);
-			Motor_trapezoid_Asymmetric_PID(2000, MAX, 2000, AC,
+			Motor_trapezoid_Asymmetric_PID(vs, MAX, 2000, AC,
 					90 * G_Short_Pass_NANAME[i]);
 			//Suction_change(50);
 		} else if ((G_Short_Pass_NANAME[i] <= -4)
@@ -629,7 +688,7 @@ void Short_NANAME_Move2000(int MAX, int AC) {
 				Motor_Sula_COS(2000, -90, 2000, 130000);
 				Motor_Wallcut_END_NANAME(2000, 80, 1);
 			} else if (G_Short_Pass_NANAME[i] % 50 == 0) {			//直線
-				Motor_NANAME_PID(2000, MAX, 2000, AC - 5000,
+				Motor_NANAME_PID(vs, MAX, 2000, AC - 5000,
 						127.3 * G_Short_Pass_NANAME[i] / -50);
 
 			}
@@ -677,13 +736,15 @@ void Short_NANAME_Move2400(int MAX, int AC) {
 	HAL_Delay(500);
 
 	Motor_Setup();
-	Short_Start(2400, 60000, 10);
+	float v_in = Short_Start(2400);	//最初の直線の始めの速度
 	for (int i = 0; G_Short_Pass_NANAME[i] != 0; i++) {
+		float vs = v_in;	//この区間の始めの速度(最初のターンの直後だけVより遅い)
+		v_in = 2400;
 		if (Failsafe_Flag() == 1) {
 			break;
 		}
 		if (G_Short_Pass_NANAME[i] > 0) {			//区間前進
-			Motor_trapezoid_Asymmetric_PID(2400, MAX, 2400, AC,
+			Motor_trapezoid_Asymmetric_PID(vs, MAX, 2400, AC,
 					90 * G_Short_Pass_NANAME[i]);
 		} else if ((G_Short_Pass_NANAME[i] <= -4)
 				&& (G_Short_Pass_NANAME[i] > -50)) {
@@ -749,7 +810,7 @@ void Short_NANAME_Move2400(int MAX, int AC) {
 				Motor_Sula_COS(2400, -87, 2600, 150000);
 				Motor_Wallcut_END_NANAME(2400, 90, 1);
 			} else if (G_Short_Pass_NANAME[i] % 50 == 0) {			//直線
-				Motor_NANAME_PID(2400, MAX, 2400, AC - 10000,
+				Motor_NANAME_PID(vs, MAX, 2400, AC - 10000,
 						127.3 * G_Short_Pass_NANAME[i] / -50);
 
 			}
@@ -797,13 +858,15 @@ void Short_NANAME_Move2700(int MAX, int AC) {
 	HAL_Delay(500);
 
 	Motor_Setup();
-	Short_Start(2700, 60000, 10);
+	float v_in = Short_Start(2700);	//最初の直線の始めの速度
 	for (int i = 0; G_Short_Pass_NANAME[i] != 0; i++) {
+		float vs = v_in;	//この区間の始めの速度(最初のターンの直後だけVより遅い)
+		v_in = 2700;
 		if (Failsafe_Flag() == 1) {
 			break;
 		}
 		if (G_Short_Pass_NANAME[i] > 0) {			//区間前進
-			Motor_trapezoid_PID(2700, MAX, 2700, AC,
+			Motor_trapezoid_PID(vs, MAX, 2700, AC,
 					90 * G_Short_Pass_NANAME[i]);
 		} else if ((G_Short_Pass_NANAME[i] <= -4)
 				&& (G_Short_Pass_NANAME[i] > -50)) {
@@ -867,7 +930,7 @@ void Short_NANAME_Move2700(int MAX, int AC) {
 				Motor_Sula_COS(2700, -82, 2800, 180000);
 				Motor_Wallcut_END_NANAME(2700, 97, 1);
 			} else if (G_Short_Pass_NANAME[i] % 50 == 0) {			//直線
-				Motor_NANAME_PID(2700, MAX, 2700, AC - 10000,
+				Motor_NANAME_PID(vs, MAX, 2700, AC - 10000,
 						127.3 * G_Short_Pass_NANAME[i] / -50);
 
 			}
@@ -910,14 +973,16 @@ void Short_Dijkstra_Move2000(int MAX, int AC) {
 	HAL_Delay(500);
 
 	Motor_Setup();
-	Short_Start(2000, 70000, 10);
+	float v_in = Short_Start(2000);	//最初の直線の始めの速度
 
 	for (int i = 0; G_Short_Pass_NANAME[i] != 0; i++) {
+		float vs = v_in;	//この区間の始めの速度(最初のターンの直後だけVより遅い)
+		v_in = 2000;
 		if (Failsafe_Flag() == 1) {
 			break;
 		}
 		if (G_Short_Pass_NANAME[i] > 0) {			//区間前進
-			Motor_trapezoid_PID(2000, MAX, 2000, AC,
+			Motor_trapezoid_PID(vs, MAX, 2000, AC,
 					90 * G_Short_Pass_NANAME[i]);
 		} else if ((G_Short_Pass_NANAME[i] <= -4)
 				&& (G_Short_Pass_NANAME[i] > -50)) {
@@ -981,7 +1046,7 @@ void Short_Dijkstra_Move2000(int MAX, int AC) {
 				Motor_Sula_COS(2000, -84, 2000, 80000);
 				Motor_Wallcut_END_NANAME(2000, 35, 1);
 			} else if (G_Short_Pass_NANAME[i] % 50 == 0) {			//直線
-				Motor_NANAME_PID(2000, MAX, 2000, AC - 5000,
+				Motor_NANAME_PID(vs, MAX, 2000, AC - 5000,
 						127.3 * G_Short_Pass_NANAME[i] / -50);
 
 			}
