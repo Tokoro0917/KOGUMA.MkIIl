@@ -85,6 +85,7 @@ int Turn_Mode = 0;
 int Fun_Flag = 0;
 
 int Sula_Flag = 0;
+static int Suction_Duty = 0;	//今の吸引のduty(Suction_Start/Suction_changeで指定した値)
 
 float Alignment_TIME = 0.5;
 
@@ -134,6 +135,7 @@ void Motor_Stop() {
 }
 
 void Suction_Start(int duty) {
+	Suction_Duty = duty;
 	Fun_Flag = 1;
 	if (duty == 50) {
 		Sula_Flag = 1;
@@ -158,6 +160,7 @@ void Fun_Flag_OFF() {
 }
 
 void Suction_change(int duty) {
+	Suction_Duty = duty;
 	duty = duty * (15.8 / Run_Voltage);
 	__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, duty);
 }
@@ -166,6 +169,44 @@ void Suction_Stop() {
 	HAL_TIM_PWM_Stop(&htim2, TIM_CHANNEL_1);
 	Sula_Flag = 0;
 	Fun_Flag = 0;
+	Suction_Duty = 0;
+}
+
+/* 一時的に吸引を上げる(最短走行の最初のターンなど)。今の吸引が duty 以上なら何もしない。
+ * 吸引と一緒に、直線とターンのPIDゲインの組(Fun_Flag / Sula_Flag)も Suction_Start(duty) と同じにする。
+ * 吸引が上がりきるまで wait[ms] 待つので、止まっているときに呼ぶ。Suction_Boost_End() で元に戻す */
+static int Boost_On = 0;
+static int Boost_Duty_Prev = 0;
+static int Boost_Fun_Prev = 0;
+static int Boost_Sula_Prev = 0;
+
+void Suction_Boost_Start(int duty, int wait) {
+	Boost_On = 0;
+	if (Suction_Duty >= duty) {
+		return;
+	}
+	Boost_Duty_Prev = Suction_Duty;
+	Boost_Fun_Prev = Fun_Flag;
+	Boost_Sula_Prev = Sula_Flag;
+	Suction_change(duty);
+	Fun_Flag = 1;
+	if (duty >= 70) {
+		Sula_Flag = 2;
+	} else if (duty == 50) {
+		Sula_Flag = 1;
+	}
+	Boost_On = 1;
+	HAL_Delay(wait);
+}
+
+void Suction_Boost_End() {
+	if (!Boost_On) {
+		return;
+	}
+	Suction_change(Boost_Duty_Prev);
+	Fun_Flag = Boost_Fun_Prev;
+	Sula_Flag = Boost_Sula_Prev;
+	Boost_On = 0;
 }
 
 float cal_turnV(float W) {
