@@ -405,6 +405,11 @@ static int Short_Pass_Check(void) {
  * 次のターンの速度を下げる */
 #define SHORT_FIRST_AC 25000.0f
 #define SHORT_START_X 24.0f	//スタート位置から区画中心まで
+/* 最初のターンの吸引(2026-10-08)。G_First_Turn はモード4 No.9〜11(吸引70)で合わせたので、
+ * 吸引の弱い最短走行(2000は50)でも、最初のターンの後距離の終わりまではこの吸引にする。
+ * 発進前に上げて SHORT_FIRST_SUCTION_WAIT [ms] 待ち、後距離の終わりで元に戻す */
+#define SHORT_FIRST_SUCTION 70
+#define SHORT_FIRST_SUCTION_WAIT 500
 
 /* 最初のターンのパラメータ。実機で合わせるのはここ。
  * 前距離・後距離[mm]、角度[deg]、最大角速度[deg/s]、角加速度[deg/s^2]、速度[mm/s]。
@@ -442,6 +447,7 @@ float Short_First_Turn_Run(int kind, int dir, float V) {
 	}
 	float k = v1 / p->v;
 
+	Suction_Boost_Start(SHORT_FIRST_SUCTION, SHORT_FIRST_SUCTION_WAIT);
 	LOG_get_start();	//最初のターンの調査用(2秒、モード4 No.7で出力)
 	Motor_Wallcut_ST_Accel(0, v1, SHORT_FIRST_AC, SHORT_START_X, p->pre, dir);
 	Motor_Sula_COS(v1, dir == 0 ? p->ang : -p->ang, p->w * k, p->w_ac * k * k);
@@ -450,6 +456,7 @@ float Short_First_Turn_Run(int kind, int dir, float V) {
 	} else {
 		Motor_Wallcut_END_Accel(v1, V, SHORT_FIRST_AC, p->post, dir);
 	}
+	Suction_Boost_End();
 	return G_Motor_V_Target;
 }
 

@@ -34,6 +34,8 @@ void Motor_Back();
 void Suction_Start();
 void Fun_Flag_OFF();
 void Suction_change(int);
+void Suction_Boost_Start(int duty, int wait);
+void Suction_Boost_End();
 void Suction_Stop();
 
 void Motor_Speed_PID_ST(int, int);
