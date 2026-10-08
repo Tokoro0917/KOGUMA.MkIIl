@@ -507,9 +507,6 @@ static float Short_First_Turn(float V, int f) {
 	}
 	float v = Short_First_Turn_Run(kind, dir, V);
 	G_Short_Pass_NANAME[f] = -1;	//最初のターンは走ったので飛ばす
-	/* 次がすぐターンなら、その前距離で v から V へ加速する(目標速度を跳ばさない)。
-	 * 次が直線なら Short_Catchup() が加速するので、そこで予約を消す */
-	Wallcut_Ramp_Set(v, SHORT_FIRST_AC);
 	return v;
 }
 
@@ -518,7 +515,6 @@ static float Short_First_Turn(float V, int f) {
  * 最高速への加速と減速まで強くなるので、V に届くまでの区間だけにする。
  * 直線が短くて V に届かないときは、直線の終わりで目標速度が V へ跳ぶ(以前と同じ) */
 static float Short_Catchup(float vs, float V, float X, int naname) {
-	Wallcut_Ramp_Clear();	//直線で加速するので、次のターンの前距離での加速は使わない
 	if (vs >= V) {
 		return X;
 	}
