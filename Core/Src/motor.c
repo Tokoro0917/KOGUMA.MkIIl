@@ -117,6 +117,7 @@ void Motor_Setup_Voltage() {
 }
 
 void Motor_Stop() {
+	Wallcut_Ramp_Clear();	//使われずに残った予約を次の走行に持ち越さない
 	G_Motor_Flag = 1;
 	PID_Mode = 0;
 	G_Motor_V_Target = 0;
@@ -914,7 +915,36 @@ void Motor_Sula_COS(float V, float Angle, float Wmax, float W_Ac) {
 	G_Motor_Flag = 0;
 }
 
+/* 次のターンの前距離(Motor_Wallcut_ST / Motor_Wallcut_ST_NANAME)を、目標速度を跳ばさずに
+ * v から加速度 ac で加速して走らせる(1回だけ)。最短走行の最初のターンのすぐ後がまたターンのとき、
+ * 後距離の終わりの速度がそのターンの速度に届いていないので使う(2026-10-08)。
+ * 以前は前距離の入口で目標速度が跳び、モーターが全開になってジャイロの補正が効かず、
+ * 向きがずれていた(2000で斜め入り45→斜め出45のクランクのあと、直線で右に寄った) */
+static float Wallcut_Ramp_V = 0;
+static float Wallcut_Ramp_Ac = 0;
+
+void Wallcut_Ramp_Set(float v, float ac) {
+	Wallcut_Ramp_V = v;
+	Wallcut_Ramp_Ac = ac;
+}
+
+void Wallcut_Ramp_Clear() {
+	Wallcut_Ramp_V = 0;
+}
+
+/* 予約があれば取り出して消す。使わないとき(予約なし、または v >= Vmax)は0 */
+static float Wallcut_Ramp_Take(float Vmax) {
+	float v = Wallcut_Ramp_V;
+	Wallcut_Ramp_V = 0;
+	return (v > 0 && v < Vmax) ? v : 0;
+}
+
 void Motor_Wallcut_ST(float Vmax, float X, int direction) {		//壁の有無を変数に入れる
+	float v_ramp = Wallcut_Ramp_Take(Vmax);
+	if (v_ramp > 0) {
+		Motor_Wallcut_ST_Accel(v_ramp, Vmax, Wallcut_Ramp_Ac, 0, X, direction);
+		return;
+	}
 	G_Motor_Flag = 1;
 	PID_Mode = 1;
 
@@ -998,6 +1028,11 @@ void Motor_Wallcut_END(float Vmax, float X, int direction) {
 }
 
 void Motor_Wallcut_ST_NANAME(float Vmax, float X, int direction) {
+	float v_ramp = Wallcut_Ramp_Take(Vmax);
+	if (v_ramp > 0) {
+		Motor_Wallcut_ST_NANAME_Accel(v_ramp, Vmax, Wallcut_Ramp_Ac, X, direction);
+		return;
+	}
 	G_Motor_Flag = 1;
 	PID_Mode = 2; //2
 
@@ -1142,6 +1177,36 @@ void Motor_Wallcut_ST_Accel(float Vst, float Vmax, float Ac, float X_pre,
 	while (1) {
 		Accel_Target_Update(Vst, Vmax, Ac);
 		if (G_Motor_X - X0 > X - X_act) {
+			break;
+		}
+	}
+	PID_Mode = 0;
+}
+
+/* Motor_Wallcut_ST_NANAME の加速版 */
+void Motor_Wallcut_ST_NANAME_Accel(float Vst, float Vmax, float Ac, float X,
+		int direction) {
+	Accel_Start(Vst, 2);
+	Wall_search();
+	if (direction == 0) { //左旋回
+		while (1) {
+			Accel_Target_Update(Vst, Vmax, Ac);
+			if (g_sensor_av[2] < Cut_L_NA) {
+				break;
+			}
+		}
+	} else if (direction == 1) { //右旋回
+		while (1) {
+			Accel_Target_Update(Vst, Vmax, Ac);
+			if (g_sensor_av[1] < Cut_R_NA) {
+				break;
+			}
+		}
+	}
+	float X0 = G_Motor_X;
+	while (1) {
+		Accel_Target_Update(Vst, Vmax, Ac);
+		if (G_Motor_X - X0 > X) {
 			break;
 		}
 	}
