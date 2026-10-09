@@ -314,15 +314,19 @@ int main(void) {
 					Buzzer_Enter();
 					Sensor_Start();
 					///
+					/* タイヤ径の測定用(2026-10-09): 本番と同じ吸引で、滑らないようにゆっくり 180mm×8 = 1440mm 走る。
+					 * 実際に進んだ距離を測り、Define.h の TIREDIAMETER = 今の値 × 実際の距離 / 1440 にする。
+					 * 吸引は 2400 などと同じ 70(2000 の 50 で測るときは 50 に変える) */
 					Motor_Setup();
-					Suction_Start(35);
+					Suction_Start(70);
 					LOG_get_start();
 					//					Motor_trapezoid_PID(0, 2000, 2000, 60000, 24);
 					//					Motor_trapezoid_PID(2000, 2000, 0, 35000, 90);
 					//Motor_Multistage_PID(0, 7000, 0, 25000, 180 * 9);
 					//Motor_trapezoid_PID(0, 3000, 0, 20000, 180 * 9);
 					//Motor_trapezoid_Asymmetric_PID(0, 4000, 0, 23000, 180 * 9);
-					Motor_trapezoid_PID(0, 3000, 0, 10000, 180*8);
+					//Motor_trapezoid_PID(0, 3000, 0, 10000, 180*8);	//2026-10-09 まで(吸引35)
+					Motor_trapezoid_PID(0, 1000, 0, 5000, 180 * 8);
 					Motor_Stop();
 					Motor_Stop();
 					Motor_Stop();
