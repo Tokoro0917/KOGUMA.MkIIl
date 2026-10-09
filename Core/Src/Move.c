@@ -559,6 +559,23 @@ static float Short_Catchup(float vs, float V, float X, int naname) {
 	return X - d;
 }
 
+/* 2000(Short_NANAME_Move2000 / Short_Dijkstra_Move2000)の走り出し(2026-10-09)。
+ * 最初のターン専用の動き(Short_First_Turn)を使わず、以前と同じにする:
+ * 最初がターンなら 10mm で 2000 にしてから、ループでいつもの2000のターンを走る。
+ * 最初が直線なら Short_Start() と同じ(区画の境目までの114mmでなめらかに加速) */
+static float Short_Start(float V);
+static float Short_Start_NoFirstTurn(float V) {
+	int f = 0;
+	while (G_Short_Pass_NANAME[f] == -1) {
+		f++;
+	}
+	if (G_Short_Pass_NANAME[f] >= 1) {
+		return Short_Start(V);
+	}
+	Motor_trapezoid_PID(0, V, V, 70000, 10);
+	return V;
+}
+
 /* スタート区画からの走り出し(2026-10-07)。戻り値は最初の直線の始めの速度。
  * 最初が直線: スタート位置(区画中心の24mm後ろ)から区画の境目までの 90+24 mm で、
  *   0→V までなめらかに加速し、その半区画ぶんを走ったことにする。
@@ -738,7 +755,7 @@ void Short_NANAME_Move2000(int MAX, int AC) {
 	HAL_Delay(500);
 
 	Motor_Setup();
-	float v_in = Short_Start(2000);	//最初の直線の始めの速度
+	float v_in = Short_Start_NoFirstTurn(2000);	//最初がターンでも最初のターン専用の動きは使わない
 
 	for (int i = 0; G_Short_Pass_NANAME[i] != 0; i++) {
 		float vs = v_in;	//この区間の始めの速度(最初のターンの直後だけVより遅い)
@@ -1128,7 +1145,7 @@ void Short_Dijkstra_Move2000(int MAX, int AC) {
 	HAL_Delay(500);
 
 	Motor_Setup();
-	float v_in = Short_Start(2000);	//最初の直線の始めの速度
+	float v_in = Short_Start_NoFirstTurn(2000);	//最初がターンでも最初のターン専用の動きは使わない
 
 	for (int i = 0; G_Short_Pass_NANAME[i] != 0; i++) {
 		float vs = v_in;	//この区間の始めの速度(最初のターンの直後だけVより遅い)
