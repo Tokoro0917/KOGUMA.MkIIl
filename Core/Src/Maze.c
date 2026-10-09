@@ -574,6 +574,9 @@ static void Maze_Wall_Update_Body(void) {
 	}
 }
 
+/* 1: 既知区間加速で、直線にはさまれた小回りを大回り(90/180)に置き換える。0: 置き換えない(2026-10-09〜) */
+#define KNOWN_PASS_BIG_TURN 0
+
 static void Known_Pass_Generation_Body(void) {
 	int N = 0;
 
@@ -642,7 +645,9 @@ static void Known_Pass_Generation_Body(void) {
 	 * 90mm余分に進み、終端に1を置くと最後の小回りが大回りになって半区画先で
 	 * 終わってしまう(どちらも実機で直線が伸びる症状になった) */
 	int term_idx = i;
-	for (i = 0; i < term_idx; i++) {
+	/* 既知区間の大回り(-4〜-7)への置き換え。2026-10-09 から使わない(KNOWN_PASS_BIG_TURN 0):
+	 * 曲がりはすべて探索と同じ小回りスラローム(-2/-3)で走る */
+	for (i = 0; KNOWN_PASS_BIG_TURN && i < term_idx; i++) {
 		if (Known_Pass_CP[i] == -2) {
 			if (Known_Pass_CP[i - 1] > 0) {
 				if (Known_Pass_CP[i + 1] > 0) { //左９０おおまわり
