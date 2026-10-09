@@ -49,7 +49,8 @@ typedef struct {
 	float v;	//速度[mm/s](角速度・角加速度はこの速度のときの値)
 } FirstTurnParam;
 extern FirstTurnParam G_First_Turn[FIRST_TURN_NUM];
-float Short_First_Turn_Run(int kind, int dir, float V);
+float Short_First_Turn_Run(int kind, int dir, float V);
+extern int G_First_Turn_Accel;	/* 1: 最初のターンを加速しながら曲がる(Move.c) */
 
 extern void (*G_Stop_Hook)(void);	//区画の中央で止まっているあいだに呼ぶ計算
 void Robot_Maze_Go_From_Stop(float, float);

@@ -409,6 +409,13 @@ static int Short_Pass_Check(void) {
  * 吸引の弱い最短走行(2000は50)でも、最初のターンの後距離の終わりまではこの吸引にする。
  * 発進前に上げて SHORT_FIRST_SUCTION_WAIT [ms] 待ち、後距離の終わりで元に戻す */
 #define SHORT_FIRST_SUCTION 70
+/* 加速しながら曲がる最初のターン(2026-10-09、motor.c の Motor_First_Turn_Accel())。
+ * 1 にすると、スタートから後距離の終わりまで加速度 SHORT_FIRST_TURN_AC で加速し続け、
+ * ターンは走った距離で角度を決める(G_First_Turn の速度で合わせた軌跡を、速度に関係なく通る)。
+ * 0 なら今までどおり(前距離で加速、ターンは一定速度、後距離で加速)。モード4 No.12〜14 は 1 で走る */
+int G_First_Turn_Accel = 0;
+#define SHORT_FIRST_TURN_AC 20000.0f
+#define SHORT_FIRST_TURN_MARGIN 0.9f	//後距離が壁切れで早く終わる分の余裕(全体の距離のうち加速に使う割合)
 #define SHORT_FIRST_SUCTION_WAIT 500
 
 /* 最初のターンのパラメータ。実機で合わせるのはここ。
@@ -430,6 +437,17 @@ FirstTurnParam G_First_Turn[FIRST_TURN_NUM] = {
 	{ 38, 135, 1100, 30000, 60, 1400 },	//FIRST_TURN_IN135  斜め入り135(2026-10-08 実機で調整)
 };
 
+/* 加速しながら曲がる最初のターンの、後距離の終わりの速度(V を超えない)。
+ * スタートから後距離の終わりまでの距離 = 24mm + 前距離 + ターンの長さ + 後距離 の
+ * SHORT_FIRST_TURN_MARGIN の割合で、0 から cos加速(加速度 SHORT_FIRST_TURN_AC)で届く速度 */
+static float Short_First_Turn_Accel_V(int kind, float V) {
+	const FirstTurnParam *p = &G_First_Turn[kind];
+	float L = Sula_Ref_Length(p->v, p->ang, p->w, p->w_ac);
+	float d = (SHORT_START_X + p->pre + L + p->post) * SHORT_FIRST_TURN_MARGIN;
+	float v = sqrt(4 * SHORT_FIRST_TURN_AC * d / PI);
+	return (v < V) ? v : V;
+}
+
 /* 最初のターンを走る。kind: FIRST_TURN_*、dir: 0 左 / 1 右、V: このあとの最高速。
  * スタート位置から24mm+前距離で 0→v1、ターン、後距離で v1→V(加速度 SHORT_FIRST_AC)。
  * v1 は表の速度(24mm+前距離で届かなければ届く速度。そのときは角速度×k、角加速度×k²)。
@@ -449,6 +467,14 @@ float Short_First_Turn_Run(int kind, int dir, float V) {
 
 	Suction_Boost_Start(SHORT_FIRST_SUCTION, SHORT_FIRST_SUCTION_WAIT);
 	LOG_get_start();	//最初のターンの調査用(2秒、モード4 No.7で出力)
+	if (G_First_Turn_Accel) {
+		float vt = Short_First_Turn_Accel_V(kind, V);
+		float v = Motor_First_Turn_Accel(SHORT_START_X, p->pre, p->post, p->v,
+				dir == 0 ? p->ang : -p->ang, p->w, p->w_ac, naname, dir, vt,
+				SHORT_FIRST_TURN_AC);
+		Suction_Boost_End();
+		return v;
+	}
 	Motor_Wallcut_ST_Accel(0, v1, SHORT_FIRST_AC, SHORT_START_X, p->pre, dir);
 	Motor_Sula_COS(v1, dir == 0 ? p->ang : -p->ang, p->w * k, p->w_ac * k * k);
 	if (naname) {
@@ -485,6 +511,9 @@ static int Short_First_Turn_Kind(int f, int *kind, int *dir) {
 
 /* Short_First_Turn_Run(kind, dir, V) の後距離の終わりで出せる速度(V を超えない) */
 static float Short_First_Turn_Reach(int kind, float V) {
+	if (G_First_Turn_Accel) {
+		return Short_First_Turn_Accel_V(kind, V);
+	}
 	const FirstTurnParam *p = &G_First_Turn[kind];
 	float v1 = p->v;
 	float v_reach = sqrt(4 * SHORT_FIRST_AC * (SHORT_START_X + p->pre) / PI);

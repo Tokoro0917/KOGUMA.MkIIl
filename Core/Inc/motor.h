@@ -55,6 +55,10 @@ void Motor_Wallcut_ST(float , float, int );
 void Motor_Wallcut_END(float , float, int );
 void Motor_Wallcut_ST_NANAME(float , float, int );
 void Motor_Wallcut_END_NANAME(float , float, int );
+float Sula_Ref_Length(float v_ref, float A, float W, float Wac);
+float Motor_First_Turn_Accel(float X_pre, float pre, float post, float v_ref,
+		float Angle, float W, float Wac, int naname, int direction, float Vt,
+		float Ac);
 void Motor_Wallcut_ST_Accel(float Vst, float Vmax, float Ac, float X_pre, float X, int direction);
 void Motor_Wallcut_END_Accel(float Vst, float Vmax, float Ac, float X, int direction);
 void Motor_Wallcut_END_NANAME_Accel(float Vst, float Vmax, float Ac, float X, int direction);
