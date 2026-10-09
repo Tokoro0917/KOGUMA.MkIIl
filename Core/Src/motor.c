@@ -1203,6 +1203,211 @@ void Motor_Wallcut_END_NANAME_Accel(float Vst, float Vmax, float Ac, float X,
 	PID_Mode = 0;
 }
 
+/* ---- 加速しながら曲がる最初のターン(2026-10-09) ----
+ * スタートから後距離の終わりまで、目標速度を 0 から Vt まで1本の cos加速(加速度 Ac)で上げ続ける。
+ * ターン中も加速するので、ターンは時間ではなく走った距離で角度を決める:
+ *   基準の速度 v_ref で Motor_Sula_COS(v_ref, ang, w, w_ac) を走ったときの軌跡(曲率 = 角速度 / v_ref)を、
+ *   ターンに入ってから走った距離の関数として使い、目標角速度 = 曲率 × 今の速度 にする。
+ * こうすると速度に関係なく、v_ref で合わせたのと同じ軌跡を通る(G_First_Turn の前距離・角度・後距離をそのまま使える)。
+ * 前距離・後距離の壁切れは Motor_Wallcut_ST_Accel / Motor_Wallcut_END_Accel / Motor_Wallcut_END_NANAME_Accel と同じ */
+
+/* Motor_Sula_COS(v, A, W, Wac) の角速度の形(時間 t の関数)。台形にならないときは三角形 */
+typedef struct {
+	float W, Wac, t1, tc, T;
+} SulaRef;
+
+static void SulaRef_Init(SulaRef *r, float A, float W, float Wac) {
+	float acc = PI * W * W / (4 * Wac);
+	if (2 * acc > A) {
+		W = sqrt(2 * Wac * A / PI);
+		acc = A / 2;
+	}
+	r->W = W;
+	r->Wac = Wac;
+	r->t1 = PI * W / 2 / Wac;
+	r->tc = (A - 2 * acc) / W;
+	r->T = 2 * r->t1 + r->tc;
+}
+
+/* 時間 t での角速度 w [deg/s] と角加速度 wa [deg/s^2] */
+static void SulaRef_At(const SulaRef *r, float t, float *w, float *wa) {
+	float k = 2 * r->Wac / r->W;
+	if (t < r->t1) {
+		*w = r->W / 2 * (1 - cos(k * t));
+		*wa = r->Wac * sin(k * t);
+	} else if (t < r->t1 + r->tc) {
+		*w = r->W;
+		*wa = 0;
+	} else if (t < r->T) {
+		float u = t - r->t1 - r->tc;
+		*w = r->W / 2 * (1 + cos(k * u));
+		*wa = -r->Wac * sin(k * u);
+	} else {
+		*w = 0;
+		*wa = 0;
+	}
+}
+
+/* v_ref で Motor_Sula_COS(v_ref, A, W, Wac) を走ったときのターンの長さ[mm] */
+float Sula_Ref_Length(float v_ref, float A, float W, float Wac) {
+	SulaRef r;
+	SulaRef_Init(&r, fabs(A), W, Wac);
+	return v_ref * r.T;
+}
+
+static float FT_T0, FT_Vt, FT_Ac;
+
+/* 目標速度: 0 から FT_Vt までの cos加速(Accel_Target_Update と同じ形)。時間は関数の最初から通しで数える */
+static void FT_Target_Update(void) {
+	float t = G_Motor_Count - FT_T0;
+	float t1 = PI * FT_Vt / 2 / FT_Ac;
+	if (t < t1) {
+		G_Motor_V_Target = FT_Vt / 2 * (1 - cos(2 * FT_Ac / FT_Vt * t));
+		G_Motor_Ac = FT_Ac * sin(2 * FT_Ac / FT_Vt * t);
+	} else {
+		G_Motor_V_Target = FT_Vt;
+		G_Motor_Ac = 0;
+	}
+}
+
+/* 最初のターンを、スタートから後距離の終わりまで加速しながら走る。
+ * X_pre: 前距離の前に足す距離(スタート位置から区画中心まで)、pre/post: 前距離・後距離[mm]、
+ * v_ref・Angle(左が正)・W・Wac: 軌跡を決める基準のターン、naname: 1 なら後距離は斜め、
+ * Vt: 目標速度の上限、Ac: 加速度。戻り値は後距離の終わりの目標速度 */
+float Motor_First_Turn_Accel(float X_pre, float pre, float post, float v_ref,
+		float Angle, float W, float Wac, int naname, int direction, float Vt,
+		float Ac) {
+	SulaRef r;
+	SulaRef_Init(&r, fabs(Angle), W, Wac);
+
+	FT_Vt = Vt;
+	FT_Ac = Ac;
+
+	/* 前距離(Motor_Wallcut_ST_Accel と同じ) */
+	Accel_Start(0, 1);
+	FT_T0 = G_Motor_Count;
+	float X_act = 0;
+	while (1) {
+		FT_Target_Update();
+		if (G_Motor_X > X_pre + pre * 0.50) {
+			X_act = G_Motor_X - X_pre;
+			break;
+		}
+	}
+	if (direction == 0) { //左旋回
+		if (G_Wall_data[1] == 1) {
+			while (1) {
+				FT_Target_Update();
+				if (g_sensor_av[2] < Cut_L) {
+					break;
+				}
+				LED_ON_L();
+			}
+		}
+	} else if (direction == 1) { //右旋回
+		if (G_Wall_data[2] == 1) {
+			while (1) {
+				FT_Target_Update();
+				if (g_sensor_av[1] < Cut_R) {
+					break;
+				}
+				LED_ON_R();
+			}
+		}
+	}
+	LED_Reset();
+	float X0 = G_Motor_X;
+	while (1) {
+		FT_Target_Update();
+		if (G_Motor_X - X0 > pre - X_act) {
+			break;
+		}
+	}
+
+	/* ターン: 走った距離 s から基準の時間 s / v_ref を求め、その曲率で曲がる */
+	PID_Mode = 0;
+	Turn_Mode = (direction == 1) ? 1 : 0;
+	Gyro_Sigma_error = 0;
+	Enc_Sigma_error = 0;
+	G_Motor_Angle = 0;
+	G_Motor_X = 0;
+	G_Motor_W_Target = 0;
+	G_Motor_W_Ac = 0;
+	G_Motor_Flag = 3;
+	float L = v_ref * r.T;
+	while (1) {
+		FT_Target_Update();
+		float s = G_Motor_X;
+		if (s >= L) {
+			break;
+		}
+		float w, wa;
+		SulaRef_At(&r, s / v_ref, &w, &wa);
+		float v = (G_Tire_Speed_L + G_Tire_Speed_R) / 2;
+		if (v < 100) {
+			v = 100;
+		}
+		float kappa = w / v_ref;					//曲率 [deg/mm]
+		float dkappa = wa / (v_ref * v_ref);		//曲率の変化 [deg/mm^2]
+		G_Motor_W_Target = kappa * v;
+		G_Motor_W_Ac = dkappa * v * v + kappa * G_Motor_Ac;
+	}
+	G_Motor_W_Target = 0;
+	G_Motor_W_Ac = 0;
+
+	/* 後距離(Motor_Wallcut_END_Accel / Motor_Wallcut_END_NANAME_Accel と同じ) */
+	G_Motor_Flag = 1;
+	Enc_Sigma_error = 0;
+	Gyro_Sigma_error = 0;
+	G_Motor_Angle = 0;
+	G_Motor_X = 0;
+	if (naname) {
+		PID_Mode = 2;
+		while (1) {
+			FT_Target_Update();
+			if (G_Motor_X > post) {
+				break;
+			}
+		}
+		Wall_search();
+		if (G_Wall_data[2] == 1 && direction == 0) {
+			while (1) {
+				FT_Target_Update();
+				if (g_sensor_av[1] < Cut_R_NA) {
+					break;
+				}
+			}
+		} else if (G_Wall_data[1] == 1 && direction == 1) {
+			while (1) {
+				FT_Target_Update();
+				if (g_sensor_av[2] < Cut_L_NA) {
+					break;
+				}
+			}
+		}
+	} else {
+		PID_Mode = 1;
+		Wall_search();
+		int Wall_L = G_Wall_data[1];
+		int Wall_R = G_Wall_data[2];
+		while (1) {
+			FT_Target_Update();
+			if (G_Motor_X > post) {
+				break;
+			}
+			if (Wall_L == 1 && g_sensor_av[2] < Cut_L) {
+				break;
+			}
+			if (Wall_R == 1 && g_sensor_av[1] < Cut_R) {
+				break;
+			}
+		}
+	}
+	PID_Mode = 0;
+	return G_Motor_V_Target;
+}
+
+
 void Motor_Robot_Alignment() {
 	G_Motor_Flag = 4;
 	PID_Mode = 3;

@@ -434,21 +434,26 @@ int main(void) {
 					Encorder_count_reset();
 				}
 			} else if ((Encorder_number_out() >= 9)
-					&& (Encorder_number_out() <= 11)) {	//最初のターンの調整
+					&& (Encorder_number_out() <= 14)) {	//最初のターンの調整
 				/* 最短走行の最初のターン(右)だけを、スタート位置から走る。
 				 * No.9: 大回り90、No.10: 斜め入り45、No.11: 斜め入り135。
+				 * No.12〜14: 同じターンを、加速しながら曲がる方式(G_First_Turn_Accel = 1)で走る。
 				 * ターンのあとは後距離で2400へ加速し、そのまままっすぐ(斜めは斜めに)減速して止まる。
 				 * パラメータは Move.c の G_First_Turn。ログ(2秒)はモード4 No.7で出力 */
 				if (Sensor_Enter() == 1) {
 					int no = Encorder_number_out();
-					int kind = (no == 9) ? FIRST_TURN_BIG90 :
-								(no == 10) ? FIRST_TURN_IN45 : FIRST_TURN_IN135;
+					int m = (no - 9) % 3;
+					int kind = (m == 0) ? FIRST_TURN_BIG90 :
+								(m == 1) ? FIRST_TURN_IN45 : FIRST_TURN_IN135;
+					int accel_prev = G_First_Turn_Accel;
+					G_First_Turn_Accel = (no >= 12);
 					Buzzer_Enter();
 					Sensor_Start();
 					Suction_Start(70);
 					HAL_Delay(500);
 					Motor_Setup();
 					float v = Short_First_Turn_Run(kind, 1, 2400);
+					G_First_Turn_Accel = accel_prev;
 					if (kind == FIRST_TURN_BIG90) {
 						Motor_trapezoid_PID(v, v, 0, 30000, 180);
 					} else {
