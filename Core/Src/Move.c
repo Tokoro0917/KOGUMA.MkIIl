@@ -794,27 +794,18 @@ static void Turn2000_Big(int code) {
 	}
 }
 
-/* モード6 No.1〜7: ターンを1つ、G_Turn2000 の値で走る(左旋回。斜め出45だけ右)。壁切れを使わず、前距離・後距離は決まった距離。
- * 斜めから入るターン(斜め出45/135・V90)は、斜め入り45で斜めに入ってから走る
- * (斜め出135・V90 は間に斜めの直線1区間) */
+/* モード6 No.1〜7: ターンを1つ、G_Turn2000 の値で走る(左旋回)。壁切れを使わず、前距離・後距離は決まった距離。
+ * 斜めから入るターン(斜め出45/135・V90)は、機体を斜めに置いてスタートし、斜め1区間(127.3mm)で2000まで上げてから走る */
 void Turn2000_Test(int kind) {
 	const Turn2000_Param *p = &G_Turn2000[kind];
-	Motor_trapezoid_PID(0, 2000, 2000, 20000, 90 + 90 + 180);
 	if (p->st_kind == WC2000_NANAME) {
-		const Turn2000_Param *q = &G_Turn2000[T2000_IN45];
-		Motor_trapezoid_PID(2000, 2000, 2000, 15000, q->st);
-		Motor_Sula_COS(2000, q->ang, q->w, q->w_ac);
-		Motor_trapezoid(2000, 2000, 2000, 15000, q->end);
-		if (kind != T2000_OUT45) {
-			Motor_NANAME_PID(2000, 2000, 2000, 30000, 127.3);
-		}
+		Motor_trapezoid(0, 2000, 2000, 25000, 127.3);	//25000なら127.3mmで2000に届く
 		Motor_trapezoid(2000, 2000, 2000, 15000, p->st);
 	} else {
+		Motor_trapezoid_PID(0, 2000, 2000, 20000, 90 + 90 + 180);
 		Motor_trapezoid_PID(2000, 2000, 2000, 15000, p->st);
 	}
-	/* 斜め出45だけは右に出る(左の斜め入り45とのクランク。以前のモード6と同じ) */
-	float ang = (kind == T2000_OUT45) ? -p->ang : p->ang;
-	Motor_Sula_COS(2000, ang, p->w, p->w_ac);
+	Motor_Sula_COS(2000, p->ang, p->w, p->w_ac);
 	Motor_trapezoid(2000, 2000, 2000, 15000, p->end);
 	if (p->end_kind == WC2000_NANAME) {
 		Motor_trapezoid(2000, 2000, 0, 25000, 127.3);
