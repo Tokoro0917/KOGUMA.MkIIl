@@ -539,6 +539,14 @@ static float Short_First_Turn(float V, int f) {
 	return v;
 }
 
+/* 最短走行の斜めの直線の加速度(2026-10-10)。0 なら各走行の既定値
+ * (2000・2400・ターンごと: 直線の加速度 - 5000、2700: 直線の加速度 - 10000)。
+ * モード1は番号ごとに main.c で設定し、走り終わったら 0 に戻す */
+int G_Short_AC_NANAME = 0;
+static float Short_AC_Naname(int AC, int def_minus) {
+	return (G_Short_AC_NANAME > 0) ? G_Short_AC_NANAME : AC - def_minus;
+}
+
 /* 最初のターンの直後の直線(vs < V のとき)。vs から V までは加速度 SHORT_FIRST_AC で上げ、
  * 残りの距離を返す(残りはいつもどおり V から走る)。直線全体を強い加速度にすると、
  * 最高速への加速と減速まで強くなるので、V に届くまでの区間だけにする。
@@ -711,7 +719,7 @@ void Short_NANAME_Move1000(int MAX, int AC) {
 				{
 					float rest = Short_Catchup(vs, 1000, 127.3 * G_Short_Pass_NANAME[i] / -50, 1);
 					if (rest > 0) {
-						Motor_NANAME_PID(1000, MAX, 1000, AC - 5000, rest);
+						Motor_NANAME_PID(1000, MAX, 1000, Short_AC_Naname(AC, 5000), rest);
 					}
 				}
 
@@ -867,7 +875,7 @@ void Short_NANAME_Move2000(int MAX, int AC) {
 				{
 					float rest = Short_Catchup(vs, 2000, 127.3 * G_Short_Pass_NANAME[i] / -50, 1);
 					if (rest > 0) {
-						Motor_NANAME_PID(2000, MAX, 2000, AC - 5000, rest);
+						Motor_NANAME_PID(2000, MAX, 2000, Short_AC_Naname(AC, 5000), rest);
 					}
 				}
 
@@ -999,7 +1007,7 @@ void Short_NANAME_Move2400(int MAX, int AC) {
 				{
 					float rest = Short_Catchup(vs, 2400, 127.3 * G_Short_Pass_NANAME[i] / -50, 1);
 					if (rest > 0) {
-						Motor_NANAME_PID(2400, MAX, 2400, AC - 10000, rest);
+						Motor_NANAME_PID(2400, MAX, 2400, Short_AC_Naname(AC, 5000), rest);
 					}
 				}
 
@@ -1129,7 +1137,7 @@ void Short_NANAME_Move2700(int MAX, int AC) {
 				{
 					float rest = Short_Catchup(vs, 2700, 127.3 * G_Short_Pass_NANAME[i] / -50, 1);
 					if (rest > 0) {
-						Motor_NANAME_PID(2700, MAX, 2700, AC - 10000, rest);
+						Motor_NANAME_PID(2700, MAX, 2700, Short_AC_Naname(AC, 10000), rest);
 					}
 				}
 
@@ -1187,7 +1195,7 @@ void Short_Dijkstra_Move2000(int MAX, int AC) {
 			{
 				float rest = Short_Catchup(vs, 2000, 90 * G_Short_Pass_NANAME[i], 0);
 				if (rest > 0) {
-					Motor_trapezoid_PID(2000, MAX, 2000, AC, rest);
+					Motor_trapezoid_Asymmetric_PID(2000, MAX, 2000, AC, rest);	//BFSと同じ(減速は加速の2倍)
 				}
 			}
 		} else if ((G_Short_Pass_NANAME[i] <= -4)
@@ -1201,7 +1209,7 @@ void Short_Dijkstra_Move2000(int MAX, int AC) {
 				{
 					float rest = Short_Catchup(vs, 2000, 127.3 * G_Short_Pass_NANAME[i] / -50, 1);
 					if (rest > 0) {
-						Motor_NANAME_PID(2000, MAX, 2000, AC - 5000, rest);
+						Motor_NANAME_PID(2000, MAX, 2000, Short_AC_Naname(AC, 5000), rest);
 					}
 				}
 
@@ -1414,7 +1422,7 @@ void Short_NANAME_MoveTurnV(int MAX, int AC) {
 	plan.turn_v = TurnV_Speed;
 	plan.v_max = MAX;
 	plan.ac = AC;
-	plan.ac_diag = AC - 10000;	/* Short_NANAME_Move2400 の斜め直線と同じ */
+	plan.ac_diag = Short_AC_Naname(AC, 5000);	/* Short_NANAME_Move2400 の斜め直線と同じ */
 	plan.v_start = v_start;
 	plan.v_goal = TURNV_V_GOAL;
 	plan.turn_back = TurnV_Back;

@@ -24,6 +24,7 @@ void Sula_Shortest_Move300(int, int);
 void Sula_Shortest_Move500(int, int);
 
 void Short_NANAME_Move1000(int, int);
+extern int G_Short_AC_NANAME;
 void Short_NANAME_Move2000(int, int);
 void Short_NANAME_Move2400(int, int);
 void Short_NANAME_Move2700(int, int);
