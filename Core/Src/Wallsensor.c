@@ -59,9 +59,15 @@ int Sensor_diff_TH = 50;
 
 /* 距離版(G_WallCtrl_Use_mm = 1)の横壁制御だけで使う値(2026-10-07、ログから決めた)。
  * 遠い壁や壁の切れ目では mm の誤差が大きくなり、センサ値版の約2倍のキックが出ていた */
-float WallCtrl_mm_MaxDist = 104;	//これより遠い壁は使わない(区画中心から±20mm)
+float WallCtrl_mm_MaxDist = 120;	//これより遠い壁は使わない(区画中心から約±36mm)。104では片寄ったときに使う/使わないが切り替わり続けて中心に戻れなかった
 float WallCtrl_mm_ErrMax = 20;	//片側の誤差の頭打ち[mm]
-int Sensor_diff_TH_mm = 25;	//壁の切れ目の判定(1msの変化)。3000mm/sでは切れ目で20〜40しか変わらない
+/* 壁の切れ目の判定(2026-10-10)。壁が見え始め・消えかけのときはセンサ値が20mmほどかけて
+ * 変わり、その途中では壁を実際より遠いと読んで誤差が±20に張り付いていた。
+ * 1msの変化で見ると速度で効き方が変わり、1000mm/sでは一度も効かなかったので、
+ * WallCtrl_mm_StableLen 進む間の距離の変化が WallCtrl_mm_StableTH を超えた壁は使わない */
+float WallCtrl_mm_StableLen = 10;	//何mm前の距離と比べるか
+float WallCtrl_mm_StableTH = 8;	//この間に距離がこれ以上変わった壁は使わない[mm]
+float WallCtrl_mm_GainMin = 0.5;	//距離版のゲイン倍率(速度/500)の下限。減速中に効かなくなって片寄っていた
 
 float Wall_error = 0;
 float Wall_old_error = 0;
@@ -225,6 +231,17 @@ float calWallConrol() {
 	return G_Wall_PID;
 }
 
+/* 横センサの直近3回の中央値(2026-10-10、距離版の横壁制御用)。
+ * 左センサだけに4msおきの1回だけの落ち込みがあり、そのたびに「壁が遠い」と読んで
+ * 誤差が -20〜-33 に飛んでいたので、1回だけの飛びを消す。
+ * g_sensor[i][1] は更新直後のずらしで [0] と同じ値なので、[0](今回)・[2](1ms前)・[3](2ms前)を使う */
+static int Wall_Sensor_Median3(int i) {
+	int a = g_sensor[i][0], b = g_sensor[i][2], c = g_sensor[i][3];
+	if (a > b) { int t = a; a = b; b = t; }
+	if (b > c) { b = c; }
+	return (a > b) ? a : b;
+}
+
 /* 横壁制御を計算する。1msに1回だけ呼ぶこと。
  * 以前は calWallConrol() の中で計算していて、1msに3回(左PWM・右PWM・ジャイロ目標)
  * 呼ばれていたため、2回目以降は Wall_old_error が更新済みでD項が0になり、
@@ -235,12 +252,31 @@ float Wall_Control_Update() {
 	int Sensor_diff_R = abs(g_sensor[1][0] - g_sensor[1][1]);
 	float PID_Wall = 0;
 	int Wall_st = 0;
+	int Sensor_L_med = Wall_Sensor_Median3(2);
+	int Sensor_R_med = Wall_Sensor_Median3(1);
+	/* 距離版の切れ目判定用に、横壁までの距離を1msごとに残す。
+	 * 上の Sensor_diff_L/R は g_sensor[i][1] がずらし後に [0] と同じ値なので常に0で、
+	 * 切れ目判定が一度も効いていなかった(センサ値版はそのまま) */
+	#define WALL_HIST_N 16
+	static float hist_L[WALL_HIST_N], hist_R[WALL_HIST_N];
+	static int hist_i = 0;
+	float dL = WallDist_mm(WALLDIST_L, Sensor_L_med);
+	float dR = WallDist_mm(WALLDIST_R, Sensor_R_med);
+	hist_i = (hist_i + 1) % WALL_HIST_N;
+	hist_L[hist_i] = dL;
+	hist_R[hist_i] = dR;
 	if (G_WallCtrl_Use_mm) {
-		/* 距離版: 近い壁(WallCtrl_mm_MaxDist以内)で、切れ目でないものだけ使う */
-		float dL = WallDist_mm(WALLDIST_L, g_sensor[2][0]);
-		float dR = WallDist_mm(WALLDIST_R, g_sensor[1][0]);
-		int use_L = (dL <= WallCtrl_mm_MaxDist) && (Sensor_diff_L < Sensor_diff_TH_mm);
-		int use_R = (dR <= WallCtrl_mm_MaxDist) && (Sensor_diff_R < Sensor_diff_TH_mm);
+		/* 距離版: 近い壁(WallCtrl_mm_MaxDist以内)で、WallCtrl_mm_StableLen 進む間に
+		 * 距離があまり変わっていないものだけ使う。比べる相手は速度から何ms前かを決める */
+		int back = WALL_HIST_N - 1;
+		if (G_Motor_V_Target > 0) {
+			back = (int) (WallCtrl_mm_StableLen * 1000 / G_Motor_V_Target + 0.5f);
+		}
+		if (back < 2) back = 2;
+		if (back > WALL_HIST_N - 1) back = WALL_HIST_N - 1;
+		int j = (hist_i - back + WALL_HIST_N) % WALL_HIST_N;
+		int use_L = (dL <= WallCtrl_mm_MaxDist) && (fabsf(dL - hist_L[j]) < WallCtrl_mm_StableTH);
+		int use_R = (dR <= WallCtrl_mm_MaxDist) && (fabsf(dR - hist_R[j]) < WallCtrl_mm_StableTH);
 		Wall_st = (use_L ? 1 : 0) + (use_R ? 2 : 0);
 	} else if ((g_sensor_av[2] > Wall_TH_L) && (Sensor_diff_L < Sensor_diff_TH)) { //左あり
 		if ((g_sensor_av[1] > Wall_TH_R) && (Sensor_diff_R < Sensor_diff_TH)) { //右あり
@@ -262,8 +298,12 @@ float Wall_Control_Update() {
 		KP = Kp_base * (2000 / 500);
 		KD = Kd_base * (2000 / 500);
 	} else {
-		KP = Kp_base * (G_Motor_V_Target / 500);
-		KD = Kd_base * (G_Motor_V_Target / 500);
+		float gain = G_Motor_V_Target / 500;
+		if (G_WallCtrl_Use_mm && (G_Motor_V_Target > 0) && (gain < WallCtrl_mm_GainMin)) {
+			gain = WallCtrl_mm_GainMin;
+		}
+		KP = Kp_base * gain;
+		KD = Kd_base * gain;
 	}
 
 	int Sensor_L = g_sensor[2][0];
@@ -280,8 +320,8 @@ float Wall_Control_Update() {
 	 * 近づいたときの値の急増は変換で吸収されるので600での頭打ちは不要 */
 	float Err_L, Err_R;
 	if (G_WallCtrl_Use_mm) {
-		Err_L = WALLDIST_CENTER_MM - WallDist_mm(WALLDIST_L, g_sensor[2][0]);
-		Err_R = WALLDIST_CENTER_MM - WallDist_mm(WALLDIST_R, g_sensor[1][0]);
+		Err_L = WALLDIST_CENTER_MM - dL;
+		Err_R = WALLDIST_CENTER_MM - dR;
 		if (Err_L > WallCtrl_mm_ErrMax) Err_L = WallCtrl_mm_ErrMax;
 		if (Err_L < -WallCtrl_mm_ErrMax) Err_L = -WallCtrl_mm_ErrMax;
 		if (Err_R > WallCtrl_mm_ErrMax) Err_R = WallCtrl_mm_ErrMax;
