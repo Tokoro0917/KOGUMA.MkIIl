@@ -50,7 +50,9 @@ static const WallDistTable wall_dist_table[4] = {
 
 /* 会場ごとの倍率。モード3 No.5 の出力の WallDist_Scale の行を書き写す。
  * 並びは FL, R, L, FR (g_sensor と同じ) */
-float WallDist_Scale[4] = { 0.99f, 1.07f, 0.95f, 1.02f };
+/* 2026-10-10: 区画中心(前壁なし)のモード3 No.4 で L=242, R=198 → L 82.0mm, R 89.5mm だったので
+ * L・R を84mmになるよう合わせた(FL・FR は前壁がなく測れないのでそのまま) */
+float WallDist_Scale[4] = { 0.99f, 0.96f, 1.00f, 1.02f };
 
 float WallDist_Value(int sensor, float mm) {
 	const WallDistTable *t = &wall_dist_table[sensor];

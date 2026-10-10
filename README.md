@@ -432,3 +432,4 @@ CIは`.github/workflows/maze-test.yml`で、masterへのpushとPRのときに行
 ファームウェア本体はSTM32CubeIDEで本フォルダをワークスペースにインポートしてビルドする。
 
 迷路アルゴリズムだけを手元で確かめたい場合は、上記「テストとCI」のgccコマンドでホスト上でも動かせる。
+- `WallDist_Scale`の R・L を 1.07・0.95 から 0.96・1.00 にした(`WallDistance.c`)。区画中心でモード3 No.4 が L=242→82.0mm、R=198→89.5mm で、左右で7.5mm食い違っていた
