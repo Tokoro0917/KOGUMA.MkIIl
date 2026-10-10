@@ -22,6 +22,7 @@ extern float Motor_Voltage_L;
 extern float Motor_Voltage_R;
 
 extern int G_Motor_Flag;
+extern int G_WallCut_Pillar;
 extern float G_Motor_Count;
 
 void Motor_PWM_Generate();

@@ -67,6 +67,10 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
+/* 1 にすると、最短走行(モード1、モード0 No.8〜10 の探索後の最短)の壁切れを柱で見る
+ * (壁のない所でも、区画の境目の柱で壁切れする。motor.c の G_WallCut_Pillar)。
+ * 0 なら従来どおり壁があるときだけ壁切れする。探索中の壁切れはいつも従来どおり */
+static int Short_WallCut_Pillar = 0;
 
 /* USER CODE END PV */
 
@@ -1442,7 +1446,9 @@ static void Maze_Search(int flags) {
 			HAL_Delay(2000);
 			Motor_Setup();
 			Motor_Stop();
+			G_WallCut_Pillar = Short_WallCut_Pillar;
 			Short_Dijkstra_Move2000(6000, 20000);
+			G_WallCut_Pillar = 0;
 			LED_Reset();
 			HAL_Delay(500);
 		}
@@ -1462,7 +1468,9 @@ static void Maze_Shortest_Run(void (*run)(int, int), int max, int ac) {
 
 	Motor_Setup();
 	Motor_Stop();
+	G_WallCut_Pillar = Short_WallCut_Pillar;
 	run(max, ac);
+	G_WallCut_Pillar = 0;
 	Motor_Free();
 	LED_Reset();
 	HAL_Delay(500);
