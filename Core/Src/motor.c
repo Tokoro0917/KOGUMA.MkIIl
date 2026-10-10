@@ -97,8 +97,9 @@ float Cut_R_NA = 150;
 float Cut_L_NA = 150;
 
 /* 壁切れを柱で見る(2026-10-10)。0 は従来どおり「壁があるときだけ、センサ値が Cut_* を下回ったら」。
- * 1 は「壁の有無に関係なく、柱の後ろの端でセンサ値が Pillar_TH 以上減ったら」(Wallsensor.c の Pillar_Edge)。
- * 区画の境目には必ず柱があるので、壁のない所でも壁切れできる。
+ * 1 は、壁があるときは従来どおり、壁がないときは「柱の後ろの端でセンサ値が Pillar_TH 以上減ったら」
+ * (Wallsensor.c の Pillar_Edge)。区画の境目には必ず柱があるので、壁のない所でも壁切れできる。
+ * 壁がある所は従来と同じ位置で反応するので、前距離・後距離はそのまま使える。
  * 斜めの壁切れ(Cut_L_NA / Cut_R_NA を使うもの)は柱版でも従来どおり。
  * 最短走行の間だけ main.c の Short_WallCut_Pillar に従って立てる */
 int G_WallCut_Pillar = 0;
@@ -925,11 +926,12 @@ void Motor_Sula_COS(float V, float Angle, float Wmax, float W_Ac) {
 }
 
 /* 壁切れの待ち方(G_WallCut_Pillar で従来版と柱版を切り替える)
- * Cut_Need: 待つかどうか。従来版は壁があるときだけ、柱版はいつも待つ
+ * Cut_Need: 待つかどうか。従来版は壁があるときだけ、柱版はいつも待つ(壁がなければ柱で見る)
  * Cut_Begin: 待ち始め。warm = 1 ならターン直後なので PILLAR_WARM_MS は柱を見ない。
  *   max_x: 柱版で、柱が見つからないまま諦めるまでの距離。前距離では X の残り半分、後距離では Pillar_MaxX
  *   (柱をすでに過ぎていたとき、次の柱まで行ってしまわないように)
- * Cut_Hit: 切れ目が来たら 1(i: 1 右 / 2 左、cut: 従来版の閾値、th: 柱版の閾値) */
+ * Cut_Hit: 切れ目が来たら 1(i: 1 右 / 2 左、wall: その側に壁があるか、cut: 従来の閾値、th: 柱の閾値)。
+ *   壁があれば柱版でも従来どおり cut を下回ったら。壁がなく柱版なら Pillar_Edge */
 static float Cut_X0 = 0;
 static float Cut_MaxX = 0;
 static uint32_t Cut_T0 = 0;
@@ -943,8 +945,8 @@ static void Cut_Begin(int warm, float max_x) {
 	Cut_T0 = HAL_GetTick();
 	Cut_Warm = warm;
 }
-static int Cut_Hit(int i, float cut, int th) {
-	if (!G_WallCut_Pillar) {
+static int Cut_Hit(int i, int wall, float cut, int th) {
+	if (!G_WallCut_Pillar || wall) {
 		return g_sensor_av[i] < cut;
 	}
 	if (G_Motor_X - Cut_X0 > Cut_MaxX) {
@@ -975,20 +977,23 @@ void Motor_Wallcut_ST(float Vmax, float X, int direction) {		//壁の有無を�
 			break;
 		}
 	}
+	/* 壁の有無は待ち始めの時点で決める(G_Wall_data は1msごとに更新され、壁が終わると0になるため) */
+	int cut_wall_L = G_Wall_data[1];
+	int cut_wall_R = G_Wall_data[2];
 	Cut_Begin(0, X_act);
 	if (direction == 0) { //左旋回
-		if (Cut_Need(G_Wall_data[1])) {
+		if (Cut_Need(cut_wall_L)) {
 			while (1) {
-				if (Cut_Hit(2, Cut_L, Pillar_TH)) {
+				if (Cut_Hit(2, cut_wall_L, Cut_L, Pillar_TH)) {
 					break;
 				}
 				LED_ON_L();
 			}
 		}
 	} else if (direction == 1) { //右旋回
-		if (Cut_Need(G_Wall_data[2])) {
+		if (Cut_Need(cut_wall_R)) {
 			while (1) {
-				if (Cut_Hit(1, Cut_R, Pillar_TH)) {
+				if (Cut_Hit(1, cut_wall_R, Cut_R, Pillar_TH)) {
 					break;
 				}
 				LED_ON_R();
@@ -1027,10 +1032,10 @@ void Motor_Wallcut_END(float Vmax, float X, int direction) {
 		if (G_Motor_X > X) {
 			break;
 		}
-		if (Cut_Need(Wall_L) && Cut_Hit(2, Cut_L, Pillar_TH)) {
+		if (Cut_Need(Wall_L) && Cut_Hit(2, Wall_L, Cut_L, Pillar_TH)) {
 			break;
 		}
-		if (Cut_Need(Wall_R) && Cut_Hit(1, Cut_R, Pillar_TH)) {
+		if (Cut_Need(Wall_R) && Cut_Hit(1, Wall_R, Cut_R, Pillar_TH)) {
 			break;
 		}
 	}
@@ -1156,22 +1161,25 @@ void Motor_Wallcut_ST_Accel(float Vst, float Vmax, float Ac, float X_pre,
 			break;
 		}
 	}
+	/* 壁の有無は待ち始めの時点で決める(G_Wall_data は1msごとに更新され、壁が終わると0になるため) */
+	int cut_wall_L = G_Wall_data[1];
+	int cut_wall_R = G_Wall_data[2];
 	Cut_Begin(0, X_act);
 	if (direction == 0) { //左旋回
-		if (Cut_Need(G_Wall_data[1])) {
+		if (Cut_Need(cut_wall_L)) {
 			while (1) {
 				Accel_Target_Update(Vst, Vmax, Ac);
-				if (Cut_Hit(2, Cut_L, Pillar_TH)) {
+				if (Cut_Hit(2, cut_wall_L, Cut_L, Pillar_TH)) {
 					break;
 				}
 				LED_ON_L();
 			}
 		}
 	} else if (direction == 1) { //右旋回
-		if (Cut_Need(G_Wall_data[2])) {
+		if (Cut_Need(cut_wall_R)) {
 			while (1) {
 				Accel_Target_Update(Vst, Vmax, Ac);
-				if (Cut_Hit(1, Cut_R, Pillar_TH)) {
+				if (Cut_Hit(1, cut_wall_R, Cut_R, Pillar_TH)) {
 					break;
 				}
 				LED_ON_R();
@@ -1202,10 +1210,10 @@ void Motor_Wallcut_END_Accel(float Vst, float Vmax, float Ac, float X,
 		if (G_Motor_X > X) {
 			break;
 		}
-		if (Cut_Need(Wall_L) && Cut_Hit(2, Cut_L, Pillar_TH)) {
+		if (Cut_Need(Wall_L) && Cut_Hit(2, Wall_L, Cut_L, Pillar_TH)) {
 			break;
 		}
-		if (Cut_Need(Wall_R) && Cut_Hit(1, Cut_R, Pillar_TH)) {
+		if (Cut_Need(Wall_R) && Cut_Hit(1, Wall_R, Cut_R, Pillar_TH)) {
 			break;
 		}
 	}
@@ -1332,22 +1340,25 @@ float Motor_First_Turn_Accel(float X_pre, float pre, float post, float v_ref,
 			break;
 		}
 	}
+	/* 壁の有無は待ち始めの時点で決める(G_Wall_data は1msごとに更新され、壁が終わると0になるため) */
+	int cut_wall_L = G_Wall_data[1];
+	int cut_wall_R = G_Wall_data[2];
 	Cut_Begin(0, X_act);
 	if (direction == 0) { //左旋回
-		if (Cut_Need(G_Wall_data[1])) {
+		if (Cut_Need(cut_wall_L)) {
 			while (1) {
 				FT_Target_Update();
-				if (Cut_Hit(2, Cut_L, Pillar_TH)) {
+				if (Cut_Hit(2, cut_wall_L, Cut_L, Pillar_TH)) {
 					break;
 				}
 				LED_ON_L();
 			}
 		}
 	} else if (direction == 1) { //右旋回
-		if (Cut_Need(G_Wall_data[2])) {
+		if (Cut_Need(cut_wall_R)) {
 			while (1) {
 				FT_Target_Update();
-				if (Cut_Hit(1, Cut_R, Pillar_TH)) {
+				if (Cut_Hit(1, cut_wall_R, Cut_R, Pillar_TH)) {
 					break;
 				}
 				LED_ON_R();
@@ -1435,10 +1446,10 @@ float Motor_First_Turn_Accel(float X_pre, float pre, float post, float v_ref,
 			if (G_Motor_X > post) {
 				break;
 			}
-			if (Cut_Need(Wall_L) && Cut_Hit(2, Cut_L, Pillar_TH)) {
+			if (Cut_Need(Wall_L) && Cut_Hit(2, Wall_L, Cut_L, Pillar_TH)) {
 				break;
 			}
-			if (Cut_Need(Wall_R) && Cut_Hit(1, Cut_R, Pillar_TH)) {
+			if (Cut_Need(Wall_R) && Cut_Hit(1, Wall_R, Cut_R, Pillar_TH)) {
 				break;
 			}
 		}
