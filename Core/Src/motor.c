@@ -99,11 +99,11 @@ float Cut_L_NA = 150;
 /* 壁切れを柱で見る(2026-10-10)。0 は従来どおり「壁があるときだけ、センサ値が Cut_* を下回ったら」。
  * 1 は「壁の有無に関係なく、柱の後ろの端でセンサ値が Pillar_TH 以上減ったら」(Wallsensor.c の Pillar_Edge)。
  * 区画の境目には必ず柱があるので、壁のない所でも壁切れできる。
+ * 斜めの壁切れ(Cut_L_NA / Cut_R_NA を使うもの)は柱版でも従来どおり。
  * 最短走行の間だけ main.c の Short_WallCut_Pillar に従って立てる */
 int G_WallCut_Pillar = 0;
 int Pillar_TH = 40;	//柱の切れ目とみなす減り方(センサ値、Pillar_Len 進む間)
-int Pillar_TH_NA = 40;	//斜めのときの Pillar_TH
-float Pillar_MaxX = 140;	//斜め・後距離で、柱が見つからないまま、これだけ進んだら諦める[mm](斜めの1区画は約127mm)
+float Pillar_MaxX = 140;	//後距離で、柱が見つからないまま、これだけ進んだら諦める[mm]
 #define PILLAR_WARM_MS 9	//ターン直後は、ターン中のセンサ値が履歴に残っているので見ない[ms]
 
 float Run_Voltage;
@@ -927,7 +927,7 @@ void Motor_Sula_COS(float V, float Angle, float Wmax, float W_Ac) {
 /* 壁切れの待ち方(G_WallCut_Pillar で従来版と柱版を切り替える)
  * Cut_Need: 待つかどうか。従来版は壁があるときだけ、柱版はいつも待つ
  * Cut_Begin: 待ち始め。warm = 1 ならターン直後なので PILLAR_WARM_MS は柱を見ない。
- *   max_x: 柱版で、柱が見つからないまま諦めるまでの距離。前距離では X の残り半分
+ *   max_x: 柱版で、柱が見つからないまま諦めるまでの距離。前距離では X の残り半分、後距離では Pillar_MaxX
  *   (柱をすでに過ぎていたとき、次の柱まで行ってしまわないように)
  * Cut_Hit: 切れ目が来たら 1(i: 1 右 / 2 左、cut: 従来版の閾値、th: 柱版の閾値) */
 static float Cut_X0 = 0;
@@ -1049,16 +1049,15 @@ void Motor_Wallcut_ST_NANAME(float Vmax, float X, int direction) {
 	Gyro_Sigma_error = 0;
 	Wall_search();
 	G_Motor_X = 0;
-	Cut_Begin(0, Pillar_MaxX);
 	if (direction == 0) { //左旋回
 		while (1) {
-			if (Cut_Hit(2, Cut_L_NA, Pillar_TH_NA)) {
+			if (g_sensor_av[2] < Cut_L_NA) {
 				break;
 			}
 		}
 	} else if (direction == 1) { //右旋回
 		while (1) {
-			if (Cut_Hit(1, Cut_R_NA, Pillar_TH_NA)) {
+			if (g_sensor_av[1] < Cut_R_NA) {
 				break;
 			}
 		}
@@ -1091,16 +1090,15 @@ void Motor_Wallcut_END_NANAME(float Vmax, float X, int direction) {
 		}
 	}
 	Wall_search();
-	Cut_Begin(0, Pillar_MaxX);
-	if (Cut_Need(G_Wall_data[2]) && direction == 0) {
+	if (G_Wall_data[2] == 1 && direction == 0) {
 		while (1) {
-			if (Cut_Hit(1, Cut_R_NA, Pillar_TH_NA)) {
+			if (g_sensor_av[1] < Cut_R_NA) {
 				break;
 			}
 		}
-	} else if (Cut_Need(G_Wall_data[1]) && direction == 1) {
+	} else if (G_Wall_data[1] == 1 && direction == 1) {
 		while (1) {
-			if (Cut_Hit(2, Cut_L_NA, Pillar_TH_NA)) {
+			if (g_sensor_av[2] < Cut_L_NA) {
 				break;
 			}
 		}
@@ -1225,18 +1223,17 @@ void Motor_Wallcut_END_NANAME_Accel(float Vst, float Vmax, float Ac, float X,
 		}
 	}
 	Wall_search();
-	Cut_Begin(0, Pillar_MaxX);
-	if (Cut_Need(G_Wall_data[2]) && direction == 0) {
+	if (G_Wall_data[2] == 1 && direction == 0) {
 		while (1) {
 			Accel_Target_Update(Vst, Vmax, Ac);
-			if (Cut_Hit(1, Cut_R_NA, Pillar_TH_NA)) {
+			if (g_sensor_av[1] < Cut_R_NA) {
 				break;
 			}
 		}
-	} else if (Cut_Need(G_Wall_data[1]) && direction == 1) {
+	} else if (G_Wall_data[1] == 1 && direction == 1) {
 		while (1) {
 			Accel_Target_Update(Vst, Vmax, Ac);
-			if (Cut_Hit(2, Cut_L_NA, Pillar_TH_NA)) {
+			if (g_sensor_av[2] < Cut_L_NA) {
 				break;
 			}
 		}
@@ -1412,18 +1409,17 @@ float Motor_First_Turn_Accel(float X_pre, float pre, float post, float v_ref,
 			}
 		}
 		Wall_search();
-		Cut_Begin(0, Pillar_MaxX);
-		if (Cut_Need(G_Wall_data[2]) && direction == 0) {
+		if (G_Wall_data[2] == 1 && direction == 0) {
 			while (1) {
 				FT_Target_Update();
-				if (Cut_Hit(1, Cut_R_NA, Pillar_TH_NA)) {
+				if (g_sensor_av[1] < Cut_R_NA) {
 					break;
 				}
 			}
-		} else if (Cut_Need(G_Wall_data[1]) && direction == 1) {
+		} else if (G_Wall_data[1] == 1 && direction == 1) {
 			while (1) {
 				FT_Target_Update();
-				if (Cut_Hit(2, Cut_L_NA, Pillar_TH_NA)) {
+				if (g_sensor_av[2] < Cut_L_NA) {
 					break;
 				}
 			}
