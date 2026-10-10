@@ -25,6 +25,7 @@ void Wall_Center_Calibration();
 
 float calWallConrol();
 float Wall_Control_Update();
+int Pillar_Edge(int i, int th);
 float calWallConrol_NANAME();
 float calWallConrol_Flontwall_ST();
 float calWallConrol_Flontwall_Turn();

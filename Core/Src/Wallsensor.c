@@ -235,11 +235,32 @@ float calWallConrol() {
  * 左センサだけに4msおきの1回だけの落ち込みがあり、そのたびに「壁が遠い」と読んで
  * 誤差が -20〜-33 に飛んでいたので、1回だけの飛びを消す。
  * g_sensor[i][1] は更新直後のずらしで [0] と同じ値なので、[0](今回)・[2](1ms前)・[3](2ms前)を使う */
-static int Wall_Sensor_Median3(int i) {
-	int a = g_sensor[i][0], b = g_sensor[i][2], c = g_sensor[i][3];
+static int Median3(int a, int b, int c) {
 	if (a > b) { int t = a; a = b; b = t; }
 	if (b > c) { b = c; }
 	return (a > b) ? a : b;
+}
+
+static int Wall_Sensor_Median3(int i) {
+	return Median3(g_sensor[i][0], g_sensor[i][2], g_sensor[i][3]);
+}
+
+/* 柱の切れ目の判定(2026-10-10、壁切れを柱で見るとき用。motor.c の G_WallCut_Pillar)。
+ * Pillar_Len 進む前(速度から何ms前かを決める)と今のセンサ値を比べ、th 以上減っていたら 1。
+ * 壁の終わりも、壁のない所の柱も、柱の後ろの端でセンサ値が下がるので同じ位置で見つかる。
+ * 1回だけの飛びで誤判定しないよう、どちらも3回の中央値を使う。
+ * g_sensor[i][] は1msごとに更新され、[1] は [0] と同じ値なので、kms前は [k+1] */
+float Pillar_Len = 5;	//何mm前のセンサ値と比べるか
+int Pillar_Edge(int i, int th) {
+	int k = 6;
+	if (G_Motor_V_Target > 0) {
+		k = (int) (Pillar_Len * 1000 / G_Motor_V_Target + 0.5f);
+	}
+	if (k < 1) k = 1;
+	if (k > 6) k = 6;	//[k+3] が履歴(10個)に収まる範囲
+	int now = Wall_Sensor_Median3(i);
+	int past = Median3(g_sensor[i][k + 1], g_sensor[i][k + 2], g_sensor[i][k + 3]);
+	return (past - now) >= th;
 }
 
 /* 横壁制御を計算する。1msに1回だけ呼ぶこと。
