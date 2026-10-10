@@ -59,9 +59,9 @@ int Sensor_diff_TH = 50;
 
 /* 距離版(G_WallCtrl_Use_mm = 1)の横壁制御だけで使う値(2026-10-07、ログから決めた)。
  * 遠い壁や壁の切れ目では mm の誤差が大きくなり、センサ値版の約2倍のキックが出ていた */
-float WallCtrl_mm_MaxDist = 104;	//これより遠い壁は使わない(区画中心から±20mm)
+float WallCtrl_mm_MaxDist = 120;	//これより遠い壁は使わない(区画中心から約±36mm)。104では片寄ったときに使う/使わないが切り替わり続けて中心に戻れなかった
 float WallCtrl_mm_ErrMax = 20;	//片側の誤差の頭打ち[mm]
-int Sensor_diff_TH_mm = 25;	//壁の切れ目の判定(1msの変化)。3000mm/sでは切れ目で20〜40しか変わらない
+int Sensor_diff_TH_mm = 25;	//壁の切れ目の判定(中央値の1msの変化、単位はセンサ値)。3000mm/sでは切れ目で20〜40しか変わらない
 
 float Wall_error = 0;
 float Wall_old_error = 0;
@@ -248,12 +248,21 @@ float Wall_Control_Update() {
 	int Wall_st = 0;
 	int Sensor_L_med = Wall_Sensor_Median3(2);
 	int Sensor_R_med = Wall_Sensor_Median3(1);
+	/* 距離版の切れ目判定は中央値の1msの変化で見る(2026-10-10)。
+	 * 上の Sensor_diff_L/R は g_sensor[i][1] がずらし後に [0] と同じ値なので常に0で、
+	 * 切れ目判定が一度も効いていなかった。[0]と[2]の差にすると1回だけの落ち込みで
+	 * 2ms片壁になるので、落ち込みを消した中央値どうしの差にする */
+	static int Sensor_L_med_old = 0, Sensor_R_med_old = 0;
+	int Sensor_diff_L_med = abs(Sensor_L_med - Sensor_L_med_old);
+	int Sensor_diff_R_med = abs(Sensor_R_med - Sensor_R_med_old);
+	Sensor_L_med_old = Sensor_L_med;
+	Sensor_R_med_old = Sensor_R_med;
 	if (G_WallCtrl_Use_mm) {
 		/* 距離版: 近い壁(WallCtrl_mm_MaxDist以内)で、切れ目でないものだけ使う */
 		float dL = WallDist_mm(WALLDIST_L, Sensor_L_med);
 		float dR = WallDist_mm(WALLDIST_R, Sensor_R_med);
-		int use_L = (dL <= WallCtrl_mm_MaxDist) && (Sensor_diff_L < Sensor_diff_TH_mm);
-		int use_R = (dR <= WallCtrl_mm_MaxDist) && (Sensor_diff_R < Sensor_diff_TH_mm);
+		int use_L = (dL <= WallCtrl_mm_MaxDist) && (Sensor_diff_L_med < Sensor_diff_TH_mm);
+		int use_R = (dR <= WallCtrl_mm_MaxDist) && (Sensor_diff_R_med < Sensor_diff_TH_mm);
 		Wall_st = (use_L ? 1 : 0) + (use_R ? 2 : 0);
 	} else if ((g_sensor_av[2] > Wall_TH_L) && (Sensor_diff_L < Sensor_diff_TH)) { //左あり
 		if ((g_sensor_av[1] > Wall_TH_R) && (Sensor_diff_R < Sensor_diff_TH)) { //右あり
