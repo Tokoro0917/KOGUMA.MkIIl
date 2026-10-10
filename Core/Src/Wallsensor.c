@@ -225,6 +225,17 @@ float calWallConrol() {
 	return G_Wall_PID;
 }
 
+/* 横センサの直近3回の中央値(2026-10-10、距離版の横壁制御用)。
+ * 左センサだけに4msおきの1回だけの落ち込みがあり、そのたびに「壁が遠い」と読んで
+ * 誤差が -20〜-33 に飛んでいたので、1回だけの飛びを消す。
+ * g_sensor[i][1] は更新直後のずらしで [0] と同じ値なので、[0](今回)・[2](1ms前)・[3](2ms前)を使う */
+static int Wall_Sensor_Median3(int i) {
+	int a = g_sensor[i][0], b = g_sensor[i][2], c = g_sensor[i][3];
+	if (a > b) { int t = a; a = b; b = t; }
+	if (b > c) { b = c; }
+	return (a > b) ? a : b;
+}
+
 /* 横壁制御を計算する。1msに1回だけ呼ぶこと。
  * 以前は calWallConrol() の中で計算していて、1msに3回(左PWM・右PWM・ジャイロ目標)
  * 呼ばれていたため、2回目以降は Wall_old_error が更新済みでD項が0になり、
@@ -235,10 +246,12 @@ float Wall_Control_Update() {
 	int Sensor_diff_R = abs(g_sensor[1][0] - g_sensor[1][1]);
 	float PID_Wall = 0;
 	int Wall_st = 0;
+	int Sensor_L_med = Wall_Sensor_Median3(2);
+	int Sensor_R_med = Wall_Sensor_Median3(1);
 	if (G_WallCtrl_Use_mm) {
 		/* 距離版: 近い壁(WallCtrl_mm_MaxDist以内)で、切れ目でないものだけ使う */
-		float dL = WallDist_mm(WALLDIST_L, g_sensor[2][0]);
-		float dR = WallDist_mm(WALLDIST_R, g_sensor[1][0]);
+		float dL = WallDist_mm(WALLDIST_L, Sensor_L_med);
+		float dR = WallDist_mm(WALLDIST_R, Sensor_R_med);
 		int use_L = (dL <= WallCtrl_mm_MaxDist) && (Sensor_diff_L < Sensor_diff_TH_mm);
 		int use_R = (dR <= WallCtrl_mm_MaxDist) && (Sensor_diff_R < Sensor_diff_TH_mm);
 		Wall_st = (use_L ? 1 : 0) + (use_R ? 2 : 0);
@@ -280,8 +293,8 @@ float Wall_Control_Update() {
 	 * 近づいたときの値の急増は変換で吸収されるので600での頭打ちは不要 */
 	float Err_L, Err_R;
 	if (G_WallCtrl_Use_mm) {
-		Err_L = WALLDIST_CENTER_MM - WallDist_mm(WALLDIST_L, g_sensor[2][0]);
-		Err_R = WALLDIST_CENTER_MM - WallDist_mm(WALLDIST_R, g_sensor[1][0]);
+		Err_L = WALLDIST_CENTER_MM - WallDist_mm(WALLDIST_L, Sensor_L_med);
+		Err_R = WALLDIST_CENTER_MM - WallDist_mm(WALLDIST_R, Sensor_R_med);
 		if (Err_L > WallCtrl_mm_ErrMax) Err_L = WallCtrl_mm_ErrMax;
 		if (Err_L < -WallCtrl_mm_ErrMax) Err_L = -WallCtrl_mm_ErrMax;
 		if (Err_R > WallCtrl_mm_ErrMax) Err_R = WallCtrl_mm_ErrMax;
