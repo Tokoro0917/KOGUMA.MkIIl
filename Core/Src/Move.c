@@ -1187,7 +1187,7 @@ void Short_Dijkstra_Move2000(int MAX, int AC) {
 			{
 				float rest = Short_Catchup(vs, 2000, 90 * G_Short_Pass_NANAME[i], 0);
 				if (rest > 0) {
-					Motor_trapezoid_PID(2000, MAX, 2000, AC, rest);
+					Motor_trapezoid_Asymmetric_PID(2000, MAX, 2000, AC, rest);	//BFSと同じ(減速は加速の2倍)
 				}
 			}
 		} else if ((G_Short_Pass_NANAME[i] <= -4)
