@@ -540,7 +540,7 @@ static float Short_First_Turn(float V, int f) {
 }
 
 /* 最短走行の斜めの直線の加速度(2026-10-10)。0 なら各走行の既定値
- * (2000: 直線の加速度 - 5000、2400・2700・ターンごと: 直線の加速度 - 10000)。
+ * (2000・2400・ターンごと: 直線の加速度 - 5000、2700: 直線の加速度 - 10000)。
  * モード1は番号ごとに main.c で設定し、走り終わったら 0 に戻す */
 int G_Short_AC_NANAME = 0;
 static float Short_AC_Naname(int AC, int def_minus) {
@@ -1007,7 +1007,7 @@ void Short_NANAME_Move2400(int MAX, int AC) {
 				{
 					float rest = Short_Catchup(vs, 2400, 127.3 * G_Short_Pass_NANAME[i] / -50, 1);
 					if (rest > 0) {
-						Motor_NANAME_PID(2400, MAX, 2400, Short_AC_Naname(AC, 10000), rest);
+						Motor_NANAME_PID(2400, MAX, 2400, Short_AC_Naname(AC, 5000), rest);
 					}
 				}
 
@@ -1422,7 +1422,7 @@ void Short_NANAME_MoveTurnV(int MAX, int AC) {
 	plan.turn_v = TurnV_Speed;
 	plan.v_max = MAX;
 	plan.ac = AC;
-	plan.ac_diag = Short_AC_Naname(AC, 10000);	/* Short_NANAME_Move2400 の斜め直線と同じ */
+	plan.ac_diag = Short_AC_Naname(AC, 5000);	/* Short_NANAME_Move2400 の斜め直線と同じ */
 	plan.v_start = v_start;
 	plan.v_goal = TURNV_V_GOAL;
 	plan.turn_back = TurnV_Back;

@@ -189,7 +189,7 @@ int main(void) {
 			int n = Encorder_number_out();
 			void (*run)(int, int) = NULL;
 			int ac = 0;
-			int ac_nn = 0;	//斜めの直線の加速度(0 なら既定: 2000は ac-5000、2400・ターンごとは ac-10000)
+			int ac_nn = 0;	//斜めの直線の加速度(0 なら既定: ac-5000)
 			if (n == 1) {			//BFS コーナー2000 直線6000 加速15000
 				run = Short_NANAME_Move2000;
 				ac = 15000;
@@ -201,7 +201,7 @@ int main(void) {
 			} else if (n == 3) {	//BFS コーナー2400 直線6000 加速20000
 				run = Short_NANAME_Move2400;
 				ac = 20000;
-				ac_nn = 10000;
+				ac_nn = 15000;
 			} else if (n == 4) {	//ダイクストラ コーナー2000 直線6000 加速15000
 				run = Short_Dijkstra_Move2000;
 				ac = 15000;
@@ -221,19 +221,19 @@ int main(void) {
 			} else if (n == 8) {	//ダイクストラ コーナー2400 直線6000 加速20000
 				run = Short_Dijkstra_Move2400;
 				ac = 20000;
-				ac_nn = 10000;
+				ac_nn = 15000;
 			} else if (n == 9) {	//ダイクストラ コーナー2400 直線6000 加速23000
 				run = Short_Dijkstra_Move2400;
 				ac = 23000;
-				ac_nn = 13000;
+				ac_nn = 18000;
 			} else if (n == 10) {	//BFS ターンごとの通過速度(2400基準) 直線6000 加速20000
 				run = Short_NANAME_MoveTurnV;
 				ac = 20000;
-				ac_nn = 10000;
+				ac_nn = 15000;
 			} else if (n == 11) {	//ダイクストラ ターンごとの通過速度(2400基準) 直線6000 加速20000
 				run = Short_Dijkstra_MoveTurnV;
 				ac = 20000;
-				ac_nn = 10000;
+				ac_nn = 15000;
 			}
 			if ((run != NULL) && (Sensor_Enter() == 1)) {
 				G_Short_AC_NANAME = ac_nn;
