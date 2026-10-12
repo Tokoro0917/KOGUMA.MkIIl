@@ -208,7 +208,8 @@ void Wall_Center_Calibration() {
 			k[i] = v[i] / ref[i];
 		}
 		float kf = (k[0] + k[3]) / 2;
-		printf("\n\r---- CENTER  FL=%.0f L=%.0f R=%.0f FR=%.0f  (table FL=%.0f L=%.0f R=%.0f FR=%.0f)\n\r",
+		printf("\r\n#BEGIN CENTER\r\n");	//tools/viewer.html で読む
+		printf("---- CENTER  FL=%.0f L=%.0f R=%.0f FR=%.0f  (table FL=%.0f L=%.0f R=%.0f FR=%.0f)\n\r",
 				v[0], v[2], v[1], v[3], ref[0], ref[2], ref[1], ref[3]);
 		printf("WallDistance.c: float WallDist_Scale[4] = { %.2ff, %.2ff, %.2ff, %.2ff };\n\r",
 				k[0], k[1], k[2], k[3]);
@@ -221,6 +222,7 @@ void Wall_Center_Calibration() {
 		printf("motor.c:        float Cut_R = %.0f;  float Cut_L = %.0f;  float Cut_R_NA = %.0f;  float Cut_L_NA = %.0f;\n\r",
 				cut_base * k[1], cut_base * k[2], cut_na_base * k[1],
 				cut_na_base * k[2]);
+		printf("#END CENTER\r\n");
 	}
 }
 
@@ -410,13 +412,15 @@ void Edge_Log_Mark(int type, int info, float x, float a, float b) {
  *   st_cut,src,x(曲がり始め),c                                  前距離の終わり。src: 0 距離だけ、1 右、2 左、3 両方、+4 後ろの境目、+8 左右が合わない
  *   cut,側,x                                                    従来の壁切れで反応した位置
  *   end,-,x(始め),X(後距離)  /  end_cut,src,x(終わり)           後距離
- * x はログ開始からの距離[mm] */
-void Edge_Log_Print(float first_border) {
+ *   full,行数                                                   ログがいっぱいで、ここまでしか残っていない
+ * x はログ開始からの距離[mm]。全体を #BEGIN EDGE ... / #END EDGE ではさむ(tools/viewer.html で読む) */
+void Edge_Log_Print(float first_border, float speed) {
 	static const char *side_name[2] = { "R", "L" };
 	static const char *kind_name[2] = { "wall", "pillar" };
-	printf("\n\r---- EDGE  Off(R)=%.1f/%.1f Off(L)=%.1f/%.1f Tan=%.2f MinHigh=%.0f HighLen=%.0f Pillar=%d Fast=%d\n\r",
-			Edge_Off[0][0], Edge_Off[0][1], Edge_Off[1][0], Edge_Off[1][1], Edge_Tan, Edge_Min_High,
-			Edge_High_Len, G_WallCut_Pillar, G_WallCut_Fast);
+	/* tools/viewer.html で読む。border は区画の境目(first_border + 180k)、v はテストの速度(-1 は最短走行のログ) */
+	printf("\r\n#BEGIN EDGE border=%.0f v=%.0f off_r_wall=%.1f off_r_pillar=%.1f off_l_wall=%.1f off_l_pillar=%.1f tan=%.2f min_high=%.0f high_len=%.0f pillar=%d fast=%d cut_l=%.0f cut_r=%.0f\r\n",
+			first_border, speed, Edge_Off[0][0], Edge_Off[0][1], Edge_Off[1][0], Edge_Off[1][1], Edge_Tan,
+			Edge_Min_High, Edge_High_Len, G_WallCut_Pillar, G_WallCut_Fast, Cut_L, Cut_R);
 	for (int n = 0; n < Edge_Log_Count; n++) {
 		const EdgeLogRec *r = &Edge_Log[n];
 		float x = r->x - Edge_Log_X0;
@@ -456,8 +460,9 @@ void Edge_Log_Print(float first_border) {
 		printf("\n\r");
 	}
 	if (Edge_Log_Count >= EDGE_LOG_N) {
-		printf("(ログがいっぱい。%d 行まで)\n\r", EDGE_LOG_N);
+		printf("full,%d\r\n", EDGE_LOG_N);	//ログがいっぱいで、ここまでしか残っていない
 	}
+	printf("#END EDGE\r\n");
 }
 
 /* 横壁制御を計算する。1msに1回だけ呼ぶこと。

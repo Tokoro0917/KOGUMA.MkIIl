@@ -37,6 +37,7 @@ float Wall_PID_LOG[LOG_MAX];
 
 int LOG_flag = 0;
 int LOG_count = 0;
+static int LOG_used = 0;	//最後に取ったログの行数(LOG_get_end で残す。0 ならわからないので全部出す)
 
 void LOG_get_start() {
 	for (int i = 0; i < LOG_MAX; i++) {
@@ -49,10 +50,12 @@ void LOG_get_start() {
 	}
 	LOG_flag = 1;
 	LOG_count = 0;
+	LOG_used = 0;
 }
 
 void LOG_get_end() {
 	LOG_flag = 0;
+	LOG_used = LOG_count;
 	LOG_count = 0;
 }
 
@@ -75,13 +78,21 @@ void LOG_get_interrupt() {
 	}
 }
 
+/* ログをUARTに出す(2026-10-12 から tools/viewer.html で読める形)。
+ *   #BEGIN LOG dt=0.001 n=行数
+ *   列名の行(t,v,...)
+ *   1ms ごとの値の行
+ *   #END LOG
+ * 列: 時刻[s], 速度, 目標速度[mm/s], 角速度, 目標角速度[deg/s], 横センサ L, R, 電圧 L, R, 横壁の誤差, 横壁制御の出力 */
 void LOG_print() {
-	for (int i = 0; i < LOG_MAX; i++) {
-		printf("%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n\r", i * 0.001, Tire_Speed_LOG[i],
+	int n = (LOG_used > 0) ? LOG_used : LOG_MAX;
+	printf("\r\n#BEGIN LOG dt=0.001 n=%d\r\n", n);
+	printf("t,v,v_target,w,w_target,sensor_L,sensor_R,volt_L,volt_R,wall_err,wall_out\r\n");
+	for (int i = 0; i < n; i++) {
+		printf("%.3f,%.1f,%.1f,%.2f,%.2f,%.0f,%.0f,%.1f,%.1f,%.2f,%.3f\r\n", i * 0.001, Tire_Speed_LOG[i],
 				G_Motor_V_Target_LOG[i], Gyro_z_LOG[i], G_Motor_W_Target_LOG[i],
-				Sensor_L_LOG[i], Sensor_R_LOG[i],Motor_Voltage_L_LOG[i],Motor_Voltage_R_LOG[i],
+				Sensor_L_LOG[i], Sensor_R_LOG[i], Motor_Voltage_L_LOG[i], Motor_Voltage_R_LOG[i],
 				Wall_Error_LOG[i], Wall_PID_LOG[i]);
-//		printf("%f,%f,%f,%f,%f\n\r", i * 0.001, Tire_Speed_LOG[i],
-//				G_Motor_V_Target_LOG[i], Gyro_z_LOG[i], G_Motor_W_Target_LOG[i]);
 	}
+	printf("#END LOG\r\n");
 }

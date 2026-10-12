@@ -1956,7 +1956,8 @@ static void Maze_Debug_Plan(int dijkstra) {
 void Maze_Debug_Dump(void) {
 	int x, y;
 
-	printf("\r\nMAZE_DUMP_BEGIN %d\r\n", MAZE_SIZE);
+	printf("\r\n#BEGIN MAZE size=%d goal_x=%d goal_y=%d\r\n", MAZE_SIZE, MAZE_GOOL_X, MAZE_GOOL_Y);	//tools/viewer.html で読む
+	printf("MAZE_DUMP_BEGIN %d\r\n", MAZE_SIZE);
 	for (int k = 0; k < MAZE_SIZE + 1; k++) {
 		printf("ROW %d %08lX\r\n", k, (unsigned long) G_Maze_Row_Save[k]);
 	}
@@ -2022,7 +2023,7 @@ void Maze_Debug_Dump(void) {
 	Maze_Debug_Plan(1);
 	Maze_Debug_Print_Pass("DIJK_PASS", G_Short_Pass);
 	Maze_Debug_Print_Pass("DIJK_NANAME", G_Short_Pass_NANAME);
-	printf("\r\n");
+	printf("#END MAZE\r\n\r\n");
 
 	Maze_Road();	//作業用の壁情報を保存済みの状態に戻しておく
 }

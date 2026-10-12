@@ -45,7 +45,7 @@ int Edge_Cut_Find(float lo, float hi, float *c, int *src);
 void Edge_Log_Start(int with_thresholds);
 void Edge_Log_Stop();
 void Edge_Log_Mark(int type, int info, float x, float a, float b);
-void Edge_Log_Print(float first_border);
+void Edge_Log_Print(float first_border, float speed);
 float calWallConrol_NANAME();
 float calWallConrol_Flontwall_ST();
 float calWallConrol_Flontwall_Turn();

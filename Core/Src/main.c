@@ -331,7 +331,7 @@ int main(void) {
 					Suction_Stop();
 					Motor_Free();
 					while (1) {
-						Edge_Log_Print(114);
+						Edge_Log_Print(114, v);
 						HAL_Delay(1000);
 						while (Sensor_Enter() != 1) {
 						}
@@ -527,7 +527,7 @@ int main(void) {
 				if (Sensor_Enter() == 1) {
 					Buzzer_Enter();
 					Sensor_Start();
-					Edge_Log_Print(-1);
+					Edge_Log_Print(-1, -1);
 					HAL_Delay(1000);
 				}
 			}
