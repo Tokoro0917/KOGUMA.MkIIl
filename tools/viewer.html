@@ -302,10 +302,11 @@ function summary(b) {
     return (+p.border >= 0 ? `テスト ${p.v} mm/s` : "最短走行") + ` 柱の端 ${nf}`;
   }
   if (b.type === "MAZE") return `${p.size}×${p.size}`;
+  if (b.type === "NOISE") { const n = b.lines.filter((l) => l.startsWith("batt,")).length; return `${n} 組${+p.trace > 0 ? "(生の値あり)" : "(表だけ)"}`; }
   if (STREAM_TYPES.has(b.type) && b.updates > 1) return `測定中 ${b.updates} 回(最後 ${timeStr(b.lastTime)})`;
   return `${b.lines.length} 行`;
 }
-const typeName = { LOG: "走行ログ", EDGE: "壁切れ", MAZE: "迷路", CENTER: "感度合わせ" };
+const typeName = { LOG: "走行ログ", EDGE: "壁切れ", MAZE: "迷路", CENTER: "感度合わせ", NOISE: "センサのノイズ" };
 
 let bulk = false;	//ファイルを読み込むあいだは、データ1つごとに描き直さない(終わってから1回だけ)
 /* 測っているあいだ出し続ける種類(感度合わせ)。続けて届いたら一覧に増やさず、いちばん新しい値に置き換える。
@@ -1111,6 +1112,194 @@ function edgeSession(view) {
   view.append(card);
 }
 
+/* ================= 吸引のときのセンサのノイズ(モード3 No.10) ================= */
+const NOISE_CH = ["FL", "L", "R", "FR"];	//表とグラフの並び(色はセンサの値の画面と同じ)
+const NOISE_PH = { FL: 0, R: 0, L: 1, FR: 1 };	//そのセンサを点灯して読んだときのPWMの位置(ph1: FL・R、ph2: L・FR)
+const NOISE_TR_IDX = { FL: 0, R: 1, L: 2, FR: 3 };	//tr の列の並び(g_sensor と同じ FL, R, L, FR)
+function parseNoise(b) {
+  const N = { stat: [], batt: [], tr: new Map(), conds: new Map(), duties: new Set() };
+  for (const l of b.lines) {
+    const f = l.split(",");
+    if (f[0] === "stat" && f.length >= 11) {
+      const r = { c: +f[1], settle: +f[2], cyc: +f[3], duty: +f[4], ch: f[5], kind: f[6], mean: +f[7], sd: +f[8], min: +f[9], max: +f[10] };
+      N.stat.push(r); N.conds.set(r.c, r); N.duties.add(r.duty);
+    } else if (f[0] === "batt" && f.length >= 9) {
+      N.batt.push({ c: +f[1], duty: +f[4], mean: +f[5], sd: +f[6], min: +f[7], max: +f[8] });
+    } else if (f[0] === "tr" && f.length >= 15) {
+      const k = `${f[1]},${f[2]}`;
+      if (!N.tr.has(k)) N.tr.set(k, []);
+      N.tr.get(k).push(f.slice(3).map(Number));
+    }
+  }
+  N.duties = [...N.duties].sort((a, b) => a - b);
+  N.condList = [...N.conds.keys()].sort((a, b) => a - b);
+  N.get = (c, duty, ch, kind) => N.stat.find((r) => r.c === c && r.duty === duty && r.ch === ch && r.kind === kind);
+  return N;
+}
+const condName = (r) => `待ち ${r.settle}us・取り込み ${r.cyc}サイクル${r.settle === 0 && r.cyc === 3 ? "(今のまま)" : ""}`;
+/* 吸引でばらつきがどれだけ増えたか(いちばん強い吸引 / 吸引なし)。小さい値は0.5で頭打ちにして割る */
+const growth = (s0, s1) => (s0 && s1) ? s1.sd / Math.max(0.5, s0.sd) : null;
+function noiseJudge(N, c, ch) {
+  const d0 = N.duties[0], d1 = N.duties[N.duties.length - 1];
+  if (d0 == null || d0 === d1) return "-";
+  const on0 = N.get(c, d0, ch, "on"), on1 = N.get(c, d1, ch, "on");
+  const off0 = N.get(c, d0, ch, "off"), off1 = N.get(c, d1, ch, "off");
+  const gDiff = growth(N.get(c, d0, ch, "diff"), N.get(c, d1, ch, "diff"));
+  if (gDiff == null || !on0 || !on1 || !off0 || !off1) return "-";
+  if (gDiff < 1.5) return "吸引で増えない";
+  /* 吸引で増えたばらつきの大きさで比べる(消灯時の値は小さいので、倍率だと大げさになる) */
+  const dOn = on1.sd - on0.sd, dOff = off1.sd - off0.sd;
+  if (dOff >= 0.5 * dOn) return "消灯も同じくらい揺れる → 電気(GND・ADC)";
+  return "点灯時が大きく揺れる → LEDの点け方・電源";
+}
+function renderNoise(view, b) {
+  const N = parseNoise(b);
+  if (!N.stat.length) { rawCard(view, b); return; }
+  const colors = { FL: css("--s1"), L: css("--s2"), R: css("--s3"), FR: css("--s4") };
+  const c0 = N.condList[0];
+  const dMax = N.duties[N.duties.length - 1];
+
+  /* 1. 今の読み方で、点灯・消灯・差のばらつき */
+  const card = el("div", { class: "card" });
+  card.append(el("h2", { text: `吸引のときのセンサのノイズ(${timeStr(b.time)})` }),
+    el("div", { class: "note", text: "止まったまま、吸引とセンサの読み方を変えて、点灯時・消灯時の生のAD値と、その差(点灯 − 消灯。g_sensor のもと)を測った。ばらつきは標準偏差。消灯時の値も吸引で揺れるなら電気(GND・ADC)、点灯時だけなら LED の点け方を疑う。" }));
+  if (N.conds.has(c0)) {
+    card.append(el("h3", { text: `${condName(N.conds.get(c0))}: ばらつき(点灯 / 消灯 / 差)` }));
+    const t = el("table");
+    t.append(el("tr", null, el("th", { class: "l", text: "センサ" }), ...N.duties.map((d) => el("th", { text: `吸引 ${d}` })), el("th", { text: `差の平均のずれ(${dMax} − ${N.duties[0]})` }), el("th", { class: "l", text: "見立て" })));
+    for (const ch of NOISE_CH) {
+      const cells = N.duties.map((d) => {
+        const on = N.get(c0, d, ch, "on"), off = N.get(c0, d, ch, "off"), df = N.get(c0, d, ch, "diff");
+        return el("td", { text: `${fmt(on?.sd, 1)} / ${fmt(off?.sd, 1)} / ${fmt(df?.sd, 1)}` });
+      });
+      const a = N.get(c0, N.duties[0], ch, "diff"), z = N.get(c0, dMax, ch, "diff");
+      t.append(el("tr", null, el("td", { class: "l", text: ch }), ...cells, el("td", { text: a && z ? fmt(z.mean - a.mean, 1) : "-" }), el("td", { class: "l", text: noiseJudge(N, c0, ch) })));
+    }
+    card.append(t);
+    const bt = N.batt.filter((x) => x.c === c0);
+    if (bt.length) card.append(el("div", { class: "note", text: "電池のAD値のばらつき: " + bt.map((x) => `吸引 ${x.duty} で ${fmt(x.sd, 1)}(平均 ${fmt(x.mean, 0)})`).join("、") }));
+  }
+
+  /* 2. 読み方ごとの差のばらつき */
+  if (N.condList.length > 1) {
+    card.append(el("h3", { text: "読み方ごとの、差(点灯 − 消灯)のばらつき" }));
+    const t = el("table");
+    t.append(el("tr", null, el("th", { class: "l", text: "センサ" }), el("th", { class: "l", text: "読み方" }), ...N.duties.map((d) => el("th", { text: `吸引 ${d}` })), el("th", { text: "差の平均(吸引なし)" })));
+    for (const ch of NOISE_CH) {
+      N.condList.forEach((c, j) => {
+        const base = N.get(c0, dMax, ch, "diff");
+        const cells = N.duties.map((d) => {
+          const s = N.get(c, d, ch, "diff");
+          const td = el("td", { text: fmt(s?.sd, 1) });
+          /* いちばん強い吸引で、今の読み方より半分以下になったら目立たせる */
+          if (c !== c0 && d === dMax && s && base && s.sd <= base.sd * 0.5) td.style.color = css("--good");
+          return td;
+        });
+        const m = N.get(c, N.duties[0], ch, "diff");
+        t.append(el("tr", null, el("td", { class: "l", text: j === 0 ? ch : "" }), el("td", { class: "l", text: condName(N.conds.get(c)) }), ...cells, el("td", { text: fmt(m?.mean, 0) })));
+      });
+    }
+    card.append(t,
+      el("div", { class: "note", text: "緑はいちばん強い吸引で、今の読み方の半分以下になったところ。待ちを入れると減る → LED を点けた直後(受光の立ち上がりの途中)を読んでいた。取り込み時間を伸ばすと減る → 取り込みが短すぎた。取り込みを伸ばすと読むのも遅くなるので、待ちの効果も少し混ざる。差の平均が読み方で変わったら、閾値と距離の表(Wallsensor.c / WallDistance.c)を測り直す。" }));
+  }
+  view.append(card);
+
+  /* 3. 吸引の強さとばらつきのグラフ(読み方ごと) */
+  const gcard = el("div", { class: "card" });
+  gcard.append(el("h2", { text: "吸引の強さと、差のばらつき" }), el("div", { class: "note", text: "横軸は吸引の duty。点を指すと値が出る。" }));
+  const glink = new LinkedX();
+  for (const c of N.condList) {
+    const series = NOISE_CH.map((ch) => {
+      const pts = N.duties.map((d) => N.get(c, d, ch, "diff")).filter(Boolean);
+      return { name: ch, color: colors[ch], x: Float64Array.from(pts, (s) => s.duty), y: Float64Array.from(pts, (s) => s.sd) };
+    });
+    const points = [];
+    for (const s of series) for (let i = 0; i < s.x.length; i++) points.push({ x: s.x[i], y: s.y[i], color: s.color, label: `${s.name} 吸引 ${s.x[i]}: ${fmt(s.y[i], 2)}` });
+    new LineChart(gcard, condName(N.conds.get(c)), "標準偏差", series, glink, 150, { xName: "吸引", xDigits: 0, points });
+  }
+  view.append(gcard);
+
+  /* 4. 生の値(測ったそばから出したときだけある) */
+  if (N.tr.size) noiseTrace(view, b, N, colors);
+  rawCard(view, b);
+}
+function noiseTrace(view, b, N, colors) {
+  const card = el("div", { class: "card" });
+  const selC = el("select"), selD = el("select");
+  for (const c of N.condList) selC.append(el("option", { value: c, text: condName(N.conds.get(c)) }));
+  for (const d of N.duties) selD.append(el("option", { value: d, text: `吸引 ${d}` }));
+  selD.value = N.duties[N.duties.length - 1];
+  const body = el("div");
+  card.append(el("h2", { text: "生の値(1msごと、はじめの100回)" }),
+    el("div", { class: "row" }, selC, selD, el("span", { class: "note", text: "上から点灯時、消灯時、差。いちばん下は差と吸引のPWMの位置(0〜周期)。PWMの位置で差が変わるなら、PWMの電流の揺れを拾っている。" })),
+    body);
+  view.append(card);
+  const draw = () => {
+    body.replaceChildren();
+    const rows = N.tr.get(`${selC.value},${selD.value}`) || [];
+    if (!rows.length) { body.append(el("div", { class: "note", text: "この組み合わせの生の値はない" })); return; }
+    const x = Float64Array.from(rows, (r) => r[0]);
+    const link = new LinkedX();
+    body.append(el("div", { class: "row" }, link.resetButton()));
+    const col = (ch, off) => Float64Array.from(rows, (r) => r[1 + off + NOISE_TR_IDX[ch]]);
+    const mk = (title, f) => new LineChart(body, title, "", NOISE_CH.map((ch) => ({ name: ch, color: colors[ch], x, y: f(ch) })), link, 160, { xName: "i [ms]", xDigits: 0 });
+    mk("点灯時", (ch) => col(ch, 0));
+    mk("消灯時", (ch) => col(ch, 4));
+    mk("差(点灯 − 消灯)", (ch) => { const a = col(ch, 0), z = col(ch, 4); return a.map((v, i) => v - z[i]); });
+    const top = +(b.params.pwm_top || 100) + 1;
+    noiseScatter(body, NOISE_CH.map((ch) => {
+      const a = col(ch, 0), z = col(ch, 4);
+      const d = a.map((v, i) => v - z[i]);
+      const mean = d.reduce((s, v) => s + v, 0) / d.length;
+      return { name: ch, color: colors[ch], pts: rows.map((r, i) => ({ x: r[9 + NOISE_PH[ch]] / top, y: d[i] - mean })) };
+    }));
+  };
+  selC.addEventListener("change", draw);
+  selD.addEventListener("change", draw);
+  draw();
+}
+/* 差(平均を引いたもの)と PWM の位置の散布図 */
+function noiseScatter(parent, groups) {
+  const all = groups.flatMap((g) => g.pts.map((p) => p.y));
+  if (!all.length) return;
+  let ymin = Math.min(-1, ...all), ymax = Math.max(1, ...all);
+  const pad = (ymax - ymin) * 0.08; ymin -= pad; ymax += pad;
+  const head = el("div", { class: "title" }, el("span", { text: "差 − 平均 と PWM の位置" }));
+  for (const g of groups) { const d = el("i", { class: "dot" }); d.style.background = g.color; head.append(el("span", { class: "key" }, d, el("span", { text: g.name }))); }
+  const canvas = el("canvas");
+  parent.append(el("div", { class: "chart" }, head, canvas));
+  const H = 220, L = 56, R = 12, T = 6, B = 22;
+  let hit = [];
+  const draw = () => {
+    const dpr = window.devicePixelRatio || 1, W = canvas.clientWidth || 600;
+    canvas.style.height = H + "px"; canvas.width = W * dpr; canvas.height = H * dpr;
+    const g = canvas.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const pw = W - L - R, ph = H - T - B;
+    const X = (x) => L + x * pw, Y = (y) => T + (ymax - y) / (ymax - ymin) * ph;
+    g.font = "11px " + css("--sans"); g.fillStyle = css("--muted"); g.strokeStyle = css("--grid"); g.lineWidth = 1;
+    g.textAlign = "right"; g.textBaseline = "middle";
+    for (const v of niceTicks(ymin, ymax, 4).ticks) { const y = Math.round(Y(v)) + 0.5; g.beginPath(); g.moveTo(L, y); g.lineTo(W - R, y); g.stroke(); g.fillText(+v.toPrecision(6) + "", L - 6, y); }
+    g.textAlign = "center"; g.textBaseline = "top";
+    for (const v of [0, 0.25, 0.5, 0.75, 1]) g.fillText(v + "", X(v), H - B + 5);
+    hit = [];
+    for (const gr of groups) for (const p of gr.pts) {
+      const cx = X(p.x), cy = Y(p.y);
+      g.fillStyle = gr.color; g.globalAlpha = 0.8; g.beginPath(); g.arc(cx, cy, 3, 0, Math.PI * 2); g.fill();
+      hit.push({ cx, cy, label: `${gr.name}: 位置 ${fmt(p.x, 2)}、差 − 平均 ${fmt(p.y, 1)}` });
+    }
+    g.globalAlpha = 1;
+  };
+  canvas.addEventListener("pointermove", (e) => {
+    const r = canvas.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+    let best = null, bd = 10;
+    for (const h of hit) { const d = Math.hypot(h.cx - px, h.cy - py); if (d < bd) { bd = d; best = h; } }
+    if (best) showTip(e.clientX, e.clientY, [el("div", { text: best.label })]); else hideTip();
+  });
+  canvas.addEventListener("pointerleave", hideTip);
+  new ResizeObserver(draw).observe(canvas);
+  parent.append(el("div", { class: "note", text: "横軸は PWM の周期の中の位置(0〜1、読み終えたときの TIM2 のカウンタ ÷ 周期)。吸引なしのときは PWM が止まっているので意味がない。" }));
+}
+
 /* ================= 迷路 ================= */
 function renderMaze(view, b) {
   const N = +b.params.size || 16;
@@ -1282,6 +1471,7 @@ function renderView() {
     else if (b.type === "EDGE") renderEdge(view, b);
     else if (b.type === "MAZE") renderMaze(view, b);
     else if (b.type === "CENTER") renderCenter(view, b);
+    else if (b.type === "NOISE") renderNoise(view, b);
     else if (b === LIVE) renderLive(view);
     else rawCard(view, b);
   } catch (e) {
@@ -1293,7 +1483,7 @@ function welcome() {
   const d = el("div", { class: "empty" });
   d.append(el("h2", { text: "ロボットをUSBシリアルでつなぎ、「接続」を押す" }),
     el("p", { text: "Tera Term は閉じておく。「保存先フォルダ」でリポジトリの logs/ を選ぶと、届いたデータを自動でファイルにする。" }),
-    el("p", { text: "ロボットでモード4 No.7(出力)を選ぶと、残っているデータ(迷路・壁切れ・走行ログ)が全部届き、種類ごとに分けて表示する。感度合わせ(モード3 No.5)はそのモードで出る。" }));
+    el("p", { text: "ロボットでモード4 No.7(出力)を選ぶと、残っているデータ(迷路・壁切れ・走行ログ)が全部届き、種類ごとに分けて表示する。感度合わせ(モード3 No.5)と吸引のときのセンサのノイズ(モード3 No.10)はそのモードで出る。" }));
   if (!("serial" in navigator)) d.append(el("p", { class: "warn", text: "このブラウザでは USB シリアルを読めません(Windows の Chrome か Edge で開く)。保存したファイルを開いて見ることはできる。" }));
   return d;
 }

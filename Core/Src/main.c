@@ -41,6 +41,7 @@
 #include "Move.h"
 #include "Failsafe.h"
 #include "Define.h"
+#include "SensorNoise.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -325,6 +326,18 @@ int main(void) {
 					Edge_Log_Stop();
 					Suction_Stop();
 					Motor_Free();
+					Encorder_count_reset();
+				}
+			} else if (Encorder_number_out() == 10) {	//吸引のときのセンサのノイズ
+				/* 止まったまま(モーターは使わない)、吸引(0/35/50/70)とセンサの読み方(LEDを点けてから読むまでの待ち、
+				 * ADCの取り込み時間)を変えて、点灯時・消灯時の生の値のばらつきを測る。30秒ほど。
+				 * USBをつないだまま走らせると、測ったそばから出す(tools/viewer.html でグラフになる)。
+				 * つながずに走らせたときは、出力(モード4 No.7)でばらつきの表だけ出る。docs/sensor_noise.md */
+				if (Sensor_Enter() == 1) {
+					Buzzer_Enter();
+					Sensor_Start();
+					SensorNoise_Run();
+					Buzzer_Enter();
 					Encorder_count_reset();
 				}
 			}
@@ -1496,6 +1509,9 @@ static void Output_All(void) {
 	}
 	if (LOG_Has_Data()) {
 		LOG_print();
+	}
+	if (SensorNoise_Has_Data()) {
+		SensorNoise_Print();
 	}
 	printf("\r\n#DONE\r\n");
 }
