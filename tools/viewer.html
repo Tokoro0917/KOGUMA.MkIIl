@@ -748,7 +748,9 @@ function parseEdge(b) {
   return out;
 }
 const srcName = (s) => {
-  if (!s) return "距離だけ";
+  if (s & 16) return "従来・壁切れした";
+  if (s & 32) return "従来・曲がる側に壁なし(距離だけ)";
+  if (!s) return "柱・見つからず(距離だけ)";
   const side = (s & 3) === 3 ? "左右の平均" : (s & 1) ? "右" : "左";
   return ((s & 4) ? "後ろの境目・" : "前の境目・") + side + ((s & 8) ? "(左右が合わない)" : "");
 };
@@ -778,9 +780,12 @@ function renderEdge(view, b) {
       el("td", { text: cut ? fmt(cut.x) : "-" }), el("td", { text: corr == null ? "-" : (corr >= 0 ? "+" : "") + fmt(corr) }), el("td", { class: "l", text: cut ? srcName(cut.src) : "-" })));
   });
   if (pairs.length) {
-    const corr = stats(pairs.filter((q) => q.cut && q.cut.src).map((q) => q.cut.x - (q.s.x + q.s.X)));
-    const c2 = el("div", { class: "card" }, el("h2", { text: "前距離(柱)" }),
-      el("div", { class: "note", text: `直した量 = 曲がり始め − (区画中心 + X)。柱を使えた ${corr.n} / ${pairs.length} 回、平均 ${fmt(corr.mean)} mm、ばらつき ${fmt(corr.range)} mm` }), t1);
+    const used = (q) => q.cut && (q.cut.src & 0x13);	//柱の推定か、従来の壁切れが効いた
+    const corr = stats(pairs.filter(used).map((q) => q.cut.x - (q.s.x + q.s.X)));
+    const conv = pairs.some((q) => q.cut && (q.cut.src & 48));
+    const c2 = el("div", { class: "card" }, el("h2", { text: conv ? "前距離(従来)" : "前距離(柱)" }),
+      el("div", { class: "note", text: `直した量 = 曲がり始め − (区画中心 + X)。エンコーダの距離だけで決めた位置との差。`
+        + `${conv ? "壁切れした" : "柱を使えた"} ${corr.n} / ${pairs.length} 回、平均 ${fmt(corr.mean)} mm、ばらつき ${fmt(corr.range)} mm` }), t1);
     view.append(c2);
   }
   /* 従来の壁切れ・後距離 */
