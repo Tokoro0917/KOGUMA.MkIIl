@@ -111,6 +111,8 @@ float Cut_L_NA = 150;
 int G_WallCut_Pillar = 0;
 float Edge_Win = 20;	//前距離で、境目の推定を探す範囲(区画中心 ± 90 からの ±)[mm]
 #define EDGE_SRC_BEHIND 4	//前距離で、後ろの境目(区画中心 - 90)を使った
+#define EDGE_SRC_CONV_CUT 16	//従来の前距離で、壁切れした(Wallsensor.h の EDGE_SRC_CONV_* と同じ値)
+#define EDGE_SRC_CONV_NONE 32	//従来の前距離で、曲がる側に壁がなく距離だけで走った
 
 /* 壁があるときの壁切れの判定に使うセンサ値(2026-10-12)。
  * 0 は従来どおり g_sensor_av(5回の移動平均。約2ms遅れるので、反応する位置が速度×2ms 後ろにずれる。
@@ -953,11 +955,15 @@ static float Cut_Sensor(int i) {
 }
 
 /* 従来の前距離。X_act(Xの半分)まで走ったところで呼ぶ。曲がる側に壁があれば、センサ値が Cut_* を
- * 下回るまで待ってから、残り X - X_act を走る */
-static void Cut_ST_Conv(int direction, float X, float X_act, CutTick tick) {
+ * 下回るまで待ってから、残り X - X_act を走る。
+ * x_center は前距離の始め(区画中心、G_Odo_X)。壁切れのログに、柱のときと同じ形(st / st_cut)で残す */
+static void Cut_ST_Conv(int direction, float x_center, float X, float X_act, CutTick tick) {
 	/* 壁の有無は待ち始めの時点で決める(G_Wall_data は1msごとに更新され、壁が終わると0になるため) */
 	int cut_wall_L = G_Wall_data[1];
 	int cut_wall_R = G_Wall_data[2];
+	int src = EDGE_SRC_CONV_NONE;
+	float c = 0;
+	Edge_Log_Mark(EDGE_LOG_ST, direction, x_center, X, 0);
 	if (direction == 0) { //左旋回
 		if (cut_wall_L) {
 			while (1) {
@@ -968,6 +974,8 @@ static void Cut_ST_Conv(int direction, float X, float X_act, CutTick tick) {
 				LED_ON_L();
 			}
 			Edge_Log_Mark(EDGE_LOG_CUT, 1, G_Odo_X, 0, 0);
+			src = EDGE_SRC_CONV_CUT;
+			c = G_Odo_X;
 		}
 	} else if (direction == 1) { //右旋回
 		if (cut_wall_R) {
@@ -979,6 +987,8 @@ static void Cut_ST_Conv(int direction, float X, float X_act, CutTick tick) {
 				LED_ON_R();
 			}
 			Edge_Log_Mark(EDGE_LOG_CUT, 0, G_Odo_X, 0, 0);
+			src = EDGE_SRC_CONV_CUT;
+			c = G_Odo_X;
 		}
 	}
 	LED_Reset();
@@ -989,6 +999,7 @@ static void Cut_ST_Conv(int direction, float X, float X_act, CutTick tick) {
 			break;
 		}
 	}
+	Edge_Log_Mark(EDGE_LOG_ST_CUT, src, G_Odo_X, c, 0);
 }
 
 /* 柱の前距離。前距離の始めは区画中心(x_center、G_Odo_X)で、そこから X 走ったら曲がり始める。
@@ -1057,6 +1068,7 @@ static void Cut_END(float X, CutTick tick) {
 }
 
 void Motor_Wallcut_ST(float Vmax, float X, int direction) {		//壁の有無を変数に入れる
+	G_Log_Phase = LOG_PH_PRE;
 	G_Motor_Flag = 1;
 	PID_Mode = 1;
 
@@ -1069,9 +1081,9 @@ void Motor_Wallcut_ST(float Vmax, float X, int direction) {		//壁の有無を�
 	//Gyro_Sigma_error = 0;
 
 	G_Motor_X = 0;
+	float x_center = G_Odo_X;	//前距離の始め(区画中心)
 	if (G_WallCut_Pillar) {
-	G_Log_Phase = LOG_PH_PRE;
-		Cut_ST_Pillar(direction, G_Odo_X, X, NULL);
+		Cut_ST_Pillar(direction, x_center, X, NULL);
 		PID_Mode = 0;
 		return;
 	}
@@ -1081,7 +1093,7 @@ void Motor_Wallcut_ST(float Vmax, float X, int direction) {		//壁の有無を�
 			break;
 		}
 	}
-	Cut_ST_Conv(direction, X, X_act, NULL);
+	Cut_ST_Conv(direction, x_center, X, X_act, NULL);
 	PID_Mode = 0;
 }
 
@@ -1226,8 +1238,9 @@ void Motor_Wallcut_ST_Accel(float Vst, float Vmax, float Ac, float X_pre,
 	TK_Vst = Vst;
 	TK_Vmax = Vmax;
 	TK_Ac = Ac;
+	float x_center = G_Odo_X + X_pre;	//前距離の始め(区画中心)
 	if (G_WallCut_Pillar) {
-		Cut_ST_Pillar(direction, G_Odo_X + X_pre, X, Tick_Accel);
+		Cut_ST_Pillar(direction, x_center, X, Tick_Accel);
 		PID_Mode = 0;
 		return;
 	}
@@ -1239,7 +1252,7 @@ void Motor_Wallcut_ST_Accel(float Vst, float Vmax, float Ac, float X_pre,
 			break;
 		}
 	}
-	Cut_ST_Conv(direction, X, X_act, Tick_Accel);
+	Cut_ST_Conv(direction, x_center, X, X_act, Tick_Accel);
 	PID_Mode = 0;
 }
 
@@ -1370,8 +1383,9 @@ float Motor_First_Turn_Accel(float X_pre, float pre, float post, float v_ref,
 	/* 前距離(Motor_Wallcut_ST_Accel と同じ) */
 	Accel_Start(0, 1);
 	FT_T0 = G_Motor_Count;
+	float x_center = G_Odo_X + X_pre;	//前距離の始め(区画中心)
 	if (G_WallCut_Pillar) {
-		Cut_ST_Pillar(direction, G_Odo_X + X_pre, pre, FT_Target_Update);
+		Cut_ST_Pillar(direction, x_center, pre, FT_Target_Update);
 	} else {
 		float X_act = 0;
 		while (1) {
@@ -1381,7 +1395,7 @@ float Motor_First_Turn_Accel(float X_pre, float pre, float post, float v_ref,
 				break;
 			}
 		}
-		Cut_ST_Conv(direction, pre, X_act, FT_Target_Update);
+		Cut_ST_Conv(direction, x_center, pre, X_act, FT_Target_Update);
 	}
 
 	/* ターン: 走った距離 s から基準の時間 s / v_ref を求め、その曲率で曲がる */

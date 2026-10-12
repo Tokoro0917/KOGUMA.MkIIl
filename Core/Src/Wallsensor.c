@@ -433,7 +433,9 @@ void Edge_Log_Mark(int type, int info, float x, float a, float b) {
  *   fall,側,種類,x(端),c(境目の推定),H                       下がる端
  *   th,側,av|med,x                                              閾値の判定(比べるためだけ)
  *   st,側,x(区画中心),X(前距離)                                 前距離の始め(柱を使うとき)
- *   st_cut,src,x(曲がり始め),c                                  前距離の終わり。src: 0 距離だけ、1 右、2 左、3 両方、+4 後ろの境目、+8 左右が合わない
+ *   st_cut,src,x(曲がり始め),c                                  前距離の終わり。src: 0 距離だけ、1 右、2 左、3 両方、+4 後ろの境目、+8 左右が合わない、
+ *                                                               16 従来で壁切れした(c は壁切れした位置)、32 従来で壁がなく距離だけ
+ *   (st / st_cut は柱でも従来でも残す)
  *   cut,側,x                                                    従来の壁切れで反応した位置
  *   end,-,x(始め),X(後距離)  /  end_cut,src,x(終わり)           後距離
  *   full,行数                                                   ログがいっぱいで、ここまでしか残っていない
@@ -476,7 +478,7 @@ void Edge_Log_Print() {
 			printf("st,%s,%.1f,%.0f", side_name[r->info ? 1 : 0], x, r->a);
 			break;
 		case EDGE_LOG_ST_CUT:
-			printf("st_cut,%d,%.1f,%.1f", r->info, x, (r->info & 3) ? r->a - Edge_Log_X0 : -1.0f);
+			printf("st_cut,%d,%.1f,%.1f", r->info, x, (r->info & 0x13) ? r->a - Edge_Log_X0 : -1.0f);
 			break;
 		case EDGE_LOG_CUT:
 			printf("cut,%s,%.1f", side_name[r->info ? 1 : 0], x);
