@@ -305,6 +305,39 @@ int main(void) {
 					Sensor_Start();
 					Wall_Center_Calibration();
 				}
+			} else if ((Encorder_number_out() >= 6)
+					&& (Encorder_number_out() <= 9)) {	//壁切れの位置のテスト
+				/* スタート位置(後ろの壁に付けて置く)から4区画まっすぐ走り、左右の壁切れの位置を
+				 * 3つの方法で残してUARTに出す(av: 従来の g_sensor_av < Cut_*、med: 3回の中央値 < Cut_*、
+				 * pil: 柱の判定)。x は走り出しからの距離、x-border は区画の境目(114 + 180k)からのずれ。
+				 * No.6: 500(吸引なし)、No.7: 1000、No.8: 2000、No.9: 2400(No.7〜9は吸引70)。加速度20000。
+				 * 同じ置き方で速度を変えて走らせ、x-border が速度でどれだけ変わるかを見る。
+				 * 結果は止まったあとと、左前センサに手をかざすたびに出す(終わるときはリセット) */
+				if (Sensor_Enter() == 1) {
+					const float v_tab[4] = { 500, 1000, 2000, 2400 };
+					int no = Encorder_number_out();
+					float v = v_tab[no - 6];
+					Buzzer_Enter();
+					Sensor_Start();
+					Motor_Setup();
+					if (no >= 7) {
+						Suction_Start(70);
+						HAL_Delay(500);
+					}
+					Wall_Edge_Log_Start();
+					Motor_trapezoid_PID(0, v, 0, 20000, 114 + 180 * 4);
+					Motor_Stop();
+					Wall_Edge_Log_Stop();
+					Suction_Stop();
+					Motor_Free();
+					while (1) {
+						Wall_Edge_Log_Print(114);
+						HAL_Delay(1000);
+						while (Sensor_Enter() != 1) {
+						}
+						Buzzer_Enter();
+					}
+				}
 			}
 		} else if (Encorder_mode_out() == 4) {		//基本調整
 			if (Encorder_number_out() == 0) {		//センサ

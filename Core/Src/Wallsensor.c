@@ -12,6 +12,8 @@
 #include "motor.h"
 #include "math.h"
 #include "WallDistance.h"
+#include "DistHist.h"
+#include "PL_encoder.h"
 #include <stdio.h>
 
 int G_Wall_data[] = { 0, 0, 0, 0 };
@@ -245,13 +247,103 @@ static int Wall_Sensor_Median3(int i) {
 	return Median3(g_sensor[i][0], g_sensor[i][2], g_sensor[i][3]);
 }
 
-/* 柱の切れ目の判定(2026-10-10、壁切れを柱で見るとき用。motor.c の G_WallCut_Pillar)。
- * Pillar_Len 進む前(速度から何ms前かを決める)と今のセンサ値を比べ、th 以上減っていたら 1。
+/* 3回の中央値(壁切れを遅れの少ない値で見るとき用。motor.c の G_WallCut_Fast) */
+int Wall_Sensor_Med3(int i) {
+	return Wall_Sensor_Median3(i);
+}
+
+/* ---- 柱の切れ目の判定(壁切れを柱で見るとき用。motor.c の G_WallCut_Pillar) ----
+ * 「Pillar_Len 進む前と今とで、センサ値(3回の中央値)が th 以上減ったら」柱の後ろの端とみなす。
  * 壁の終わりも、壁のない所の柱も、柱の後ろの端でセンサ値が下がるので同じ位置で見つかる。
- * 1回だけの飛びで誤判定しないよう、どちらも3回の中央値を使う。
- * g_sensor[i][] は1msごとに更新され、[1] は [0] と同じ値なので、kms前は [k+1] */
+ *
+ * G_Pillar_DistHist = 1(2026-10-12、既定): センサ値を走った距離ごと(DistHist.h、1mm間隔)に残し、
+ *   ちょうど Pillar_Len 前の値と比べる。速度に関係なく同じ距離で比べるので、閾値の効き方が速度で変わらない。
+ *   距離はエンコーダから求めた実際の走行距離(G_Odo_X)を使う。
+ * G_Pillar_DistHist = 0(2026-10-10 の版): Pillar_Len を目標速度から何ms前かに直し、1〜6msに丸めて比べる。
+ *   丸めと上限のため、実際に比べる距離は 500で3mm、1000で5mm、2000で6mm、2400で4.8mm と速度で変わっていた。
+ *
+ * Pillar_Len(5mm)はクラシックの値。センサ値が柱で何mmかけて下がるかの1/3〜1/2を目安にする
+ * (モード3 No.6〜9 のログで確かめる)。ハーフでは柱・壁までの距離がおおよそ半分なので、2.5mm から測り直す */
+int G_Pillar_DistHist = 1;
 float Pillar_Len = 5;	//何mm前のセンサ値と比べるか
-int Pillar_Edge(int i, int th) {
+
+/* 距離ごとの履歴と、1msごとに求めた「Pillar_Len 進む間の減り方」。0: 右(g_sensor[1])、1: 左(g_sensor[2]) */
+static DistHist Edge_Hist[2];
+static volatile float Edge_Drop[2] = { 0, 0 };
+static volatile float Edge_PastX[2] = { -1e9f, -1e9f };	//比べた過去の点の距離(G_Odo_X)
+
+/* 壁切れの位置のログ(モード3 No.6〜9)。ログを取っているあいだ、3つの方法それぞれで反応した位置を残す */
+#define EDGE_LOG_N 48
+#define EDGE_KIND_AV 0		//従来: g_sensor_av < Cut_*
+#define EDGE_KIND_MED 1		//遅れの少ない値: 3回の中央値 < Cut_*
+#define EDGE_KIND_PILLAR 2	//柱: Pillar_Len 進む間に Pillar_TH 以上減った
+#define EDGE_REARM 20		//閾値の判定は、いちど Cut_* + これ を超えてから次を数える
+typedef struct {
+	float x;	//ログ開始からの距離[mm]
+	float v;	//そのときの速度[mm/s]
+	signed char side;	//0: 右、1: 左
+	signed char kind;
+} EdgeEvent;
+static EdgeEvent Edge_Log[EDGE_LOG_N];
+static volatile int Edge_Log_Count = 0;
+static volatile int Edge_Log_On = 0;
+static float Edge_Log_X0 = 0;
+static int Edge_Arm[2][3];
+
+static void Edge_Log_Add(int side, int kind, float x) {
+	if (Edge_Log_Count >= EDGE_LOG_N) return;
+	EdgeEvent *e = &Edge_Log[Edge_Log_Count];
+	e->x = x - Edge_Log_X0;
+	e->v = (G_Tire_Speed_L + G_Tire_Speed_R) / 2;
+	e->side = side;
+	e->kind = kind;
+	Edge_Log_Count++;
+}
+
+/* 1msに1回、割り込みで呼ぶ(G_Odo_X とセンサ値を更新したあと) */
+void Wall_Edge_Update() {
+	for (int s = 0; s < 2; s++) {
+		int i = (s == 0) ? 1 : 2;
+		float now = Wall_Sensor_Median3(i);
+		DistHist_Push(&Edge_Hist[s], G_Odo_X, now);
+		float x = DistHist_LastX(&Edge_Hist[s]);
+		float past;
+		if (DistHist_At(&Edge_Hist[s], x - Pillar_Len, &past)) {
+			Edge_Drop[s] = past - now;
+			Edge_PastX[s] = x - Pillar_Len;
+		} else {
+			Edge_Drop[s] = 0;
+			Edge_PastX[s] = -1e9f;
+		}
+
+		if (Edge_Log_On) {
+			float cut = (s == 0) ? Cut_R : Cut_L;
+			float lv[2] = { g_sensor_av[i], now };
+			for (int k = 0; k < 2; k++) {
+				if (lv[k] > cut + EDGE_REARM) {
+					Edge_Arm[s][k] = 1;
+				} else if (Edge_Arm[s][k] && lv[k] < cut) {
+					Edge_Log_Add(s, k, G_Odo_X);
+					Edge_Arm[s][k] = 0;
+				}
+			}
+			if (Edge_Drop[s] < Pillar_TH / 2) {
+				Edge_Arm[s][EDGE_KIND_PILLAR] = 1;
+			} else if (Edge_Arm[s][EDGE_KIND_PILLAR] && Edge_Drop[s] >= Pillar_TH) {
+				Edge_Log_Add(s, EDGE_KIND_PILLAR, G_Odo_X);
+				Edge_Arm[s][EDGE_KIND_PILLAR] = 0;
+			}
+		}
+	}
+}
+
+/* i: 1 右 / 2 左。x_from: 比べる過去の点がこの距離(G_Odo_X)より前なら見ない(ターン直後用。距離ごとの判定のときだけ) */
+int Pillar_Edge(int i, int th, float x_from) {
+	if (G_Pillar_DistHist) {
+		int s = (i == 1) ? 0 : 1;
+		return (Edge_PastX[s] >= x_from) && (Edge_Drop[s] >= th);
+	}
+	/* 以前の版(時間ごと)。g_sensor[i][] は1msごとに更新され、[1] は [0] と同じ値なので、kms前は [k+1] */
 	int k = 6;
 	if (G_Motor_V_Target > 0) {
 		k = (int) (Pillar_Len * 1000 / G_Motor_V_Target + 0.5f);
@@ -261,6 +353,37 @@ int Pillar_Edge(int i, int th) {
 	int now = Wall_Sensor_Median3(i);
 	int past = Median3(g_sensor[i][k + 1], g_sensor[i][k + 2], g_sensor[i][k + 3]);
 	return (past - now) >= th;
+}
+
+void Wall_Edge_Log_Start() {
+	Edge_Log_On = 0;
+	Edge_Log_Count = 0;
+	Edge_Log_X0 = G_Odo_X;
+	for (int s = 0; s < 2; s++) {
+		for (int k = 0; k < 3; k++) {
+			Edge_Arm[s][k] = 0;
+		}
+	}
+	Edge_Log_On = 1;
+}
+
+void Wall_Edge_Log_Stop() {
+	Edge_Log_On = 0;
+}
+
+/* first_boundary: ログ開始の位置から最初の区画の境目までの距離[mm]。境目は first_boundary + 180k */
+void Wall_Edge_Log_Print(float first_boundary) {
+	static const char *kind_name[3] = { "av ", "med", "pil" };
+	printf("\n\r---- EDGE  Cut_L=%.0f Cut_R=%.0f Pillar_TH=%d Pillar_Len=%.1f DistHist=%d Fast=%d  (border = %.0f + 180k)\n\r",
+			Cut_L, Cut_R, Pillar_TH, Pillar_Len, G_Pillar_DistHist, G_WallCut_Fast, first_boundary);
+	printf("side,kind,x,v,border,x-border\n\r");
+	for (int n = 0; n < Edge_Log_Count; n++) {
+		const EdgeEvent *e = &Edge_Log[n];
+		int k = (int) floorf((e->x - first_boundary) / 180.0f + 0.5f);
+		float border = first_boundary + 180.0f * k;
+		printf("%s,%s,%.1f,%.0f,%.0f,%.1f\n\r", e->side ? "L" : "R", kind_name[(int) e->kind],
+				e->x, e->v, border, e->x - border);
+	}
 }
 
 /* 横壁制御を計算する。1msに1回だけ呼ぶこと。

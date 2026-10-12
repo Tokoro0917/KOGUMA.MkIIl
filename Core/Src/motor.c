@@ -22,6 +22,9 @@
 float G_Robot_speed = 0;
 
 float G_Motor_X = 0;
+/* リセットしない走行距離[mm](2026-10-12)。G_Motor_X は動作ごとに0に戻るので、
+ * 距離ごとのセンサ値の履歴(Wallsensor.c の Wall_Edge_Update)はこちらを使う */
+float G_Odo_X = 0;
 float G_Motor_Ac = 0;
 float G_Motor_V_Target = 0;
 
@@ -105,7 +108,14 @@ float Cut_L_NA = 150;
 int G_WallCut_Pillar = 0;
 int Pillar_TH = 40;	//柱の切れ目とみなす減り方(センサ値、Pillar_Len 進む間)
 float Pillar_MaxX = 140;	//後距離で、柱が見つからないまま、これだけ進んだら諦める[mm]
-#define PILLAR_WARM_MS 9	//ターン直後は、ターン中のセンサ値が履歴に残っているので見ない[ms]
+#define PILLAR_WARM_MS 9	//ターン直後は、ターン中のセンサ値が履歴に残っているので見ない[ms](時間ごとの判定のとき)
+#define PILLAR_WARM_MS_DIST 3	//距離ごとの判定のとき。比べる2点はターン後のものに限るので、中央値(3回)の分だけ待つ[ms]
+
+/* 壁があるときの壁切れの判定に使うセンサ値(2026-10-12)。
+ * 0 は従来どおり g_sensor_av(5回の移動平均。約2ms遅れるので、反応する位置が速度×2ms 後ろにずれる。
+ * 1000で2mm、2400で4.8mm)。1 は直近3回の中央値(遅れ約1ms)。
+ * 1にすると壁切れの位置が変わるので、前距離・後距離を合わせ直す。斜めの壁切れ(Cut_*_NA)も同じ */
+int G_WallCut_Fast = 0;
 
 float Run_Voltage;
 
@@ -933,6 +943,7 @@ void Motor_Sula_COS(float V, float Angle, float Wmax, float W_Ac) {
  * Cut_Hit: 切れ目が来たら 1(i: 1 右 / 2 左、wall: その側に壁があるか、cut: 従来の閾値、th: 柱の閾値)。
  *   壁があれば柱版でも従来どおり cut を下回ったら。壁がなく柱版なら Pillar_Edge */
 static float Cut_X0 = 0;
+static float Cut_Odo0 = 0;
 static float Cut_MaxX = 0;
 static uint32_t Cut_T0 = 0;
 static int Cut_Warm = 0;
@@ -941,21 +952,29 @@ static int Cut_Need(int wall) {
 }
 static void Cut_Begin(int warm, float max_x) {
 	Cut_X0 = G_Motor_X;
+	Cut_Odo0 = G_Odo_X;
 	Cut_MaxX = max_x;
 	Cut_T0 = HAL_GetTick();
 	Cut_Warm = warm;
 }
+static float Cut_Sensor(int i) {
+	return G_WallCut_Fast ? Wall_Sensor_Med3(i) : g_sensor_av[i];
+}
 static int Cut_Hit(int i, int wall, float cut, int th) {
 	if (!G_WallCut_Pillar || wall) {
-		return g_sensor_av[i] < cut;
+		return Cut_Sensor(i) < cut;
 	}
 	if (G_Motor_X - Cut_X0 > Cut_MaxX) {
 		return 1;
 	}
-	if (Cut_Warm && (HAL_GetTick() - Cut_T0 < PILLAR_WARM_MS)) {
-		return 0;
+	if (Cut_Warm) {
+		uint32_t ms = HAL_GetTick() - Cut_T0;
+		if (ms < (G_Pillar_DistHist ? PILLAR_WARM_MS_DIST : PILLAR_WARM_MS)) {
+			return 0;
+		}
 	}
-	return Pillar_Edge(i, th);
+	/* ターン直後は、比べる2点がどちらもターンのあと(待ち始めより先)のときだけ見る */
+	return Pillar_Edge(i, th, Cut_Warm ? Cut_Odo0 : -1e9f);
 }
 
 void Motor_Wallcut_ST(float Vmax, float X, int direction) {		//壁の有無を変数に入れる
@@ -1056,13 +1075,13 @@ void Motor_Wallcut_ST_NANAME(float Vmax, float X, int direction) {
 	G_Motor_X = 0;
 	if (direction == 0) { //左旋回
 		while (1) {
-			if (g_sensor_av[2] < Cut_L_NA) {
+			if (Cut_Sensor(2) < Cut_L_NA) {
 				break;
 			}
 		}
 	} else if (direction == 1) { //右旋回
 		while (1) {
-			if (g_sensor_av[1] < Cut_R_NA) {
+			if (Cut_Sensor(1) < Cut_R_NA) {
 				break;
 			}
 		}
@@ -1097,13 +1116,13 @@ void Motor_Wallcut_END_NANAME(float Vmax, float X, int direction) {
 	Wall_search();
 	if (G_Wall_data[2] == 1 && direction == 0) {
 		while (1) {
-			if (g_sensor_av[1] < Cut_R_NA) {
+			if (Cut_Sensor(1) < Cut_R_NA) {
 				break;
 			}
 		}
 	} else if (G_Wall_data[1] == 1 && direction == 1) {
 		while (1) {
-			if (g_sensor_av[2] < Cut_L_NA) {
+			if (Cut_Sensor(2) < Cut_L_NA) {
 				break;
 			}
 		}
@@ -1234,14 +1253,14 @@ void Motor_Wallcut_END_NANAME_Accel(float Vst, float Vmax, float Ac, float X,
 	if (G_Wall_data[2] == 1 && direction == 0) {
 		while (1) {
 			Accel_Target_Update(Vst, Vmax, Ac);
-			if (g_sensor_av[1] < Cut_R_NA) {
+			if (Cut_Sensor(1) < Cut_R_NA) {
 				break;
 			}
 		}
 	} else if (G_Wall_data[1] == 1 && direction == 1) {
 		while (1) {
 			Accel_Target_Update(Vst, Vmax, Ac);
-			if (g_sensor_av[2] < Cut_L_NA) {
+			if (Cut_Sensor(2) < Cut_L_NA) {
 				break;
 			}
 		}
@@ -1423,14 +1442,14 @@ float Motor_First_Turn_Accel(float X_pre, float pre, float post, float v_ref,
 		if (G_Wall_data[2] == 1 && direction == 0) {
 			while (1) {
 				FT_Target_Update();
-				if (g_sensor_av[1] < Cut_R_NA) {
+				if (Cut_Sensor(1) < Cut_R_NA) {
 					break;
 				}
 			}
 		} else if (G_Wall_data[1] == 1 && direction == 1) {
 			while (1) {
 				FT_Target_Update();
-				if (g_sensor_av[2] < Cut_L_NA) {
+				if (Cut_Sensor(2) < Cut_L_NA) {
 					break;
 				}
 			}

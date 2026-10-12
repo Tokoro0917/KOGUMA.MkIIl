@@ -25,7 +25,14 @@ void Wall_Center_Calibration();
 
 float calWallConrol();
 float Wall_Control_Update();
-int Pillar_Edge(int i, int th);
+extern int G_Pillar_DistHist;
+extern float Pillar_Len;
+int Pillar_Edge(int i, int th, float x_from);
+int Wall_Sensor_Med3(int i);
+void Wall_Edge_Update();
+void Wall_Edge_Log_Start();
+void Wall_Edge_Log_Stop();
+void Wall_Edge_Log_Print(float first_boundary);
 float calWallConrol_NANAME();
 float calWallConrol_Flontwall_ST();
 float calWallConrol_Flontwall_Turn();

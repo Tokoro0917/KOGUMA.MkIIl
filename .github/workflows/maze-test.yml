@@ -61,3 +61,14 @@ jobs:
           gcc -std=c11 -Wall -I Core/Inc -o test_speedplan \
             test/test_speedplan.c Core/Src/SpeedPlan.c -lm
           ./test_speedplan
+
+  disthist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 距離ごとのセンサ値の履歴(柱の壁切れ)の検証
+        run: |
+          gcc -std=c11 -Wall -I Core/Inc -o test_disthist \
+            test/test_disthist.c Core/Src/DistHist.c -lm
+          ./test_disthist
