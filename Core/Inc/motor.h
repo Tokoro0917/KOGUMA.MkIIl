@@ -26,7 +26,6 @@ extern int G_Motor_Flag;
 extern int G_WallCut_Pillar;
 extern int G_WallCut_Fast;
 extern float Cut_R, Cut_L;
-extern int Pillar_TH;
 extern float G_Motor_Count;
 
 void Motor_PWM_Generate();

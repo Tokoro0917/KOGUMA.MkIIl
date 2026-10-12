@@ -25,14 +25,27 @@ void Wall_Center_Calibration();
 
 float calWallConrol();
 float Wall_Control_Update();
-extern int G_Pillar_DistHist;
-extern float Pillar_Len;
-int Pillar_Edge(int i, int th, float x_from);
 int Wall_Sensor_Med3(int i);
-void Wall_Edge_Update();
-void Wall_Edge_Log_Start();
-void Wall_Edge_Log_Stop();
-void Wall_Edge_Log_Print(float first_boundary);
+
+/* 柱の端(docs/pillar_cut_design.md) */
+extern float Edge_Off[2][2];
+extern float Edge_Tan;
+void Wall_Edge_Sample();
+/* 境目の推定が [lo, hi](G_Odo_X)にあれば1。左右にあれば平均。src は EDGE_SRC_*(PillarEdge.h) */
+int Edge_Cut_Find(float lo, float hi, float *c, int *src);
+
+/* 壁切れのログ */
+#define EDGE_LOG_FALL 0
+#define EDGE_LOG_TH 1
+#define EDGE_LOG_ST 2
+#define EDGE_LOG_ST_CUT 3
+#define EDGE_LOG_CUT 4
+#define EDGE_LOG_END 5
+#define EDGE_LOG_END_CUT 6
+void Edge_Log_Start(int with_thresholds);
+void Edge_Log_Stop();
+void Edge_Log_Mark(int type, int info, float x, float a, float b);
+void Edge_Log_Print(float first_border);
 float calWallConrol_NANAME();
 float calWallConrol_Flontwall_ST();
 float calWallConrol_Flontwall_Turn();

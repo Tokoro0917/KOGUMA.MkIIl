@@ -15,7 +15,7 @@
 
 /* 点の間隔[mm]。クラシック(区画180mm)の値。
  * ハーフ(区画90mm)では、柱・壁までの距離がおおよそ半分になるので 0.5 にすると、
- * 比べる区間(Pillar_Len)に入る点の数がクラシックと同じになる(ハーフでは測り直す) */
+ * 柱の端を見る長さ(PillarEdge.h の Edge_High_Len)に入る点の数がクラシックと同じになる(ハーフでは測り直す) */
 #define DISTHIST_STEP_MM 1.0f
 
 /* 残す点の数。DISTHIST_N * DISTHIST_STEP_MM [mm] 前まで取り出せる */
@@ -43,5 +43,11 @@ int DistHist_At(const DistHist *h, float x, float *out);
 
 /* 最後に入れたサンプルの距離 */
 float DistHist_LastX(const DistHist *h);
+
+/* 最後のサンプルから len[mm] 前までの点(と最後のサンプル)の最大値。空なら0 */
+float DistHist_Max(const DistHist *h, float len);
+
+/* 残っている長さ[mm](いちばん古い点から最後のサンプルまで) */
+float DistHist_Length(const DistHist *h);
 
 #endif /* INC_DISTHIST_H_ */

@@ -68,8 +68,8 @@
 
 /* USER CODE BEGIN PV */
 /* 1 にすると、最短走行(モード1、モード0 No.8〜10 の探索後の最短)の壁切れを柱で見る
- * (壁のない所でも、区画の境目の柱で壁切れする。motor.c の G_WallCut_Pillar)。
- * 0 なら従来どおり壁があるときだけ壁切れする。探索中の壁切れはいつも従来どおり */
+ * (区画の境目の柱の端から境目の位置を求め、前距離を直す。motor.c の G_WallCut_Pillar、
+ * 設計は docs/pillar_cut_design.md)。0 なら従来どおり。探索中と斜めの壁切れはいつも従来どおり */
 static int Short_WallCut_Pillar = 0;
 
 /* USER CODE END PV */
@@ -307,11 +307,11 @@ int main(void) {
 				}
 			} else if ((Encorder_number_out() >= 6)
 					&& (Encorder_number_out() <= 9)) {	//壁切れの位置のテスト
-				/* スタート位置(後ろの壁に付けて置く)から4区画まっすぐ走り、左右の壁切れの位置を
-				 * 3つの方法で残してUARTに出す(av: 従来の g_sensor_av < Cut_*、med: 3回の中央値 < Cut_*、
-				 * pil: 柱の判定)。x は走り出しからの距離、x-border は区画の境目(114 + 180k)からのずれ。
+				/* スタート位置(後ろの壁に付けて置く)から4区画まっすぐ走り、柱の端(fall)と、
+				 * 比べるための閾値の判定(th: av 従来の g_sensor_av < Cut_*、med 3回の中央値 < Cut_*)をUARTに出す。
+				 * fall の c-border は、境目の推定 c と区画の境目(114 + 180k)の差。0 になるように Edge_Off を直す。
 				 * No.6: 500(吸引なし)、No.7: 1000、No.8: 2000、No.9: 2400(No.7〜9は吸引70)。加速度20000。
-				 * 同じ置き方で速度を変えて走らせ、x-border が速度でどれだけ変わるかを見る。
+				 * 同じ置き方で速度を変えて走らせ、c-border が速度・左右・種類でどれだけ変わるかを見る。
 				 * 結果は止まったあとと、左前センサに手をかざすたびに出す(終わるときはリセット) */
 				if (Sensor_Enter() == 1) {
 					const float v_tab[4] = { 500, 1000, 2000, 2400 };
@@ -324,14 +324,14 @@ int main(void) {
 						Suction_Start(70);
 						HAL_Delay(500);
 					}
-					Wall_Edge_Log_Start();
+					Edge_Log_Start(1);
 					Motor_trapezoid_PID(0, v, 0, 20000, 114 + 180 * 4);
 					Motor_Stop();
-					Wall_Edge_Log_Stop();
+					Edge_Log_Stop();
 					Suction_Stop();
 					Motor_Free();
 					while (1) {
-						Wall_Edge_Log_Print(114);
+						Edge_Log_Print(114);
 						HAL_Delay(1000);
 						while (Sensor_Enter() != 1) {
 						}
@@ -519,6 +519,16 @@ int main(void) {
 					Suction_Stop();
 					LOG_get_end();
 					Encorder_count_reset();
+				}
+			} else if (Encorder_number_out() == 15) {	//壁切れのログ出力
+				/* 直前の最短走行(モード1、モード0 No.8〜10)の壁切れのログを出す。
+				 * 柱の端(fall)、前距離の始め(st)と曲がり始め(st_cut)、従来の壁切れ(cut)、後距離(end / end_cut)。
+				 * 列の意味は Wallsensor.c の Edge_Log_Print */
+				if (Sensor_Enter() == 1) {
+					Buzzer_Enter();
+					Sensor_Start();
+					Edge_Log_Print(-1);
+					HAL_Delay(1000);
 				}
 			}
 		} else if (Encorder_mode_out() == 5) {		//1m/s
@@ -1480,7 +1490,9 @@ static void Maze_Search(int flags) {
 			Motor_Setup();
 			Motor_Stop();
 			G_WallCut_Pillar = Short_WallCut_Pillar;
+			Edge_Log_Start(0);
 			Short_Dijkstra_Move2000(6000, 20000);
+			Edge_Log_Stop();
 			G_WallCut_Pillar = 0;
 			LED_Reset();
 			HAL_Delay(500);
@@ -1502,7 +1514,9 @@ static void Maze_Shortest_Run(void (*run)(int, int), int max, int ac) {
 	Motor_Setup();
 	Motor_Stop();
 	G_WallCut_Pillar = Short_WallCut_Pillar;
+	Edge_Log_Start(0);	//壁切れのログ(モード4 No.15で出す)
 	run(max, ac);
+	Edge_Log_Stop();
 	G_WallCut_Pillar = 0;
 	Motor_Free();
 	LED_Reset();

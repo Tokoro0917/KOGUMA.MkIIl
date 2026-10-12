@@ -72,3 +72,9 @@ jobs:
           gcc -std=c11 -Wall -I Core/Inc -o test_disthist \
             test/test_disthist.c Core/Src/DistHist.c -lm
           ./test_disthist
+
+      - name: 柱の端の検出の検証
+        run: |
+          gcc -std=c11 -Wall -I Core/Inc -o test_pillaredge \
+            test/test_pillaredge.c Core/Src/PillarEdge.c Core/Src/DistHist.c -lm
+          ./test_pillaredge

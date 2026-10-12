@@ -10,6 +10,7 @@
 #include "dma.h"
 #include "gpio.h"//sensorLED用
 #include "stdlib.h"
+#include "Wallsensor.h"
 
 uint16_t g_ADCBuffer[5];
 char AD_step;
@@ -136,6 +137,8 @@ void pl_callback_getSensor(void) {
 			}
 			g_sensor_av10[i] = sum10 / 10;
 		}
+		/* 柱の端を探す(2026-10-12)。センサ値ができた時点の走行距離で記録する */
+		Wall_Edge_Sample();
 	}
 }
 

@@ -85,3 +85,20 @@ int DistHist_At(const DistHist *h, float x, float *out) {
 float DistHist_LastX(const DistHist *h) {
 	return h->last_x;
 }
+
+float DistHist_Max(const DistHist *h, float len) {
+	if (!h->started) return 0;
+	float m = h->last_v;
+	int n = (int) (len / DISTHIST_STEP_MM);
+	if (n > h->count) n = h->count;
+	for (int k = 0; k < n; k++) {
+		float v = h->v[(h->head - k + DISTHIST_N) % DISTHIST_N];
+		if (v > m) m = v;
+	}
+	return m;
+}
+
+float DistHist_Length(const DistHist *h) {
+	if (!h->started) return 0;
+	return h->last_x - (h->grid - (h->count - 1)) * DISTHIST_STEP_MM;
+}
