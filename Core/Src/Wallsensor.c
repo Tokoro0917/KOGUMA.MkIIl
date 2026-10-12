@@ -229,6 +229,9 @@ void Wall_Center_Calibration() {
 /* 横壁制御の出力。Wall_Control_Update() が1msに1回計算し、
  * calWallConrol() はその値を返す */
 static float G_Wall_PID = 0;
+/* 走行ログ用: P項・D項、使った壁(1 左、2 右、3 両方、0 なし)、横の壁までの距離[mm](3回の中央値から) */
+float G_Wall_P = 0, G_Wall_D = 0, G_Wall_dL = 0, G_Wall_dR = 0;
+int G_Wall_St = 0;
 
 /* 直進中の横壁制御の値を返す(1msの中で何回呼んでも同じ値)。
  * 計算は Motor_Speed_PID_ST() の中の Wall_Control_Update() で1回だけ行う */
@@ -605,6 +608,13 @@ float Wall_Control_Update() {
 	Wall_old_error = Wall_error;
 
 	PID_Wall = KP * Wall_error + KD * Wall_Delta_error;
+
+	/* 走行ログ用(LOG.c) */
+	G_Wall_P = KP * Wall_error;
+	G_Wall_D = KD * Wall_Delta_error;
+	G_Wall_St = (Wall_Flont_Av() > 800) ? 0 : Wall_st;
+	G_Wall_dL = dL;
+	G_Wall_dR = dR;
 
 	G_Wall_PID = PID_Wall;
 	return PID_Wall;

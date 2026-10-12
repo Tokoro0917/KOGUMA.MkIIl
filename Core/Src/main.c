@@ -1491,7 +1491,11 @@ static void Maze_Search(int flags) {
 			Motor_Stop();
 			G_WallCut_Pillar = Short_WallCut_Pillar;
 			Edge_Log_Start(0);
+			G_Log_Div = 4;		//走行ログは4msおき(8秒)
+			LOG_get_start();
 			Short_Dijkstra_Move2000(6000, 20000);
+			LOG_get_end();
+			G_Log_Div = 1;
 			Edge_Log_Stop();
 			G_WallCut_Pillar = 0;
 			LED_Reset();
@@ -1515,7 +1519,11 @@ static void Maze_Shortest_Run(void (*run)(int, int), int max, int ac) {
 	Motor_Stop();
 	G_WallCut_Pillar = Short_WallCut_Pillar;
 	Edge_Log_Start(0);	//壁切れのログ(モード4 No.15で出す)
+	G_Log_Div = 4;		//走行ログは4msおき(8秒)。モード4 No.7で出す
+	LOG_get_start();
 	run(max, ac);
+	LOG_get_end();
+	G_Log_Div = 1;
 	Edge_Log_Stop();
 	G_WallCut_Pillar = 0;
 	Motor_Free();

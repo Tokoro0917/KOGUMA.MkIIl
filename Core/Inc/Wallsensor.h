@@ -11,6 +11,8 @@
 extern int G_Wall_data[];
 extern int G_WallCtrl_Use_mm;
 extern float Wall_error;
+extern float G_Wall_P, G_Wall_D, G_Wall_dL, G_Wall_dR;
+extern int G_Wall_St;
 
 void Wall_search();
 

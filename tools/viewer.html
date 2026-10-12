@@ -517,6 +517,7 @@ class LineChart {
   }
   tooltip(e, x) {
     const rows = [el("div", { class: "n", text: `${this.opt.xName || "t [s]"} = ${fmt(x, this.opt.xDigits ?? 3)}` })];
+    if (this.opt.extra && this.series.length) { const i = this.nearest(this.series[0], x); if (i >= 0) rows.push(...this.opt.extra(i)); }
     for (const s of this.series) { const i = this.nearest(s, x); if (i >= 0) rows.push(tipRow(s.color, fmt(s.y[i], 2), s.name, s.dashed)); }
     if (this.opt.points) {
       const [lo, hi] = this.range(), tol = (hi - lo) / Math.max(1, this.canvas.clientWidth) * 8;
@@ -556,6 +557,10 @@ class LineChart {
     if (ymin < 0 && ymax > 0) { g.strokeStyle = css("--axis"); const y = Math.round(Y(0)) + 0.5; g.beginPath(); g.moveTo(L, y); g.lineTo(W - R, y); g.stroke(); }
     g.save();
     g.beginPath(); g.rect(L, T, pw, ph); g.clip();
+    for (const bd of this.opt.bands || []) {
+      if (bd.x1 < lo || bd.x0 > hi || !bd.color) continue;
+      g.fillStyle = bd.color; g.fillRect(X(bd.x0), T, Math.max(1, X(bd.x1) - X(bd.x0)), ph);
+    }
     for (const s of this.series) {
       g.strokeStyle = s.color; g.lineWidth = 2; g.setLineDash(s.dashed ? [6, 4] : []);
       g.lineJoin = "round";
@@ -611,52 +616,113 @@ function parseCSV(b) {
 const LOG_GROUPS = [
   { title: "速度", unit: "mm/s", cols: [["v", "速度"], ["v_target", "目標"]] },
   { title: "角速度", unit: "deg/s", cols: [["w", "角速度"], ["w_target", "目標"]] },
-  { title: "横センサ", unit: "", cols: [["sensor_L", "L"], ["sensor_R", "R"]] },
-  { title: "電圧(PWM)", unit: "", cols: [["volt_L", "L"], ["volt_R", "R"]] },
+  { title: "角度(動作ごとに0から)", unit: "deg", cols: [["angle", "角度"]] },
+  { title: "横の壁までの距離(横壁制御が使う値。区画中心で84)", unit: "mm", cols: [["dist_L", "左"], ["dist_R", "右"]] },
+  { title: "横壁制御", unit: "", cols: [["wall_out", "出力"], ["wall_p", "P項"], ["wall_d", "D項"]] },
   { title: "横壁の誤差", unit: "", cols: [["wall_err", "誤差"]] },
-  { title: "横壁制御の出力", unit: "", cols: [["wall_out", "出力"]] },
+  { title: "使った壁(1 左、2 右、3 両方、0 なし)", unit: "", cols: [["wall", "使った壁"]] },
+  { title: "横センサの値(LPFだけ)", unit: "", cols: [["sensor_L", "左"], ["sensor_R", "右"]] },
+  { title: "電圧(PWM、上限200)", unit: "", cols: [["volt_L", "左"], ["volt_R", "右"]] },
+  { title: "電池", unit: "V", cols: [["batt", "電池"]] },
 ];
+const LOG_HIDDEN = new Set(["t", "x", "phase"]);	//グラフにしない列
+/* 動作の種類(motor.h の LOG_PH_*)。色は区間の帯の色の種類 */
+const PHASES = {
+  0: { name: "そのほか", band: null }, 1: { name: "直線", band: null }, 2: { name: "斜めの直線", band: null },
+  3: { name: "前距離", band: "pp" }, 4: { name: "ターン", band: "turn" }, 5: { name: "後距離", band: "pp" },
+  6: { name: "斜めからの前距離", band: "pp" }, 7: { name: "斜めへの後距離", band: "pp" },
+  8: { name: "その場旋回", band: "turn" }, 9: { name: "止まる", band: "stop" }, 10: { name: "壁合わせ", band: "stop" },
+};
+const PHASE_FILTERS = [
+  ["all", "全部", () => true], ["straight", "直線", (p) => p === 1 || p === 2], ["pre", "前距離", (p) => p === 3 || p === 6],
+  ["turn", "ターン", (p) => p === 4 || p === 8], ["post", "後距離", (p) => p === 5 || p === 7],
+];
+let logXMode = "t";	//横軸: t 時間 / x 走った距離
+function bandColor(kind) {
+  const dark = document.documentElement.dataset.theme === "dark" || (document.documentElement.dataset.theme !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+  const a = dark ? 0.16 : 0.10;
+  if (kind === "turn") return `rgba(98,80,214,${a})`;
+  if (kind === "pp") return `rgba(27,175,122,${a})`;
+  if (kind === "stop") return `rgba(137,135,129,${a})`;
+  return null;
+}
 function renderLog(view, b) {
   const A = parseCSV(b);
   const B = compare ? parseCSV(compare) : null;
-  const colors = [css("--s1"), css("--s2")];
+  const colors = [css("--s1"), css("--s2"), css("--s3")];
   const link = new LinkedX();
+  const useX = logXMode === "x" && A.data.x;
+  const xa = useX ? A.data.x : A.data.t;
+  const xb = B ? (useX && B.data.x ? B.data.x : B.data.t) : null;
   const card = el("div", { class: "card" });
-  card.append(el("h2", { text: `走行ログ ${timeStr(b.time)}(${A.n} 行)` + (B ? ` と ${timeStr(compare.time)}(破線)` : "") }));
-  card.append(el("div", { class: "note", text: "ドラッグで拡大、ダブルクリックで元に戻す。グラフを指すと、その時刻の値が出る。左の一覧で別のログに印を付けると、破線で重ねる。" }));
+  card.append(el("h2", { text: `走行ログ ${timeStr(b.time)}(${A.n} 行、${b.params.div || 1} msおき)` + (B ? ` と ${timeStr(compare.time)}(破線)` : "") }));
+  /* 横軸の切り替え */
+  const sel = el("select");
+  sel.append(el("option", { value: "t", text: "横軸: 時間[s]" }), el("option", { value: "x", text: "横軸: 走った距離[mm]" }));
+  sel.value = useX ? "x" : "t";
+  if (!A.data.x) sel.disabled = true;
+  sel.addEventListener("change", () => { logXMode = sel.value; renderView(); });
+  const legend = el("span", { class: "title" });
+  for (const [k, n] of [["turn", "ターン"], ["pp", "前距離・後距離"], ["stop", "止まる・壁合わせ"]]) {
+    const sw = el("i", { class: "dot" }); sw.style.background = bandColor(k).replace(/[\d.]+\)$/, "0.5)"); sw.style.borderRadius = "2px";
+    legend.append(el("span", { class: "key" }, sw, el("span", { text: n })));
+  }
+  card.append(el("div", { class: "row" }, sel, A.data.phase ? legend : null),
+    el("div", { class: "note", text: "ドラッグで拡大、ダブルクリックで元に戻す。グラフを指すと、その時刻の値と動作が出る。左の一覧で別のログに印を付けると破線で重ねる。" }));
   view.append(card);
-  const t = A.data.t;
-  const used = new Set(["t"]);
+  /* 動作の区間(帯) */
+  const bands = [];
+  if (A.data.phase) {
+    const ph = A.data.phase;
+    let s0 = 0;
+    for (let i = 1; i <= A.n; i++) {
+      if (i === A.n || ph[i] !== ph[s0]) {
+        const info = PHASES[ph[s0]] || PHASES[0];
+        if (info.band) bands.push({ x0: xa[s0], x1: xa[Math.min(i, A.n - 1)], color: bandColor(info.band) });
+        s0 = i;
+      }
+    }
+  }
+  const xName = useX ? "x [mm]" : "t [s]";
+  const extra = (i) => {
+    const rows = [];
+    if (A.data.phase) rows.push(el("div", { class: "n", text: "動作: " + (PHASES[A.data.phase[i]] || PHASES[0]).name }));
+    if (A.data.x) rows.push(el("div", { class: "n", text: useX ? `t = ${fmt(A.data.t[i], 3)} s` : `x = ${fmt(A.data.x[i], 1)} mm` }));
+    return rows;
+  };
   const groups = LOG_GROUPS.filter((gp) => gp.cols.some(([c]) => A.data[c]));
-  /* 知らない列も1つずつグラフにする */
-  for (const c of A.cols) if (c !== "t" && !LOG_GROUPS.some((gp) => gp.cols.some(([k]) => k === c))) groups.push({ title: c, unit: "", cols: [[c, c]] });
+  for (const c of A.cols) if (!LOG_HIDDEN.has(c) && !LOG_GROUPS.some((gp) => gp.cols.some(([k]) => k === c))) groups.push({ title: c, unit: "", cols: [[c, c]] });
   for (const gp of groups) {
     const series = [];
     gp.cols.forEach(([c, name], j) => {
       if (!A.data[c]) return;
-      used.add(c);
-      series.push({ name, color: colors[j % 2], x: t, y: A.data[c] });
-      if (B && B.data[c]) series.push({ name: name + "(比較)", color: colors[j % 2], x: B.data.t, y: B.data[c], dashed: true });
+      series.push({ name, color: colors[j % 3], x: xa, y: A.data[c] });
+      if (B && B.data[c]) series.push({ name: name + "(比較)", color: colors[j % 3], x: xb, y: B.data[c], dashed: true });
     });
-    new LineChart(card, gp.title, gp.unit, series, link);
+    new LineChart(card, gp.title, gp.unit, series, link, 150, { xName, xDigits: useX ? 1 : 3, bands, extra });
   }
-  /* 表: 拡大している範囲の値 */
+  /* 表: 表示している範囲・動作の値 */
   const sc = el("div", { class: "card" });
   const tbl = el("table");
-  sc.append(el("h2", { text: "表示している範囲の値" }), el("div", { class: "note", id: "rangeNote" }), tbl);
+  const pf = el("select");
+  for (const [k, n] of PHASE_FILTERS) pf.append(el("option", { value: k, text: "動作: " + n }));
+  const note = el("div", { class: "note" });
+  sc.append(el("h2", { text: "表示している範囲の値" }), el("div", { class: "row" }, pf, note), tbl);
   view.append(sc);
   const fill = () => {
-    const lo = link.lo ?? t[0], hi = link.hi ?? t[t.length - 1];
-    $("rangeNote").textContent = `t = ${fmt(lo, 3)} 〜 ${fmt(hi, 3)} s`;
+    const lo = link.lo ?? xa[0], hi = link.hi ?? xa[xa.length - 1];
+    const test = PHASE_FILTERS.find((f) => f[0] === pf.value)[2];
+    const idx = [];
+    for (let i = 0; i < A.n; i++) if (xa[i] >= lo && xa[i] <= hi && (!A.data.phase || test(A.data.phase[i]))) idx.push(i);
+    note.textContent = `${useX ? "x" : "t"} = ${fmt(lo, useX ? 1 : 3)} 〜 ${fmt(hi, useX ? 1 : 3)}、${idx.length} 行`;
     tbl.replaceChildren(el("tr", null, el("th", { class: "l", text: "列" }), el("th", { text: "平均" }), el("th", { text: "標準偏差" }), el("th", { text: "最小" }), el("th", { text: "最大" })));
     for (const c of A.cols) {
-      if (c === "t") continue;
-      const a = [];
-      for (let i = 0; i < t.length; i++) if (t[i] >= lo && t[i] <= hi) a.push(A.data[c][i]);
-      const s = stats(a);
+      if (c === "t" || c === "phase") continue;
+      const s = stats(idx.map((i) => A.data[c][i]));
       tbl.append(el("tr", null, el("td", { class: "l", text: c }), el("td", { text: fmt(s.mean, 2) }), el("td", { text: fmt(s.sd, 2) }), el("td", { text: fmt(s.min, 2) }), el("td", { text: fmt(s.max, 2) })));
     }
   };
+  pf.addEventListener("change", fill);
   link.onRange = fill;
   fill();
   rawCard(view, b);

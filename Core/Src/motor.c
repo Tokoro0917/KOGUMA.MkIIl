@@ -22,6 +22,7 @@
 float G_Robot_speed = 0;
 
 float G_Motor_X = 0;
+int G_Log_Phase = LOG_PH_NONE;	//いま何の動作中か(ログ用、LOG_PH_*)
 /* リセットしない走行距離[mm](2026-10-12)。G_Motor_X は動作ごとに0に戻るので、
  * 柱の端の位置(Wallsensor.c の Wall_Edge_Sample)はこちらで記録する */
 float G_Odo_X = 0;
@@ -138,6 +139,7 @@ void Motor_Setup_Voltage() {
 }
 
 void Motor_Stop() {
+	G_Log_Phase = LOG_PH_STOP;
 	G_Motor_Flag = 1;
 	PID_Mode = 0;
 	G_Motor_V_Target = 0;
@@ -414,6 +416,7 @@ void Motor_Speed_PID_Turn(float W, float W_Ac) {
 }
 
 void Motor_trapezoid(float Vst, float Vmax, float Vend, float Ac, float X) {
+	G_Log_Phase = (PID_Mode == 2) ? LOG_PH_DIAG : LOG_PH_STRAIGHT;
 	G_Motor_Flag = 1;
 
 	G_Motor_V_Target = Vst;
@@ -514,6 +517,7 @@ void Motor_NANAME_PID(float Vst, float Vmax, float Vend, float Ac, float X) {
 
 void Motor_Multistage_PID(float Vst, float Vmax, float Vend, float Ac_base,
 		float X) {
+	G_Log_Phase = LOG_PH_STRAIGHT;
 	// --- 加速度と閾値の設定（例） ---
 	float Ac_1 = Ac_base * 1.2;  // 低速域：超加速
 	float Ac_2 = Ac_base * 1.0;  // 中速域：標準
@@ -593,6 +597,7 @@ void Motor_Multistage_PID(float Vst, float Vmax, float Vend, float Ac_base,
 
 void Motor_trapezoid_Asymmetric_PID(float Vst, float Vmax, float Vend, float Ac,
 		float X) {
+	G_Log_Phase = LOG_PH_STRAIGHT;
 	G_Motor_Flag = 1;
 	PID_Mode = 1;
 	G_Motor_V_Target = Vst;
@@ -702,6 +707,7 @@ static float Front_Wall_mm(void) {
 }
 
 void Motor_Sula_before(float Vst, float Vmax, float Vend, float Ac, float X) {
+	G_Log_Phase = LOG_PH_PRE;
 	G_Motor_Flag = 1;
 	PID_Mode = 1;
 
@@ -741,6 +747,7 @@ void Motor_Sula_before(float Vst, float Vmax, float Vend, float Ac, float X) {
 }
 
 void Motor_Sula_ST(float Vst, float Vmax, float Vend, float Ac, float X) {
+	G_Log_Phase = LOG_PH_POST;
 	G_Motor_Flag = 1;
 	PID_Mode = 1;
 
@@ -777,6 +784,7 @@ void Motor_Sula_ST(float Vst, float Vmax, float Vend, float Ac, float X) {
 }
 
 void Motor_trapezoid_Turn(float Angle, float Wmax, float W_Ac) {
+	G_Log_Phase = LOG_PH_PIVOT;
 	int SANKAKU = 0;
 	PID_Mode = 0;
 	G_Motor_Flag = 2;
@@ -853,6 +861,7 @@ void Motor_trapezoid_Turn(float Angle, float Wmax, float W_Ac) {
 }
 
 void Motor_Sula_COS(float V, float Angle, float Wmax, float W_Ac) {
+	G_Log_Phase = LOG_PH_TURN;
 	int SANKAKU = 0;
 	G_Motor_Flag = 3;
 	G_Motor_V_Target = V;
@@ -1061,6 +1070,7 @@ void Motor_Wallcut_ST(float Vmax, float X, int direction) {		//壁の有無を�
 
 	G_Motor_X = 0;
 	if (G_WallCut_Pillar) {
+	G_Log_Phase = LOG_PH_PRE;
 		Cut_ST_Pillar(direction, G_Odo_X, X, NULL);
 		PID_Mode = 0;
 		return;
@@ -1076,6 +1086,7 @@ void Motor_Wallcut_ST(float Vmax, float X, int direction) {		//壁の有無を�
 }
 
 void Motor_Wallcut_END(float Vmax, float X, int direction) {
+	G_Log_Phase = LOG_PH_POST;
 	G_Motor_Flag = 1;
 	PID_Mode = 1;
 
@@ -1093,6 +1104,7 @@ void Motor_Wallcut_END(float Vmax, float X, int direction) {
 }
 
 void Motor_Wallcut_ST_NANAME(float Vmax, float X, int direction) {
+	G_Log_Phase = LOG_PH_PRE_DIAG;
 	G_Motor_Flag = 1;
 	PID_Mode = 2; //2
 
@@ -1127,6 +1139,7 @@ void Motor_Wallcut_ST_NANAME(float Vmax, float X, int direction) {
 }
 
 void Motor_Wallcut_END_NANAME(float Vmax, float X, int direction) {
+	G_Log_Phase = LOG_PH_POST_DIAG;
 	G_Motor_Flag = 1;
 	PID_Mode = 2; //2
 
@@ -1208,6 +1221,7 @@ static void Tick_Accel(void) {
 /* Motor_Wallcut_ST の加速版。X_pre は前距離の前に足す距離(スタート位置から区画中心までの24mmなど) */
 void Motor_Wallcut_ST_Accel(float Vst, float Vmax, float Ac, float X_pre,
 		float X, int direction) {
+	G_Log_Phase = LOG_PH_PRE;
 	Accel_Start(Vst, 1);
 	TK_Vst = Vst;
 	TK_Vmax = Vmax;
@@ -1232,6 +1246,7 @@ void Motor_Wallcut_ST_Accel(float Vst, float Vmax, float Ac, float X_pre,
 /* Motor_Wallcut_END の加速版 */
 void Motor_Wallcut_END_Accel(float Vst, float Vmax, float Ac, float X,
 		int direction) {
+	G_Log_Phase = LOG_PH_POST;
 	Accel_Start(Vst, 1);
 	TK_Vst = Vst;
 	TK_Vmax = Vmax;
@@ -1244,6 +1259,7 @@ void Motor_Wallcut_END_Accel(float Vst, float Vmax, float Ac, float X,
 /* Motor_Wallcut_END_NANAME の加速版 */
 void Motor_Wallcut_END_NANAME_Accel(float Vst, float Vmax, float Ac, float X,
 		int direction) {
+	G_Log_Phase = LOG_PH_POST_DIAG;
 	Accel_Start(Vst, 2);
 	while (1) {
 		Accel_Target_Update(Vst, Vmax, Ac);
@@ -1344,6 +1360,7 @@ static void FT_Target_Update(void) {
 float Motor_First_Turn_Accel(float X_pre, float pre, float post, float v_ref,
 		float Angle, float W, float Wac, int naname, int direction, float Vt,
 		float Ac) {
+	G_Log_Phase = LOG_PH_PRE;
 	SulaRef r;
 	SulaRef_Init(&r, fabs(Angle), W, Wac);
 
@@ -1368,6 +1385,7 @@ float Motor_First_Turn_Accel(float X_pre, float pre, float post, float v_ref,
 	}
 
 	/* ターン: 走った距離 s から基準の時間 s / v_ref を求め、その曲率で曲がる */
+	G_Log_Phase = LOG_PH_TURN;
 	PID_Mode = 0;
 	Turn_Mode = (direction == 1) ? 1 : 0;
 	Gyro_Sigma_error = 0;
@@ -1399,6 +1417,7 @@ float Motor_First_Turn_Accel(float X_pre, float pre, float post, float v_ref,
 	G_Motor_W_Ac = 0;
 
 	/* 後距離(Motor_Wallcut_END_Accel / Motor_Wallcut_END_NANAME_Accel と同じ) */
+	G_Log_Phase = naname ? LOG_PH_POST_DIAG : LOG_PH_POST;
 	G_Motor_Flag = 1;
 	Enc_Sigma_error = 0;
 	Gyro_Sigma_error = 0;
@@ -1439,6 +1458,7 @@ float Motor_First_Turn_Accel(float X_pre, float pre, float post, float v_ref,
 
 
 void Motor_Robot_Alignment() {
+	G_Log_Phase = LOG_PH_ALIGN;
 	G_Motor_Flag = 4;
 	PID_Mode = 3;
 	G_Motor_V_Target = 0;
