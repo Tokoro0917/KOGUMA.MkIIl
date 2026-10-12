@@ -145,6 +145,8 @@ footer .bar { display: flex; gap: 8px; align-items: center; padding: 4px 16px; f
 .warn { color: var(--bad); }
 .maze-wrap { display: flex; flex-wrap: wrap; gap: 16px; }
 .maze-wrap canvas { background: var(--surface); }
+.tile { background: var(--surface-2); border-radius: 6px; padding: 4px 12px; min-width: 72px; }
+.tile b { font-size: 18px; font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
@@ -241,20 +243,22 @@ function tipRow(color, value, name, dashed) {
 const blocks = [];
 let selected = null, compare = null;
 let sessionText = "";
+const SESSION_MAX = 10e6;	//「ぜんぶ保存」用に覚えておく文字の上限(これを超えたら古いほうから捨てる)
+let sessionTrimmed = false;
+function addSession(text) {
+  sessionText += text;
+  if (sessionText.length > SESSION_MAX * 1.2) { sessionText = sessionText.slice(-SESSION_MAX); sessionTrimmed = true; }
+}
 const consoleLines = [];
 const CONSOLE_MAX = 3000;
 
 class Parser {
   constructor(onLine, onBlock) { this.buf = ""; this.cur = null; this.onLine = onLine; this.onBlock = onBlock; }
   feed(text) {
-    this.buf += text;
-    let i;
-    while ((i = this.buf.search(/\r\n|\n|\r/)) >= 0) {
-      const line = this.buf.slice(0, i);
-      const m = this.buf.slice(i).match(/^(\r\n|\n|\r)/);
-      this.buf = this.buf.slice(i + m[0].length);
-      this.line(line);
-    }
+    /* まとめて行に分け、最後の行(まだ改行が来ていない)だけ残す。\r\n が届く途中で切れても空行が1つ増えるだけ */
+    const parts = (this.buf + text).split(/\r\n|\n|\r/);
+    this.buf = parts.pop();
+    for (const line of parts) this.line(line);
   }
   flush() { if (this.buf) { this.line(this.buf); this.buf = ""; } }
   line(line) {
@@ -297,22 +301,49 @@ function summary(b) {
     return (+p.border >= 0 ? `テスト ${p.v} mm/s` : "最短走行") + ` 柱の端 ${nf}`;
   }
   if (b.type === "MAZE") return `${p.size}×${p.size}`;
+  if (STREAM_TYPES.has(b.type) && b.updates > 1) return `測定中 ${b.updates} 回(最後 ${timeStr(b.lastTime)})`;
   return `${b.lines.length} 行`;
 }
 const typeName = { LOG: "走行ログ", EDGE: "壁切れ", MAZE: "迷路", CENTER: "感度合わせ" };
 
+let bulk = false;	//ファイルを読み込むあいだは、データ1つごとに描き直さない(終わってから1回だけ)
+/* 測っているあいだ出し続ける種類(感度合わせ)。続けて届いたら一覧に増やさず、いちばん新しい値に置き換える。
+ * 自動では保存しない(残したいときは「ファイルに保存」) */
+const STREAM_TYPES = new Set(["CENTER"]);
+const STREAM_GAP_MS = 5000;	//これより間が空いたら、新しい測定として一覧に足す
 function addBlock(b, source) {
+  const last = blocks[blocks.length - 1];
+  if (source === "serial" && STREAM_TYPES.has(b.type) && last && last.type === b.type && last.source === "serial"
+      && b.time - last.lastTime < STREAM_GAP_MS) {
+    last.lines = b.lines; last.raw = b.raw; last.params = b.params; last.lastTime = b.time;
+    last.updates = (last.updates || 1) + 1;
+    renderList();
+    if (selected === last) renderView();
+    return;
+  }
+  b.lastTime = b.time;
   b.id = blocks.length + 1;
   b.source = source;
   blocks.push(b);
-  if (source === "serial") autoSave(b);
+  if (source === "serial" && !STREAM_TYPES.has(b.type)) autoSave(b);
+  if (bulk) return;
+  /* 出力(迷路 → 壁切れ → 走行ログ)は続けて届くので、少し待って最後のものだけ描く */
+  clearTimeout(selectTimer);
+  selectTimer = setTimeout(() => select(b), 60);
   renderList();
-  select(b);
 }
+let selectTimer = 0;
 function renderList() {
   $("count").textContent = blocks.length;
   const list = $("list");
   list.replaceChildren();
+  if (live.t.length) {
+    const d = el("div", { class: "blk" + (selected === LIVE ? " sel" : "") },
+      el("div", { class: "t", text: "センサの値(そのまま)" }),
+      el("div", { class: "s", text: `${live.kind === "cal" ? "距離の表(モード3 No.4)" : "センサ表示(モード4 No.0)"}・${live.rate} 行/秒` }));
+    d.addEventListener("click", () => select(LIVE));
+    list.append(d);
+  }
   for (const b of [...blocks].reverse()) {
     const d = el("div", { class: "blk" + (b === selected ? " sel" : "") },
       el("div", { class: "t", text: `${typeName[b.type] || b.type}  ${timeStr(b.time)}` }),
@@ -338,7 +369,7 @@ function select(b) {
 
 /* ================= シリアル(Web Serial) ================= */
 let port = null, reader = null;
-const serialParser = new Parser((l) => addLine(l), (b) => addBlock(b, "serial"));
+const serialParser = new Parser((l) => { addLine(l); liveLine(l); }, (b) => addBlock(b, "serial"));
 function setStatus(text, on) { const s = $("status"); s.textContent = text; s.classList.toggle("on", !!on); }
 async function connect() {
   if (!("serial" in navigator)) {
@@ -369,7 +400,7 @@ async function readLoop() {
         const { value, done } = await reader.read();
         if (done) break;
         const text = dec.decode(value, { stream: true });
-        sessionText += text;
+        addSession(text);
         serialParser.feed(text);
       }
     } catch (e) {
@@ -432,6 +463,7 @@ function download(name, text) {
 }
 async function saveSession() {
   if (!sessionText) { alert("まだ何も届いていません。"); return; }
+  if (sessionTrimmed) alert(`長くなったので、最後の約${SESSION_MAX / 1e6}MB(約${Math.round(SESSION_MAX / 11500 / 60)}分ぶん)だけ保存します。`);
   const name = `${stamp(new Date())}_session.txt`;
   if (dirHandle) { try { await writeFile(name, sessionText); alert(name + " を保存しました。"); return; } catch (e) { /* ダウンロードにする */ } }
   download(name, sessionText);
@@ -439,12 +471,19 @@ async function saveSession() {
 
 /* ================= ファイルを開く ================= */
 async function openFiles(files) {
-  for (const f of files) {
-    const text = await f.text();
-    const p = new Parser(() => {}, (b) => { b.time = new Date(f.lastModified); addBlock(b, f.name); });
-    p.feed(text); p.flush();
-    /* 古い形(#BEGIN がない)の迷路・ログも読む */
-    if (!/#BEGIN /.test(text)) legacy(text, f);
+  bulk = true;
+  try {
+    for (const f of files) {
+      const text = await f.text();
+      const p = new Parser(() => {}, (b) => { b.time = new Date(f.lastModified); addBlock(b, f.name); });
+      p.feed(text); p.flush();
+      /* 古い形(#BEGIN がない)の迷路・ログも読む */
+      if (!/#BEGIN /.test(text)) legacy(text, f);
+    }
+  } finally {
+    bulk = false;
+    renderList();
+    if (blocks.length) select(blocks[blocks.length - 1]);
   }
 }
 function legacy(text, f) {
@@ -467,7 +506,12 @@ function legacy(text, f) {
 class LinkedX {
   constructor() { this.charts = []; this.lo = null; this.hi = null; this.hover = null; this.onRange = null; }
   setRange(lo, hi) { this.lo = lo; this.hi = hi; this.charts.forEach((c) => c.draw()); if (this.onRange) this.onRange(); }
-  setHover(x) { this.hover = x; this.charts.forEach((c) => c.draw()); }
+  /* 指している時刻が変わったら、次の描画のときに縦線だけ描き直す(グラフ本体は描き直さない) */
+  setHover(x) {
+    this.hover = x;
+    if (this.raf) return;
+    this.raf = requestAnimationFrame(() => { this.raf = 0; this.charts.forEach((c) => c.draw()); });
+  }
 }
 class LineChart {
   /* series: [{ name, color, x: Float64Array, y: Float64Array, dashed }] */
@@ -525,15 +569,39 @@ class LineChart {
     }
     showTip(e.clientX, e.clientY, rows);
   }
+  /* 描画: グラフ本体(軸・線・帯・点)は範囲と大きさが変わったときだけ描いて取っておき(this.base)、
+   * 毎回は取っておいた絵をうつして、拡大のドラッグと指している縦線だけを重ねる */
   draw() {
     const c = this.canvas, dpr = window.devicePixelRatio || 1;
     const W = c.clientWidth || 600, H = this.h;
     c.style.height = H + "px";
-    if (c.width !== Math.round(W * dpr) || c.height !== Math.round(H * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
-    const g = c.getContext("2d");
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    g.clearRect(0, 0, W, H);
+    const pxW = Math.round(W * dpr), pxH = Math.round(H * dpr);
+    if (c.width !== pxW || c.height !== pxH) { c.width = pxW; c.height = pxH; }
     const [lo, hi] = this.range();
+    const key = `${pxW}x${pxH}|${lo}|${hi}`;
+    if (key !== this.baseKey) {
+      if (!this.base) this.base = document.createElement("canvas");
+      this.base.width = pxW; this.base.height = pxH;
+      const bg = this.base.getContext("2d");
+      bg.setTransform(dpr, 0, 0, dpr, 0, 0);
+      this.drawBase(bg, W, H, lo, hi);
+      this.baseKey = key;
+    }
+    const g = c.getContext("2d");
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, pxW, pxH);
+    g.drawImage(this.base, 0, 0);
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const L = this.L, T = this.T, pw = W - this.L - this.R, ph = H - this.T - this.B;
+    const X = (x) => L + (x - lo) / (hi - lo) * pw;
+    if (this.drag) { g.fillStyle = css("--sel"); const a = X(this.drag.x0), b = X(this.drag.x1); g.fillRect(Math.min(a, b), T, Math.abs(b - a), ph); }
+    if (this.link.hover != null && this.link.hover >= lo && this.link.hover <= hi) {
+      g.strokeStyle = this.inkColor || (this.inkColor = css("--ink-2")); g.lineWidth = 1;
+      const x = Math.round(X(this.link.hover)) + 0.5; g.beginPath(); g.moveTo(x, T); g.lineTo(x, T + ph); g.stroke();
+    }
+  }
+  drawBase(g, W, H, lo, hi) {
+    g.clearRect(0, 0, W, H);
     let ymin = Infinity, ymax = -Infinity;
     for (const s of this.series) for (let i = 0; i < s.x.length; i++) {
       if (s.x[i] < lo || s.x[i] > hi) continue;
@@ -599,8 +667,6 @@ class LineChart {
       g.fillStyle = p.color; g.strokeStyle = css("--surface"); g.lineWidth = 2;
       g.beginPath(); g.arc(X(p.x), Y(p.y), 5, 0, Math.PI * 2); g.fill(); g.stroke();
     }
-    if (this.drag) { g.fillStyle = css("--sel"); const a = X(this.drag.x0), b = X(this.drag.x1); g.fillRect(Math.min(a, b), T, Math.abs(b - a), ph); }
-    if (this.link.hover != null) { g.strokeStyle = css("--ink-2"); g.lineWidth = 1; const x = Math.round(X(this.link.hover)) + 0.5; g.beginPath(); g.moveTo(x, T); g.lineTo(x, T + ph); g.stroke(); }
     g.restore();
   }
 }
@@ -1064,6 +1130,99 @@ function renderMaze(view, b) {
   rawCard(view, b);
 }
 
+/* ================= センサの値(そのまま流れてくる行) ================= */
+/* モード4 No.0: FL = %4d // L = %4d // R = %4d //FR = %4d //BATT = %.2f//GyroZ = %.3f
+ * モード3 No.4: CAL,FL,L,R,FR,FL_mm,L_mm,R_mm,FR_mm
+ * どちらも #BEGIN で囲まないので、行ごとに読み取って、直近の値を流れるグラフにする */
+const LIVE = { type: "LIVE" };
+const LIVE_KEEP_S = 60;	//覚えておく長さ[s]
+const LIVE_SHOW_S = 10;	//グラフに出す長さ[s]
+const live = { kind: null, t: [], cols: {}, t0: 0, rate: 0, count: 0, rateT: 0, paused: false };
+const RE_SENSOR = /FL\s*=\s*(-?\d+)\s*\/\/\s*L\s*=\s*(-?\d+)\s*\/\/\s*R\s*=\s*(-?\d+)\s*\/\/\s*FR\s*=\s*(-?\d+)\s*\/\/\s*BATT\s*=\s*(-?[\d.]+)\s*\/\/\s*GyroZ\s*=\s*(-?[\d.]+)/;
+const LIVE_COLS = {
+  sensor: ["FL", "L", "R", "FR", "BATT", "GyroZ"],
+  cal: ["FL", "L", "R", "FR", "FL_mm", "L_mm", "R_mm", "FR_mm"],
+};
+function liveLine(line) {
+  let kind = null, vals = null;
+  const m = line.match(RE_SENSOR);
+  if (m) { kind = "sensor"; vals = m.slice(1).map(Number); }
+  else if (/^CAL,-?\d/.test(line)) { const f = line.split(",").slice(1).map(Number); if (f.length >= 8 && f.every(isFinite)) { kind = "cal"; vals = f.slice(0, 8); } }
+  if (!kind || live.paused) return;
+  /* USBシリアルは数行まとめて届くので、同じときに届いた行は、前に届いた時刻から今までのあいだに等間隔に並べる */
+  livePending.push([kind, vals]);
+  if (livePending.length === 1) queueMicrotask(liveFlush);
+}
+let livePending = [], liveLastArrive = 0;
+function liveFlush() {
+  const batch = livePending; livePending = [];
+  const now = performance.now() / 1000;
+  const prev = (liveLastArrive && now - liveLastArrive < 0.5) ? liveLastArrive : now - 0.01 * batch.length;
+  liveLastArrive = now;
+  batch.forEach(([kind, vals], k) => livePush(kind, vals, prev + (now - prev) * (k + 1) / batch.length, now));
+}
+function livePush(kind, vals, tAt, now) {
+  const first = !live.t.length;
+  if (live.kind !== kind) { live.kind = kind; live.t = []; live.cols = {}; live.t0 = tAt; for (const c of LIVE_COLS[kind]) live.cols[c] = []; }
+  live.t.push(tAt - live.t0);
+  LIVE_COLS[kind].forEach((c, j) => live.cols[c].push(vals[j]));
+  const keepFrom = live.t[live.t.length - 1] - LIVE_KEEP_S;
+  let cut = 0;
+  while (cut < live.t.length && live.t[cut] < keepFrom) cut++;
+  if (cut > 500) { live.t.splice(0, cut); for (const c in live.cols) live.cols[c].splice(0, cut); }
+  live.count++;
+  if (now - live.rateT >= 1) { live.rate = Math.round(live.count / (now - live.rateT || 1)); live.count = 0; live.rateT = now; liveListDirty = true; }
+  if (first) liveListDirty = true;
+  liveDirty = true;
+}
+let liveDirty = false, liveListDirty = false, liveView = null;
+setInterval(() => {
+  if (liveListDirty) { liveListDirty = false; renderList(); }
+  if (liveDirty && selected === LIVE && liveView) { liveDirty = false; liveView.update(); }
+}, 150);
+function renderLive(view) {
+  const card = el("div", { class: "card" });
+  const pause = el("button", { text: live.paused ? "再開" : "止める" });
+  pause.addEventListener("click", () => { live.paused = !live.paused; pause.textContent = live.paused ? "再開" : "止める"; });
+  const save = el("button", { text: "ファイルに保存(CSV)" });
+  save.addEventListener("click", () => {
+    const cols = LIVE_COLS[live.kind] || [];
+    const rows = ["t," + cols.join(",")];
+    for (let i = 0; i < live.t.length; i++) rows.push([live.t[i].toFixed(3), ...cols.map((c) => live.cols[c][i])].join(","));
+    download(`${stamp(new Date())}_sensor.csv`, rows.join("\n") + "\n");
+  });
+  const tiles = el("div", { class: "row" });
+  card.append(el("h2", { text: live.kind === "cal" ? "距離の表(モード3 No.4)の値" : "センサの値(モード4 No.0)" }),
+    el("div", { class: "row" }, pause, save, el("span", { class: "note", text: `直近${LIVE_SHOW_S}秒を流れるグラフにする(覚えているのは${LIVE_KEEP_S}秒)。指すと値が出る。` })),
+    tiles);
+  view.append(card);
+  const colors = [css("--s1"), css("--s2"), css("--s3"), css("--s4")];
+  const groups = live.kind === "cal"
+    ? [{ title: "センサ値", unit: "", cols: ["FL", "L", "R", "FR"] }, { title: "距離(今の表で変換)", unit: "mm", cols: ["FL_mm", "L_mm", "R_mm", "FR_mm"] }]
+    : [{ title: "センサ値(10回の移動平均)", unit: "", cols: ["FL", "L", "R", "FR"] }, { title: "電池", unit: "V", cols: ["BATT"] }, { title: "角速度", unit: "deg/s", cols: ["GyroZ"] }];
+  const link = new LinkedX();
+  const charts = groups.map((g) => {
+    const series = g.cols.map((c, j) => ({ name: c, color: colors[j % 4], x: live.t, y: live.cols[c] || [] }));
+    return { g, chart: new LineChart(card, g.title, g.unit, series, link, 170, { xName: "t [s]", xDigits: 2 }) };
+  });
+  const tileCols = live.kind === "cal" ? LIVE_COLS.cal : LIVE_COLS.sensor;
+  const tileEls = tileCols.map((c) => { const v = el("b", { text: "-" }); tiles.append(el("div", { class: "tile" }, el("div", { class: "note", text: c }), v)); return [c, v]; });
+  liveView = {
+    update() {
+      const n = live.t.length;
+      if (!n) return;
+      const t1 = live.t[n - 1], t0 = Math.max(live.t[0], t1 - LIVE_SHOW_S);
+      for (const { chart } of charts) {
+        for (const s of chart.series) { s.x = live.t; s.y = live.cols[s.name] || []; }
+        chart.full = [t0, Math.max(t1, t0 + 0.001)];
+        chart.draw();
+      }
+      for (const [c, v] of tileEls) { const a = live.cols[c]; if (a && a.length) v.textContent = String(a[a.length - 1]); }
+    },
+  };
+  liveView.update();
+}
+
 /* ================= 感度合わせ・そのほか ================= */
 function copyLine(text) {
   const btn = el("button", { text: "コピー" });
@@ -1100,6 +1259,7 @@ function renderView() {
     else if (b.type === "EDGE") renderEdge(view, b);
     else if (b.type === "MAZE") renderMaze(view, b);
     else if (b.type === "CENTER") renderCenter(view, b);
+    else if (b === LIVE) renderLive(view);
     else rawCard(view, b);
   } catch (e) {
     view.append(el("div", { class: "card warn", text: "表示できませんでした: " + e.message }));
