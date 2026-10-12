@@ -145,6 +145,7 @@ footer .bar { display: flex; gap: 8px; align-items: center; padding: 4px 16px; f
 .warn { color: var(--bad); }
 .maze-wrap { display: flex; flex-wrap: wrap; gap: 16px; }
 .maze-wrap canvas { background: var(--surface); }
+.zoomreset { font-size: 12px; padding: 2px 10px; }
 .tile { background: var(--surface-2); border-radius: 6px; padding: 4px 12px; min-width: 72px; }
 .tile b { font-size: 18px; font-variant-numeric: tabular-nums; }
 </style>
@@ -503,9 +504,26 @@ function legacy(text, f) {
 
 /* ================= 線グラフ(走行ログ) ================= */
 /* 複数のグラフで、横軸の範囲(拡大)と、指している時刻を共有する */
+/* 拡大を戻す: 拡大しているあいだだけ出るボタン、ダブルクリック、Esc キー(表示しているグラフ全部) */
+let zoomResetters = [];	//表示を作り直すたびに空にする
+function zoomButton(reset) {
+  const btn = el("button", { class: "zoomreset", text: "拡大を元に戻す(Esc)" });
+  btn.style.display = "none";
+  btn.addEventListener("click", reset);
+  zoomResetters.push(reset);
+  return btn;
+}
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !e.target.closest("input, select, textarea")) zoomResetters.forEach((f) => f());
+});
 class LinkedX {
-  constructor() { this.charts = []; this.lo = null; this.hi = null; this.hover = null; this.onRange = null; }
-  setRange(lo, hi) { this.lo = lo; this.hi = hi; this.charts.forEach((c) => c.draw()); if (this.onRange) this.onRange(); }
+  constructor() { this.charts = []; this.lo = null; this.hi = null; this.hover = null; this.onRange = null; this.btns = []; }
+  setRange(lo, hi) {
+    this.lo = lo; this.hi = hi; this.charts.forEach((c) => c.draw()); if (this.onRange) this.onRange();
+    for (const b of this.btns) b.style.display = lo == null ? "none" : "";
+  }
+  /* 拡大しているあいだだけ出る「元に戻す」ボタン */
+  resetButton() { const b = zoomButton(() => this.setRange(null, null)); this.btns.push(b); return b; }
   /* 指している時刻が変わったら、次の描画のときに縦線だけ描き直す(グラフ本体は描き直さない) */
   setHover(x) {
     this.hover = x;
@@ -733,8 +751,8 @@ function renderLog(view, b) {
     const sw = el("i", { class: "dot" }); sw.style.background = bandColor(k).replace(/[\d.]+\)$/, "0.5)"); sw.style.borderRadius = "2px";
     legend.append(el("span", { class: "key" }, sw, el("span", { text: n })));
   }
-  card.append(el("div", { class: "row" }, sel, A.data.phase ? legend : null),
-    el("div", { class: "note", text: "ドラッグで拡大、ダブルクリックで元に戻す。グラフを指すと、その時刻の値と動作が出る。左の一覧で別のログに印を付けると破線で重ねる。" }));
+  card.append(el("div", { class: "row" }, sel, A.data.phase ? legend : null, link.resetButton()),
+    el("div", { class: "note", text: "ドラッグで拡大、ダブルクリックか Esc か「拡大を元に戻す」で元に戻す。グラフを指すと、その時刻の値と動作が出る。左の一覧で別のログに印を付けると破線で重ねる。" }));
   view.append(card);
   /* 動作の区間(帯) */
   const bands = [];
@@ -887,7 +905,7 @@ function laneChart(parent, E) {
   const view = { lo: xmin - 20, hi: xmax + 20 };
   const full = { ...view };
   const canvas = el("canvas");
-  parent.append(el("div", { class: "note", text: "横軸はログを始めてからの距離[mm]。ドラッグで拡大、ダブルクリックで元に戻す。点や棒を指すと中身が出る。" }), el("div", { class: "chart" }, canvas));
+  parent.append(el("div", { class: "note", text: "横軸はログを始めてからの距離[mm]。ドラッグで拡大、ダブルクリックか Esc で元に戻す。点や棒を指すと中身が出る。" }), el("div", { class: "chart" }, canvas));
   const L = 96, R = 12, T = 6, rowH = 26, B = 22;
   const H = T + rowH * lanes.length + B;
   let drag = null;
@@ -932,10 +950,13 @@ function laneChart(parent, E) {
   canvas.addEventListener("pointerup", () => {
     if (!drag) return;
     const a = px2x(Math.min(drag.a, drag.b)), b2 = px2x(Math.max(drag.a, drag.b));
-    if (Math.abs(drag.b - drag.a) > 6) { view.lo = a; view.hi = b2; }
+    if (Math.abs(drag.b - drag.a) > 6) { view.lo = a; view.hi = b2; resetBtn.style.display = ""; }
     drag = null; draw();
   });
-  canvas.addEventListener("dblclick", () => { view.lo = full.lo; view.hi = full.hi; draw(); });
+  const reset = () => { view.lo = full.lo; view.hi = full.hi; resetBtn.style.display = "none"; draw(); };
+  const resetBtn = zoomButton(reset);
+  canvas.parentNode.before(el("div", { class: "row" }, resetBtn));
+  canvas.addEventListener("dblclick", reset);
   new ResizeObserver(draw).observe(canvas);
 }
 const GROUPS = [
@@ -990,6 +1011,7 @@ function edgeSignal(view, b, E) {
   card.append(el("h2", { text: "横センサの値と距離" }),
     el("div", { class: "note", text: "横軸は走り出しからの距離[mm](3回の中央値、遅れの分を戻した位置)。破線は区画の境目、点は見つけた柱の端(直前の最大値の半分を切った位置)。センサは区画中心で柱の真ん中を見るので、柱の端は境目の約84mm手前に出る。ドラッグで拡大。" }));
   const link = new LinkedX();
+  card.append(el("div", { class: "row" }, link.resetButton()));
   new LineChart(card, "横センサ", "", [
     { name: "右", color: cR, x, y: Float64Array.from(E.sig, (r) => r[1]) },
     { name: "左", color: cL, x, y: Float64Array.from(E.sig, (r) => r[2]) },
@@ -1251,6 +1273,7 @@ function rawCard(view, b) {
 function renderView() {
   const view = $("view");
   view.replaceChildren();
+  zoomResetters = [];
   hideTip();
   const b = selected;
   if (!b) { view.append(welcome()); return; }
