@@ -81,6 +81,10 @@ int LOG_Is_On() {
 	return LOG_flag;
 }
 
+int LOG_Has_Data() {
+	return LOG_used > 0 || LOG_count > 0;
+}
+
 void LOG_get_interrupt() {
 	if (LOG_count >= LOG_MAX) {
 		LOG_flag = 0;

@@ -294,6 +294,8 @@ static volatile int Edge_Log_Count = 0;
 static volatile int Edge_Log_On = 0;
 static int Edge_Log_Th = 0;	//閾値の判定(従来・中央値)も残すか
 static float Edge_Log_X0 = 0;
+static float Edge_Log_Border = -1;	//区画の境目(Edge_Log_Border + 180k)。-1 は最短走行のログ
+static float Edge_Log_Speed = -1;	//テストの速度。-1 は最短走行のログ
 static int Edge_Th_Arm[2][2];
 /* 壁切れのテスト(モード3 No.6〜9)のときだけ、横センサの値(3回の中央値)を1mmごとに残す。
  * ビューアで「センサ値と距離」のグラフにし、柱のところで値がどう下がるかを見る */
@@ -398,8 +400,11 @@ int Edge_Cut_Find(float lo, float hi, float *c, int *src) {
 	return sr != 0;
 }
 
-void Edge_Log_Start(int with_thresholds) {
+/* with_thresholds: 閾値の判定と1mmごとのセンサ値も残す(テスト)。border / speed: テストの区画の境目と速度(最短走行は -1) */
+void Edge_Log_Start(int with_thresholds, float border, float speed) {
 	Edge_Log_On = 0;
+	Edge_Log_Border = border;
+	Edge_Log_Speed = speed;
 	Edge_Log_Count = 0;
 	Edge_Log_X0 = G_Odo_X;
 	Edge_Log_Th = with_thresholds;
@@ -434,7 +439,13 @@ void Edge_Log_Mark(int type, int info, float x, float a, float b) {
  *   full,行数                                                   ログがいっぱいで、ここまでしか残っていない
  *   sig,x,右,左                                                 横センサの値(3回の中央値)。1mmごと。テストのときだけ
  * x はログ開始からの距離[mm]。全体を #BEGIN EDGE ... / #END EDGE ではさむ(tools/viewer.html で読む) */
-void Edge_Log_Print(float first_border, float speed) {
+int Edge_Log_Has_Data() {
+	return Edge_Log_Count > 0 || Edge_Sig_Count > 0;
+}
+
+void Edge_Log_Print() {
+	float first_border = Edge_Log_Border;
+	float speed = Edge_Log_Speed;
 	static const char *side_name[2] = { "R", "L" };
 	static const char *kind_name[2] = { "wall", "pillar" };
 	/* tools/viewer.html で読む。border は区画の境目(first_border + 180k)、v はテストの速度(-1 は最短走行のログ) */

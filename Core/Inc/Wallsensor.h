@@ -44,10 +44,11 @@ int Edge_Cut_Find(float lo, float hi, float *c, int *src);
 #define EDGE_LOG_CUT 4
 #define EDGE_LOG_END 5
 #define EDGE_LOG_END_CUT 6
-void Edge_Log_Start(int with_thresholds);
+void Edge_Log_Start(int with_thresholds, float border, float speed);
 void Edge_Log_Stop();
 void Edge_Log_Mark(int type, int info, float x, float a, float b);
-void Edge_Log_Print(float first_border, float speed);
+void Edge_Log_Print();
+int Edge_Log_Has_Data();
 float calWallConrol_NANAME();
 float calWallConrol_Flontwall_ST();
 float calWallConrol_Flontwall_Turn();
