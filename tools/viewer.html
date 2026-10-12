@@ -247,14 +247,10 @@ const CONSOLE_MAX = 3000;
 class Parser {
   constructor(onLine, onBlock) { this.buf = ""; this.cur = null; this.onLine = onLine; this.onBlock = onBlock; }
   feed(text) {
-    this.buf += text;
-    let i;
-    while ((i = this.buf.search(/\r\n|\n|\r/)) >= 0) {
-      const line = this.buf.slice(0, i);
-      const m = this.buf.slice(i).match(/^(\r\n|\n|\r)/);
-      this.buf = this.buf.slice(i + m[0].length);
-      this.line(line);
-    }
+    /* まとめて行に分け、最後の行(まだ改行が来ていない)だけ残す。\r\n が届く途中で切れても空行が1つ増えるだけ */
+    const parts = (this.buf + text).split(/\r\n|\n|\r/);
+    this.buf = parts.pop();
+    for (const line of parts) this.line(line);
   }
   flush() { if (this.buf) { this.line(this.buf); this.buf = ""; } }
   line(line) {
@@ -301,14 +297,19 @@ function summary(b) {
 }
 const typeName = { LOG: "走行ログ", EDGE: "壁切れ", MAZE: "迷路", CENTER: "感度合わせ" };
 
+let bulk = false;	//ファイルを読み込むあいだは、データ1つごとに描き直さない(終わってから1回だけ)
 function addBlock(b, source) {
   b.id = blocks.length + 1;
   b.source = source;
   blocks.push(b);
   if (source === "serial") autoSave(b);
+  if (bulk) return;
+  /* 出力(迷路 → 壁切れ → 走行ログ)は続けて届くので、少し待って最後のものだけ描く */
+  clearTimeout(selectTimer);
+  selectTimer = setTimeout(() => select(b), 60);
   renderList();
-  select(b);
 }
+let selectTimer = 0;
 function renderList() {
   $("count").textContent = blocks.length;
   const list = $("list");
@@ -439,12 +440,19 @@ async function saveSession() {
 
 /* ================= ファイルを開く ================= */
 async function openFiles(files) {
-  for (const f of files) {
-    const text = await f.text();
-    const p = new Parser(() => {}, (b) => { b.time = new Date(f.lastModified); addBlock(b, f.name); });
-    p.feed(text); p.flush();
-    /* 古い形(#BEGIN がない)の迷路・ログも読む */
-    if (!/#BEGIN /.test(text)) legacy(text, f);
+  bulk = true;
+  try {
+    for (const f of files) {
+      const text = await f.text();
+      const p = new Parser(() => {}, (b) => { b.time = new Date(f.lastModified); addBlock(b, f.name); });
+      p.feed(text); p.flush();
+      /* 古い形(#BEGIN がない)の迷路・ログも読む */
+      if (!/#BEGIN /.test(text)) legacy(text, f);
+    }
+  } finally {
+    bulk = false;
+    renderList();
+    if (blocks.length) select(blocks[blocks.length - 1]);
   }
 }
 function legacy(text, f) {
@@ -467,7 +475,12 @@ function legacy(text, f) {
 class LinkedX {
   constructor() { this.charts = []; this.lo = null; this.hi = null; this.hover = null; this.onRange = null; }
   setRange(lo, hi) { this.lo = lo; this.hi = hi; this.charts.forEach((c) => c.draw()); if (this.onRange) this.onRange(); }
-  setHover(x) { this.hover = x; this.charts.forEach((c) => c.draw()); }
+  /* 指している時刻が変わったら、次の描画のときに縦線だけ描き直す(グラフ本体は描き直さない) */
+  setHover(x) {
+    this.hover = x;
+    if (this.raf) return;
+    this.raf = requestAnimationFrame(() => { this.raf = 0; this.charts.forEach((c) => c.draw()); });
+  }
 }
 class LineChart {
   /* series: [{ name, color, x: Float64Array, y: Float64Array, dashed }] */
@@ -525,15 +538,39 @@ class LineChart {
     }
     showTip(e.clientX, e.clientY, rows);
   }
+  /* 描画: グラフ本体(軸・線・帯・点)は範囲と大きさが変わったときだけ描いて取っておき(this.base)、
+   * 毎回は取っておいた絵をうつして、拡大のドラッグと指している縦線だけを重ねる */
   draw() {
     const c = this.canvas, dpr = window.devicePixelRatio || 1;
     const W = c.clientWidth || 600, H = this.h;
     c.style.height = H + "px";
-    if (c.width !== Math.round(W * dpr) || c.height !== Math.round(H * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
-    const g = c.getContext("2d");
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    g.clearRect(0, 0, W, H);
+    const pxW = Math.round(W * dpr), pxH = Math.round(H * dpr);
+    if (c.width !== pxW || c.height !== pxH) { c.width = pxW; c.height = pxH; }
     const [lo, hi] = this.range();
+    const key = `${pxW}x${pxH}|${lo}|${hi}`;
+    if (key !== this.baseKey) {
+      if (!this.base) this.base = document.createElement("canvas");
+      this.base.width = pxW; this.base.height = pxH;
+      const bg = this.base.getContext("2d");
+      bg.setTransform(dpr, 0, 0, dpr, 0, 0);
+      this.drawBase(bg, W, H, lo, hi);
+      this.baseKey = key;
+    }
+    const g = c.getContext("2d");
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, pxW, pxH);
+    g.drawImage(this.base, 0, 0);
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const L = this.L, T = this.T, pw = W - this.L - this.R, ph = H - this.T - this.B;
+    const X = (x) => L + (x - lo) / (hi - lo) * pw;
+    if (this.drag) { g.fillStyle = css("--sel"); const a = X(this.drag.x0), b = X(this.drag.x1); g.fillRect(Math.min(a, b), T, Math.abs(b - a), ph); }
+    if (this.link.hover != null && this.link.hover >= lo && this.link.hover <= hi) {
+      g.strokeStyle = this.inkColor || (this.inkColor = css("--ink-2")); g.lineWidth = 1;
+      const x = Math.round(X(this.link.hover)) + 0.5; g.beginPath(); g.moveTo(x, T); g.lineTo(x, T + ph); g.stroke();
+    }
+  }
+  drawBase(g, W, H, lo, hi) {
+    g.clearRect(0, 0, W, H);
     let ymin = Infinity, ymax = -Infinity;
     for (const s of this.series) for (let i = 0; i < s.x.length; i++) {
       if (s.x[i] < lo || s.x[i] > hi) continue;
@@ -599,8 +636,6 @@ class LineChart {
       g.fillStyle = p.color; g.strokeStyle = css("--surface"); g.lineWidth = 2;
       g.beginPath(); g.arc(X(p.x), Y(p.y), 5, 0, Math.PI * 2); g.fill(); g.stroke();
     }
-    if (this.drag) { g.fillStyle = css("--sel"); const a = X(this.drag.x0), b = X(this.drag.x1); g.fillRect(Math.min(a, b), T, Math.abs(b - a), ph); }
-    if (this.link.hover != null) { g.strokeStyle = css("--ink-2"); g.lineWidth = 1; const x = Math.round(X(this.link.hover)) + 0.5; g.beginPath(); g.moveTo(x, T); g.lineTo(x, T + ph); g.stroke(); }
     g.restore();
   }
 }
