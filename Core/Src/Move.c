@@ -466,7 +466,9 @@ float Short_First_Turn_Run(int kind, int dir, float V) {
 	float k = v1 / p->v;
 
 	Suction_Boost_Start(SHORT_FIRST_SUCTION, SHORT_FIRST_SUCTION_WAIT);
-	LOG_get_start();	//最初のターンの調査用(2秒、モード4 No.7で出力)
+	if (!LOG_Is_On()) {
+		LOG_get_start();	//最初のターンの調査用(2秒、モード4 No.7で出力)。最短走行ではもう取っているのでそのまま
+	}
 	if (G_First_Turn_Accel) {
 		float vt = Short_First_Turn_Accel_V(kind, V);
 		float v = Motor_First_Turn_Accel(SHORT_START_X, p->pre, p->post, p->v,

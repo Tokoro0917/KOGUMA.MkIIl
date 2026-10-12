@@ -27,6 +27,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdio.h>
 #include "lsm6dsr.h"
 #include "motor.h"
 #include "PL_encoder.h"
@@ -68,8 +69,8 @@
 
 /* USER CODE BEGIN PV */
 /* 1 にすると、最短走行(モード1、モード0 No.8〜10 の探索後の最短)の壁切れを柱で見る
- * (壁のない所でも、区画の境目の柱で壁切れする。motor.c の G_WallCut_Pillar)。
- * 0 なら従来どおり壁があるときだけ壁切れする。探索中の壁切れはいつも従来どおり */
+ * (区画の境目の柱の端から境目の位置を求め、前距離を直す。motor.c の G_WallCut_Pillar、
+ * 設計は docs/pillar_cut_design.md)。0 なら従来どおり。探索中と斜めの壁切れはいつも従来どおり */
 static int Short_WallCut_Pillar = 0;
 
 /* USER CODE END PV */
@@ -79,6 +80,7 @@ void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 static void Maze_Search(int flags);
 static void Maze_Shortest_Run(void (*run)(int, int), int max, int ac);
+static void Output_All(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -247,14 +249,7 @@ int main(void) {
 		} else if (Encorder_mode_out() == 2) {		//サーキ�?�?
 
 		} else if (Encorder_mode_out() == 3) {		//�?バッグ用
-			if (Encorder_number_out() == 0) {		//迷路の出力(走らない)
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-					Maze_Debug_Dump();
-					HAL_Delay(1000);
-				}
-			} else if (Encorder_number_out() == 1) {		//2m/s
+			if (Encorder_number_out() == 1) {		//2m/s
 				if (Sensor_Enter() == 1) {
 					Buzzer_Enter();
 					Sensor_Start();
@@ -304,6 +299,33 @@ int main(void) {
 					Buzzer_Enter();
 					Sensor_Start();
 					Wall_Center_Calibration();
+				}
+			} else if ((Encorder_number_out() >= 6)
+					&& (Encorder_number_out() <= 9)) {	//壁切れの位置のテスト
+				/* スタート位置(後ろの壁に付けて置く)から4区画まっすぐ走り、柱の端(fall)と、
+				 * 比べるための閾値の判定(th: av 従来の g_sensor_av < Cut_*、med 3回の中央値 < Cut_*)、
+				 * 1mmごとの横センサの値(sig)を残す。結果は出力(モード4 No.7)で出す。
+				 * fall の c-border は、境目の推定 c と区画の境目(114 + 180k)の差。0 になるように Edge_Off を直す。
+				 * No.6: 500(吸引なし)、No.7: 1000、No.8: 2000、No.9: 2400(No.7〜9は吸引70)。加速度20000。
+				 * 同じ置き方で速度を変えて走らせ、c-border が速度・左右・種類でどれだけ変わるかを見る */
+				if (Sensor_Enter() == 1) {
+					const float v_tab[4] = { 500, 1000, 2000, 2400 };
+					int no = Encorder_number_out();
+					float v = v_tab[no - 6];
+					Buzzer_Enter();
+					Sensor_Start();
+					Motor_Setup();
+					if (no >= 7) {
+						Suction_Start(70);
+						HAL_Delay(500);
+					}
+					Edge_Log_Start(1, 114, v);
+					Motor_trapezoid_PID(0, v, 0, 20000, 114 + 180 * 4);
+					Motor_Stop();
+					Edge_Log_Stop();
+					Suction_Stop();
+					Motor_Free();
+					Encorder_count_reset();
 				}
 			}
 		} else if (Encorder_mode_out() == 4) {		//基本調整
@@ -428,14 +450,12 @@ int main(void) {
 					Suction_Stop();
 					Encorder_count_reset();
 				}
-			} else if (Encorder_number_out() == 7) {		//
+			} else if (Encorder_number_out() == 7) {		//出力(残っているデータを全部)
 				if (Sensor_Enter() == 1) {
 					Buzzer_Enter();
 					Sensor_Start();
-
-					LOG_print();
+					Output_All();
 					HAL_Delay(1000);
-
 				}
 			} else if (Encorder_number_out() == 8) {		//直進(横壁制御をセンサ値版で)
 				/* No.1と同じ直進を、この走行のあいだだけ G_WallCtrl_Use_mm = 0
@@ -1447,7 +1467,13 @@ static void Maze_Search(int flags) {
 			Motor_Setup();
 			Motor_Stop();
 			G_WallCut_Pillar = Short_WallCut_Pillar;
+			Edge_Log_Start(0, -1, -1);
+			G_Log_Div = 4;		//走行ログは4msおき(8秒)
+			LOG_get_start();
 			Short_Dijkstra_Move2000(6000, 20000);
+			LOG_get_end();
+			G_Log_Div = 1;
+			Edge_Log_Stop();
 			G_WallCut_Pillar = 0;
 			LED_Reset();
 			HAL_Delay(500);
@@ -1461,6 +1487,19 @@ static void Maze_Search(int flags) {
 	Encorder_count_reset();
 }
 
+/* 出力(モード4 No.7)。いまRAMに残っているデータを全部、tools/viewer.html で読める形で出す
+ * (迷路、壁切れのログ、走行ログの順。ないものは出さない。ビューアが種類ごとに分ける) */
+static void Output_All(void) {
+	Maze_Debug_Dump();
+	if (Edge_Log_Has_Data()) {
+		Edge_Log_Print();
+	}
+	if (LOG_Has_Data()) {
+		LOG_print();
+	}
+	printf("\r\n#DONE\r\n");
+}
+
 /* モード1の最短走行。run に Short_*_Move* を渡す */
 static void Maze_Shortest_Run(void (*run)(int, int), int max, int ac) {
 	Buzzer_Enter();
@@ -1469,7 +1508,13 @@ static void Maze_Shortest_Run(void (*run)(int, int), int max, int ac) {
 	Motor_Setup();
 	Motor_Stop();
 	G_WallCut_Pillar = Short_WallCut_Pillar;
+	Edge_Log_Start(0, -1, -1);	//壁切れのログ(出力はモード4 No.7)
+	G_Log_Div = 4;		//走行ログは4msおき(8秒)
+	LOG_get_start();
 	run(max, ac);
+	LOG_get_end();
+	G_Log_Div = 1;
+	Edge_Log_Stop();
 	G_WallCut_Pillar = 0;
 	Motor_Free();
 	LED_Reset();
