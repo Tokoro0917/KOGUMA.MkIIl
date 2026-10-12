@@ -292,6 +292,11 @@ static volatile int Edge_Log_On = 0;
 static int Edge_Log_Th = 0;	//閾値の判定(従来・中央値)も残すか
 static float Edge_Log_X0 = 0;
 static int Edge_Th_Arm[2][2];
+/* 壁切れのテスト(モード3 No.6〜9)のときだけ、横センサの値(3回の中央値)を1mmごとに残す。
+ * ビューアで「センサ値と距離」のグラフにし、柱のところで値がどう下がるかを見る */
+#define EDGE_SIG_N 1000
+static int16_t Edge_Sig[EDGE_SIG_N][2];	//[1mmごと][0: 右 / 1: 左]
+static volatile int Edge_Sig_Count = 0;
 #define EDGE_TH_REARM 20
 
 static void Edge_Log_Put(int type, int info, float x, float a, float b) {
@@ -335,6 +340,16 @@ void Wall_Edge_Sample() {
 			Edge_Rec[s][Edge_Count[s] % EDGE_Q] = r;
 			Edge_Count[s]++;
 			Edge_Log_Put(EDGE_LOG_FALL, s * 2 + r.ev.kind, r.ev.x, r.c, r.ev.high);
+		}
+		if (Edge_Log_On && Edge_Log_Th && s == 1) {
+			/* 1mm進むごとに左右の値を残す(左を処理したあと、左右そろったところで) */
+			int k = (int) (x - Edge_Log_X0);
+			float mr = Wall_Sensor_Median3(1);
+			while (Edge_Sig_Count <= k && Edge_Sig_Count < EDGE_SIG_N) {
+				Edge_Sig[Edge_Sig_Count][0] = (int16_t) mr;
+				Edge_Sig[Edge_Sig_Count][1] = (int16_t) med;
+				Edge_Sig_Count++;
+			}
 		}
 		if (Edge_Log_On && Edge_Log_Th) {
 			/* 比べるためだけ: 従来(g_sensor_av < Cut_*)と、中央値 < Cut_* で反応した位置 */
@@ -385,6 +400,7 @@ void Edge_Log_Start(int with_thresholds) {
 	Edge_Log_Count = 0;
 	Edge_Log_X0 = G_Odo_X;
 	Edge_Log_Th = with_thresholds;
+	Edge_Sig_Count = 0;
 	for (int s = 0; s < 2; s++) {
 		for (int k = 0; k < 2; k++) {
 			Edge_Th_Arm[s][k] = 0;
@@ -413,6 +429,7 @@ void Edge_Log_Mark(int type, int info, float x, float a, float b) {
  *   cut,側,x                                                    従来の壁切れで反応した位置
  *   end,-,x(始め),X(後距離)  /  end_cut,src,x(終わり)           後距離
  *   full,行数                                                   ログがいっぱいで、ここまでしか残っていない
+ *   sig,x,右,左                                                 横センサの値(3回の中央値)。1mmごと。テストのときだけ
  * x はログ開始からの距離[mm]。全体を #BEGIN EDGE ... / #END EDGE ではさむ(tools/viewer.html で読む) */
 void Edge_Log_Print(float first_border, float speed) {
 	static const char *side_name[2] = { "R", "L" };
@@ -461,6 +478,10 @@ void Edge_Log_Print(float first_border, float speed) {
 	}
 	if (Edge_Log_Count >= EDGE_LOG_N) {
 		printf("full,%d\r\n", EDGE_LOG_N);	//ログがいっぱいで、ここまでしか残っていない
+	}
+	/* 横センサの値(テストのときだけ): sig,x(ログ開始からの距離[mm]),右,左 */
+	for (int k = 0; k < Edge_Sig_Count; k++) {
+		printf("sig,%d,%d,%d\r\n", k, Edge_Sig[k][0], Edge_Sig[k][1]);
 	}
 	printf("#END EDGE\r\n");
 }

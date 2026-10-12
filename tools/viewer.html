@@ -31,6 +31,7 @@
   --s2: #eb6834;
   --s3: #1baf7a;
   --s4: #eda100;
+  --s7: #6250d6;
   --good: #006300;
   --bad: #c62828;
   --sel: rgba(42,120,214,0.12);
@@ -53,6 +54,7 @@
     --s2: #d95926;
     --s3: #199e70;
     --s4: #c98500;
+    --s7: #9085e9;
     --good: #0ca30c;
     --bad: #e66767;
     --sel: rgba(57,135,229,0.18);
@@ -73,6 +75,7 @@
   --s2: #d95926;
   --s3: #199e70;
   --s4: #c98500;
+  --s7: #9085e9;
   --good: #0ca30c;
   --bad: #e66767;
   --sel: rgba(57,135,229,0.18);
@@ -468,8 +471,9 @@ class LinkedX {
 }
 class LineChart {
   /* series: [{ name, color, x: Float64Array, y: Float64Array, dashed }] */
-  constructor(parent, title, unit, series, link, height = 150) {
-    this.series = series; this.link = link; this.unit = unit; this.h = height;
+  /* opt: { xName: 横軸の名前, xDigits: 桁, marks: [{ x, color, dashed }] 縦線, points: [{ x, y, color, label }] 点 } */
+  constructor(parent, title, unit, series, link, height = 150, opt = {}) {
+    this.series = series; this.link = link; this.unit = unit; this.h = height; this.opt = opt;
     const head = el("div", { class: "title" }, el("span", { text: title + (unit ? ` [${unit}]` : "") }));
     for (const s of series) {
       const k = el("i"); k.style.borderTopColor = s.color; if (s.dashed) k.className = "dash";
@@ -512,8 +516,12 @@ class LineChart {
     return Math.abs(s.x[a] - x) <= Math.abs(s.x[b] - x) ? a : b;
   }
   tooltip(e, x) {
-    const rows = [el("div", { class: "n", text: `t = ${fmt(x, 3)} s` })];
+    const rows = [el("div", { class: "n", text: `${this.opt.xName || "t [s]"} = ${fmt(x, this.opt.xDigits ?? 3)}` })];
     for (const s of this.series) { const i = this.nearest(s, x); if (i >= 0) rows.push(tipRow(s.color, fmt(s.y[i], 2), s.name, s.dashed)); }
+    if (this.opt.points) {
+      const [lo, hi] = this.range(), tol = (hi - lo) / Math.max(1, this.canvas.clientWidth) * 8;
+      for (const p of this.opt.points) if (Math.abs(p.x - x) <= tol) rows.push(el("div", { text: p.label }));
+    }
     showTip(e.clientX, e.clientY, rows);
   }
   draw() {
@@ -575,6 +583,17 @@ class LineChart {
       g.stroke();
     }
     g.setLineDash([]);
+    for (const m of this.opt.marks || []) {
+      if (m.x < lo || m.x > hi) continue;
+      g.strokeStyle = m.color; g.lineWidth = 1; g.setLineDash(m.dashed ? [4, 4] : []);
+      const x = Math.round(X(m.x)) + 0.5; g.beginPath(); g.moveTo(x, T); g.lineTo(x, T + ph); g.stroke();
+    }
+    g.setLineDash([]);
+    for (const p of this.opt.points || []) {
+      if (p.x < lo || p.x > hi) continue;
+      g.fillStyle = p.color; g.strokeStyle = css("--surface"); g.lineWidth = 2;
+      g.beginPath(); g.arc(X(p.x), Y(p.y), 5, 0, Math.PI * 2); g.fill(); g.stroke();
+    }
     if (this.drag) { g.fillStyle = css("--sel"); const a = X(this.drag.x0), b = X(this.drag.x1); g.fillRect(Math.min(a, b), T, Math.abs(b - a), ph); }
     if (this.link.hover != null) { g.strokeStyle = css("--ink-2"); g.lineWidth = 1; const x = Math.round(X(this.link.hover)) + 0.5; g.beginPath(); g.moveTo(x, T); g.lineTo(x, T + ph); g.stroke(); }
     g.restore();
@@ -645,7 +664,7 @@ function renderLog(view, b) {
 
 /* ================= 壁切れ ================= */
 function parseEdge(b) {
-  const out = { fall: [], th: [], st: [], stcut: [], cut: [], end: [], endcut: [], full: false };
+  const out = { fall: [], th: [], st: [], stcut: [], cut: [], end: [], endcut: [], sig: [], full: false };
   for (const l of b.lines) {
     const f = l.split(",");
     const kv = {};
@@ -658,6 +677,7 @@ function parseEdge(b) {
     else if (f[0] === "end") out.end.push({ x: +f[2], X: +f[3] });
     else if (f[0] === "end_cut") out.endcut.push({ src: +f[1], x: +f[2] });
     else if (f[0] === "full") out.full = true;
+    else if (f[0] === "sig") out.sig.push([+f[1], +f[2], +f[3]]);
   }
   return out;
 }
@@ -809,6 +829,7 @@ function renderEdgeTest(view, b, E) {
   }
   card.append(t);
   view.append(card);
+  edgeSignal(view, b, E);
   edgeSession(view);
   /* 端の一覧 */
   const t2 = el("table");
@@ -816,6 +837,83 @@ function renderEdgeTest(view, b, E) {
   for (const f of E.fall) t2.append(el("tr", null, el("td", { class: "l", text: f.side }), el("td", { class: "l", text: f.kind === "wall" ? "壁の終わり" : "柱だけ" }), el("td", { text: fmt(f.x) }), el("td", { text: fmt(f.c) }), el("td", { text: fmt(f.cb) }), el("td", { text: fmt(f.high, 0) })));
   view.append(el("div", { class: "card" }, el("h2", { text: "見つけた柱の端" }), t2));
   rawCard(view, b);
+}
+/* 横センサの値と距離のグラフ(テストのとき 1mm ごとに残した値) */
+function edgeSignal(view, b, E) {
+  if (!E.sig.length) return;
+  const border = +b.params.border;
+  const x = Float64Array.from(E.sig, (r) => r[0]);
+  const cR = css("--s2"), cL = css("--s1");
+  const yAt = (side, xx) => { const i = Math.max(0, Math.min(E.sig.length - 1, Math.round(xx))); return E.sig[i][side === "R" ? 1 : 2]; };
+  const marks = [];
+  for (let k = 0; border + 180 * k <= x[x.length - 1] + 1; k++) marks.push({ x: border + 180 * k, color: css("--ink-2"), dashed: true });
+  const points = E.fall.map((f) => ({ x: f.x, y: yAt(f.side, f.x), color: f.side === "R" ? cR : cL,
+    label: `${f.side === "R" ? "右" : "左"}の端(${f.kind === "wall" ? "壁の終わり" : "柱だけ"}) x ${fmt(f.x)}、H ${fmt(f.high, 0)}、境目の推定 ${fmt(f.c)}(${f.cb >= 0 ? "+" : ""}${fmt(f.cb)})` }));
+  const card = el("div", { class: "card" });
+  card.append(el("h2", { text: "横センサの値と距離" }),
+    el("div", { class: "note", text: "横軸は走り出しからの距離[mm](3回の中央値、遅れの分を戻した位置)。破線は区画の境目、点は見つけた柱の端(直前の最大値の半分を切った位置)。センサは区画中心で柱の真ん中を見るので、柱の端は境目の約84mm手前に出る。ドラッグで拡大。" }));
+  const link = new LinkedX();
+  new LineChart(card, "横センサ", "", [
+    { name: "右", color: cR, x, y: Float64Array.from(E.sig, (r) => r[1]) },
+    { name: "左", color: cL, x, y: Float64Array.from(E.sig, (r) => r[2]) },
+  ], link, 260, { xName: "x [mm]", xDigits: 0, marks, points });
+  view.append(card);
+}
+
+/* c-border を速度ごとに点で並べる(左右でグラフを分ける) */
+function edgeSpeedChart(card, tests) {
+  const speeds = [...new Set(tests.map((x) => +x.params.v))].sort((a, b) => a - b);
+  if (!speeds.length) return;
+  const kinds = [{ kind: "wall", name: "壁の終わり", color: css("--s3") }, { kind: "pillar", name: "柱だけ", color: css("--s7") }];
+  const pts = { R: [], L: [] };
+  for (const x of tests) for (const f of parseEdge(x).fall) if (isFinite(f.cb)) pts[f.side].push({ v: +x.params.v, kind: f.kind, y: f.cb, label: `${x.params.v} mm/s ${f.side === "R" ? "右" : "左"} ${f.kind === "wall" ? "壁の終わり" : "柱だけ"}: c-border ${fmt(f.cb)}` });
+  const all = [...pts.R, ...pts.L].map((p) => p.y);
+  if (!all.length) return;
+  let ymin = Math.min(-2, ...all), ymax = Math.max(2, ...all);
+  const pad = (ymax - ymin) * 0.08; ymin -= pad; ymax += pad;
+  const row = el("div", { class: "maze-wrap" });
+  card.append(el("h3", { text: "c-border と速度(0 の線に、速度によらず集まっていればよい)" }));
+  const legend = el("div", { class: "title" });
+  for (const k of kinds) { const d = el("i", { class: "dot" }); d.style.background = k.color; legend.append(el("span", { class: "key" }, d, el("span", { text: k.name }))); }
+  card.append(legend, row);
+  for (const side of ["R", "L"]) {
+    const canvas = el("canvas");
+    const box = el("div", { class: "chart" }, el("div", { class: "title", text: side === "R" ? "右" : "左" }), canvas);
+    box.style.flex = "1 1 320px";
+    row.append(box);
+    const H = 220, L = 48, Rr = 12, T = 8, B = 24;
+    let hit = [];
+    const draw = () => {
+      const dpr = window.devicePixelRatio || 1, W = canvas.clientWidth || 360;
+      canvas.style.height = H + "px"; canvas.width = W * dpr; canvas.height = H * dpr;
+      const g = canvas.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const pw = W - L - Rr, ph = H - T - B, bw = pw / speeds.length;
+      const Y = (y) => T + (ymax - y) / (ymax - ymin) * ph;
+      g.font = "11px " + css("--sans"); g.fillStyle = css("--muted"); g.textAlign = "right"; g.textBaseline = "middle";
+      g.strokeStyle = css("--grid"); g.lineWidth = 1;
+      for (const v of niceTicks(ymin, ymax, 4).ticks) { const y = Math.round(Y(v)) + 0.5; g.beginPath(); g.moveTo(L, y); g.lineTo(W - Rr, y); g.stroke(); g.fillText(v + "", L - 6, y); }
+      g.strokeStyle = css("--axis"); g.lineWidth = 2; const y0 = Y(0); g.beginPath(); g.moveTo(L, y0); g.lineTo(W - Rr, y0); g.stroke();
+      g.textAlign = "center"; g.textBaseline = "top"; g.fillStyle = css("--muted");
+      speeds.forEach((v, i) => g.fillText(v + "", L + bw * (i + 0.5), H - B + 6));
+      hit = [];
+      pts[side].forEach((p, j) => {
+        const i = speeds.indexOf(p.v), ki = p.kind === "wall" ? 0 : 1;
+        const cx = L + bw * (i + 0.5) + (ki ? 8 : -8) + ((j % 3) - 1) * 3, cy = Y(p.y);
+        g.fillStyle = kinds[ki].color; g.strokeStyle = css("--surface"); g.lineWidth = 2;
+        g.beginPath(); g.arc(cx, cy, 5, 0, Math.PI * 2); g.fill(); g.stroke();
+        hit.push({ cx, cy, label: p.label });
+      });
+    };
+    canvas.addEventListener("pointermove", (e) => {
+      const r = canvas.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+      let best = null, bd = 12;
+      for (const h of hit) { const d = Math.hypot(h.cx - px, h.cy - py); if (d < bd) { bd = d; best = h; } }
+      if (best) showTip(e.clientX, e.clientY, [el("div", { text: best.label })]); else hideTip();
+    });
+    canvas.addEventListener("pointerleave", hideTip);
+    new ResizeObserver(draw).observe(canvas);
+  }
+  card.append(el("div", { class: "note", text: "横軸は速度[mm/s]。点を指すと値が出る。" }));
 }
 /* このページで受け取った全部のテストを、速度ごとにまとめる */
 function edgeSession(view) {
@@ -839,6 +937,7 @@ function edgeSession(view) {
     t.append(el("tr", null, el("td", { class: "l", text: gp.name }), ...cells, el("td", { text: `${fmt(s.mean, 2)}(${s.n})` }), el("td", { text: spread == null ? "-" : fmt(spread, 2) })));
   }
   card.append(t);
+  edgeSpeedChart(card, tests);
   const last = tests[tests.length - 1];
   if (last) {
     const off = (side, kind) => {
