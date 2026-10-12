@@ -91,7 +91,7 @@
 
 ### ターンごとの通過速度(`Short_NANAME_MoveTurnV`、モード1 No.10・No.11、モード10)
 
-考え方はREADMEの「ターンごとの通過速度」、調べたことは`docs/turn_speed_research.md`。
+考え方は`docs/turnv_design.md`、調べたことは`docs/turn_speed_research.md`。
 
 - [ ] STM32CubeIDEでビルドが通るか確認
 - [ ] `TurnV_Table`の`v`を全部2400にして走らせ、`Short_NANAME_Move2400`(モード1 No.3)と同じ走りになるか確認
