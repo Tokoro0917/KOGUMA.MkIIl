@@ -1324,6 +1324,16 @@ static const DIJK_EDGE_T dijk_edges[2][2][3] = {
 	},
 };
 
+/* 状態(isRow,sense)から向きdirへ進む辺。その向きに進めなければNULL */
+static const DIJK_EDGE_T* dijk_find_edge(int isRow, int sense, int dir) {
+	for (int k = 0; k < 3; k++) {
+		if (dijk_edges[isRow][sense][k].dir == dir) {
+			return &dijk_edges[isRow][sense][k];
+		}
+	}
+	return NULL;
+}
+
 static void Maze_Dijkstra_Calculation_Body(void) {
 	for (int s = 0; s < DIJK_STATE_NUM; s++) {	//初期化
 		dijk_state[s].cost = DIJK_MAXCOST;
@@ -1377,35 +1387,56 @@ static void Maze_Dijkstra_Calculation_Body(void) {
 		int isRow = (s >> 1) / (DIJK_W * DIJK_W);
 		DIJK_STATE_T *cur = &dijk_state[s];
 
+		/* 同じ向きにk歩続けて進む区間を1回の移動として広げる(2026-10-14)。
+		 * 区間のコスト = 最初の1歩(縦横ST_COST・斜めDIAG_COST) + CON_COST*(k-1)。
+		 * 1歩ずつ広げて「同じ向きが続くならCON_COST」にすると、コストが状態の
+		 * direction(来た向き)に左右され、あとでdirectionが書き換わったときに先に
+		 * 計算したコストとずれて、少し遅い経路を返すことがあった(ループありの
+		 * ランダム迷路1000個中、16x16で62個・32x32で58個。test_shortpath.c で検出)。
+		 * 区間ごとならコストが来た向きに左右されないので、本当の最短になる。
+		 * (同じ向きの区間を2つ続けるより1つにつなげたほうが必ず安いので、
+		 *  区間と区間の向きが違うという決まりを入れなくても答えは変わらない)
+		 * ゴールの入口(cost 0)から外へ向かう向きにそのまま進むときだけ、
+		 * 最初の1歩もCON_COSTにする(以前と同じ) */
 		for (int k = 0; k < 3; k++) {
 			const DIJK_EDGE_T *e = &dijk_edges[isRow][sense][k];
-			int nx = x + e->dx;
-			int ny = y + e->dy;
-			/* 外周は全部壁なので、外周より外へ出る辺は壁の手前で止まり
-			 * ここには来ない。念のため範囲だけ確認する */
-			if (nx < 0 || nx > MAZE_SIZE || ny < 0 || ny > MAZE_SIZE) {
-				continue;
-			}
-			if (dijk_is_wall(e->isRow, nx, ny)) {
-				continue;
-			}
+			int dir = e->dir;
 			int cost;
-			if (e->dir == cur->direction) {
-				cost = CON_COST;	//同じ向きが続く(直進の連続・斜めの連続)
-			} else if ((e->dir & 1) == 0) {
-				cost = ST_COST;
+			if (cur->cost == 0 && dir == cur->direction) {
+				cost = cur->cost + CON_COST;
+			} else if ((dir & 1) == 0) {
+				cost = cur->cost + ST_COST;
 			} else {
-				cost = DIAG_COST;
+				cost = cur->cost + DIAG_COST;
 			}
-			int ns = dijk_index(e->isRow, nx, ny, e->sense);
-			DIJK_STATE_T *next = &dijk_state[ns];
-			if (next->cost > cur->cost + cost) {
-				next->cost = (uint16_t) (cur->cost + cost);
-				next->direction = (uint8_t) e->dir;
-				next->pred = (uint16_t) s;
-				if (!next->inQueue) {
-					dijk_push(ns);
+			int rx = x, ry = y, rRow = isRow;
+			while (e != NULL) {
+				int nx = rx + e->dx;
+				int ny = ry + e->dy;
+				/* 外周は全部壁なので、外周より外へ出る辺は壁の手前で止まり
+				 * ここには来ない。念のため範囲だけ確認する */
+				if (nx < 0 || nx > MAZE_SIZE || ny < 0 || ny > MAZE_SIZE) {
+					break;
 				}
+				if (dijk_is_wall(e->isRow, nx, ny)) {
+					break;
+				}
+				int ns = dijk_index(e->isRow, nx, ny, e->sense);
+				DIJK_STATE_T *next = &dijk_state[ns];
+				if (next->cost > cost) {
+					next->cost = (uint16_t) cost;
+					next->direction = (uint8_t) dir;
+					next->pred = (uint16_t) s;	//区間の始まりの状態
+					if (!next->inQueue) {
+						dijk_push(ns);
+					}
+				}
+				/* 同じ向きにもう1歩 */
+				rx = nx;
+				ry = ny;
+				rRow = e->isRow;
+				e = dijk_find_edge(rRow, e->sense, dir);
+				cost += CON_COST;
 			}
 		}
 	}
@@ -1447,61 +1478,89 @@ static void Maze_Dijkstra_Calculation_Body(void) {
 		int nodeX = ((s >> 1) / DIJK_W) % DIJK_W;
 		int nodeY = (s >> 1) % DIJK_W;
 		int toGool_direction = (cur->direction + 4) % 8;
-
-		/* Dijkstra誘導 未知壁探索用: このホップが通る壁(今のノード自身)が
-		 * 実際に通過するセルはtoGool_directionの向きで決まる(進行方向側のセル)。
-		 * Row型ノードはtoGool_directionが{0,1,7}なら北側セル、{3,4,5}なら南側セル。
-		 * Column型ノードは{1,2,3}なら東側セル、{5,6,7}なら西側セルになる */
-		if (G_Dijk_Path_Len < MAX_STEP - 1) {
-			int16_t cellX, cellY;
-			if (nodeIsRow) {
-				if (toGool_direction == 0 || toGool_direction == 1
-						|| toGool_direction == 7) {
-					cellX = nodeX;
-					cellY = nodeY;
+		/* この状態には、ゴール側から同じ向きの区間(何歩か)で来た。区間の始まり
+		 * (cur->pred)に着くまで、ロボットの進む向き(toGool_direction)に1ホップずつたどる。
+		 * ロボットが壁を通り抜ける向きは、探索のとき(sense)の逆になる */
+		int robotSense = 1 - (s & 1);
+		int predIsRow = (cur->pred >> 1) / (DIJK_W * DIJK_W);
+		int predX = ((cur->pred >> 1) / DIJK_W) % DIJK_W;
+		int predY = (cur->pred >> 1) % DIJK_W;
+		int done = 0;
+		for (int hop = 0; hop <= 2 * DIJK_W; hop++) {
+			/* Dijkstra誘導 未知壁探索用: このホップが通る壁(今のノード自身)が
+			 * 実際に通過するセルはtoGool_directionの向きで決まる(進行方向側のセル)。
+			 * Row型ノードはtoGool_directionが{0,1,7}なら北側セル、{3,4,5}なら南側セル。
+			 * Column型ノードは{1,2,3}なら東側セル、{5,6,7}なら西側セルになる */
+			if (G_Dijk_Path_Len < MAX_STEP - 1) {
+				int16_t cellX, cellY;
+				if (nodeIsRow) {
+					if (toGool_direction == 0 || toGool_direction == 1
+							|| toGool_direction == 7) {
+						cellX = nodeX;
+						cellY = nodeY;
+					} else {
+						cellX = nodeX;
+						cellY = nodeY - 1;
+					}
 				} else {
-					cellX = nodeX;
-					cellY = nodeY - 1;
+					if (toGool_direction == 2 || toGool_direction == 1
+							|| toGool_direction == 3) {
+						cellX = nodeX;
+						cellY = nodeY;
+					} else {
+						cellX = nodeX - 1;
+						cellY = nodeY;
+					}
 				}
-			} else {
-				if (toGool_direction == 2 || toGool_direction == 1
-						|| toGool_direction == 3) {
-					cellX = nodeX;
-					cellY = nodeY;
-				} else {
-					cellX = nodeX - 1;
-					cellY = nodeY;
-				}
+				/* この壁が現時点で既知か未知かは記録時点のスナップショットにせず、
+				 * Maze_Unknown_Wall_Scan()が呼ばれる都度Maze_Row_Look/Column_Lookを
+				 * 直接見てライブ判定する(同じ経路データを使い回して複数回スキャン
+				 * できるようにするため。詳しくはMaze_Unknown_Wall_Scan()参照) */
+				G_Dijk_Path_X[G_Dijk_Path_Len] = cellX;
+				G_Dijk_Path_Y[G_Dijk_Path_Len] = cellY;
+				G_Dijk_Path_WallIsRow[G_Dijk_Path_Len] = nodeIsRow;
+				G_Dijk_Path_WallI[G_Dijk_Path_Len] = nodeX;
+				G_Dijk_Path_WallJ[G_Dijk_Path_Len] = nodeY;
+				G_Dijk_Path_Len++;
 			}
-			/* この壁が現時点で既知か未知かは記録時点のスナップショットにせず、
-			 * Maze_Unknown_Wall_Scan()が呼ばれる都度Maze_Row_Look/Column_Lookを
-			 * 直接見てライブ判定する(同じ経路データを使い回して複数回スキャン
-			 * できるようにするため。詳しくはMaze_Unknown_Wall_Scan()参照) */
-			G_Dijk_Path_X[G_Dijk_Path_Len] = cellX;
-			G_Dijk_Path_Y[G_Dijk_Path_Len] = cellY;
-			G_Dijk_Path_WallIsRow[G_Dijk_Path_Len] = nodeIsRow;
-			G_Dijk_Path_WallI[G_Dijk_Path_Len] = nodeX;
-			G_Dijk_Path_WallJ[G_Dijk_Path_Len] = nodeY;
-			G_Dijk_Path_Len++;
-		}
 
-		if (N >= MAX_STEP - 2) {	//配列の終端(0)を必ず残す
-			break;
-		}
-		if ((toGool_direction & 1) == 0) {	//直進(半区画2つ=1区画)
-			if (G_Short_Pass[N] < 0) {
+			if (N >= MAX_STEP - 2) {	//配列の終端(0)を必ず残す
+				done = 1;
+				break;
+			}
+			if ((toGool_direction & 1) == 0) {	//直進(半区画2つ=1区画)
+				if (G_Short_Pass[N] < 0) {
+					N++;
+				}
+				G_Short_Pass[N] += 2;
+			} else {	//小回り: 進む向きとノードの種類で左右が決まる
+				int left;
+				if (nodeIsRow) {
+					left = (toGool_direction == 3 || toGool_direction == 7);
+				} else {
+					left = (toGool_direction == 1 || toGool_direction == 5);
+				}
 				N++;
+				G_Short_Pass[N] = left ? -2 : -3;
 			}
-			G_Short_Pass[N] += 2;
-		} else {	//小回り: 進む向きとノードの種類で左右が決まる
-			int left;
-			if (nodeIsRow) {
-				left = (toGool_direction == 3 || toGool_direction == 7);
-			} else {
-				left = (toGool_direction == 1 || toGool_direction == 5);
+
+			/* 次のホップへ(区間の始まりに着いたら、この区間は終わり) */
+			const DIJK_EDGE_T *e = dijk_find_edge(nodeIsRow, robotSense,
+					toGool_direction);
+			if (e == NULL) {	//異常系(向きの記録がおかしい)
+				done = 1;
+				break;
 			}
-			N++;
-			G_Short_Pass[N] = left ? -2 : -3;
+			nodeX += e->dx;
+			nodeY += e->dy;
+			nodeIsRow = e->isRow;
+			robotSense = e->sense;
+			if (nodeIsRow == predIsRow && nodeX == predX && nodeY == predY) {
+				break;
+			}
+		}
+		if (done) {
+			break;
 		}
 		s = cur->pred;
 	}
