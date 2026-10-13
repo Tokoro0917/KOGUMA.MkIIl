@@ -1326,7 +1326,12 @@ static void Maze_Unknown_Walls_Plan(void) {
  *   - Uターンしたとき: Uターンで止まっているあいだに計算する(G_Stop_Hook)。
  *     行き止まりでなければ、計算した結果で進む向きを決め直す
  *   - 目標に辿り着けなかったとき(異常系): 次の区画で止まって計算する
- * 1つの壁を確認できたら、同じ経路データのまま次の未確認の壁を探す
+ *   - 見に行った壁が実際にあったとき(経路がふさがれた): 次の区画で止まって計算する
+ *     (2026-10-13 追加。以前は計算し直さずに古い経路の残りの壁を確認して終わり、
+ *      もっと短い別の経路を一度も見に行かないことがあった。東北大会で下回りが55区画、
+ *      上回りが57区画の迷路で、下回りを確認せずに上回りを走った)
+ * 止まって計算するときは、前に壁があれば壁合わせもする(Robot_Maze_Stop_And_Go)。
+ * 壁がなかった(通れた)ときは、止まらずに同じ経路データのまま次の未確認の壁を探す
  * (Maze_Unknown_Wall_Scan()は壁の確認状況をその都度ライブ判定する。
  *  ダイクストラは計算し直さず、歩数マップだけ走りながら作り直す) */
 static void Maze_Search_Unknown_Walls(int flags) {
@@ -1360,8 +1365,12 @@ static void Maze_Search_Unknown_Walls(int flags) {
 			//目標に辿り着けなかった: 止まってダイクストラから計算し直す
 			Robot_Maze_Stop_And_Go(suction);
 			G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
+		} else if (Maze_Unknown_Wall_Is_Wall()) {
+			//壁があって経路がふさがれた: 止まって(壁合わせをして)ダイクストラから計算し直す
+			Robot_Maze_Stop_And_Go(suction);
+			G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
 		} else if (Maze_Unknown_Wall_Scan() == 1) {
-			//壁を確認できた: 同じ経路で次の未確認の壁へ
+			//壁がなかった(通れた): 同じ経路で次の未確認の壁へ
 			Maze_Unknown_Target_ModeSet(G_Unknown_Target_X, G_Unknown_Target_Y);
 			Maze_Step_Calculate();
 		} else {

@@ -1557,6 +1557,16 @@ int Maze_Unknown_Wall_Still_Unknown(void) {
 	}
 }
 
+/* Maze_Unknown_Wall_Scan()が最後に見つけた壁を確認した結果、壁があったら1
+ * (ダイクストラ経路がその壁でふさがれていた)。確認済みになってから呼ぶこと */
+int Maze_Unknown_Wall_Is_Wall(void) {
+	if (G_Unknown_Wall_IsRow) {
+		return (G_Maze_Row[G_Unknown_Wall_J] >> G_Unknown_Wall_I) & 1u;
+	} else {
+		return (G_Maze_Column[G_Unknown_Wall_I] >> G_Unknown_Wall_J) & 1u;
+	}
+}
+
 /* Maze_Unknown_Wall_Scan()が見つけた目標セルを、Maze_Gool_Setting()のmode==2で
  * BFSの目標地点として使うようセットする。Maze_Unkown_ALL_ModeSet()の兄弟関数 */
 void Maze_Unknown_Target_ModeSet(int x, int y) {

@@ -87,6 +87,7 @@ void Maze_Step_Calculate();
 
 int Maze_Unknown_Wall_Scan(void);
 int Maze_Unknown_Wall_Still_Unknown(void);
+int Maze_Unknown_Wall_Is_Wall(void);
 void Maze_Unknown_Target_ModeSet(int, int);
 
 void Known_Pass_Generation();

@@ -144,6 +144,10 @@ static void Log_UTurn_Start(void) {
  * 既知区間加速の行き止まりUターン(-8)、Robot_Maze_Stop_And_Go() で呼ばれる */
 void (*G_Stop_Hook)(void) = NULL;
 
+/* Robot_Maze_Stop_And_Go() で前壁合わせを済ませたら1。Robot_Maze_Go_From_Stop() で
+ * 同じ前壁合わせを繰り返さないために使い、そこで0に戻す */
+static int s_front_aligned = 0;
+
 static int Stop_Hook_Run(void) {
 	if (G_Stop_Hook != NULL) {
 		G_Stop_Hook();
@@ -160,28 +164,41 @@ void Robot_Maze_Go_From_Stop(float v, float ac) {
 			&& (G_Maze_Flont <= G_Maze_Back)) {	//前進
 		G_Robot_Lastaction = 0;
 	} else if ((G_Maze_Left <= G_Maze_Right) && (G_Maze_Left <= G_Maze_Back)) {	//左
-		Robot_Align_If_Wall(G_Wall_data[0] == 1 && G_Wall_data[3] == 1);
+		if (!s_front_aligned) {
+			Robot_Align_If_Wall(G_Wall_data[0] == 1 && G_Wall_data[3] == 1);
+		}
 		Motor_trapezoid_Turn(90, 600, 20000);
 		Motor_Stop();
 		G_Robot_Direction += 3;
 		G_Robot_Lastaction = 3;
 	} else if (G_Maze_Right <= G_Maze_Back) {	//右
-		Robot_Align_If_Wall(G_Wall_data[0] == 1 && G_Wall_data[3] == 1);
+		if (!s_front_aligned) {
+			Robot_Align_If_Wall(G_Wall_data[0] == 1 && G_Wall_data[3] == 1);
+		}
 		Motor_trapezoid_Turn(-90, 600, 20000);
 		Motor_Stop();
 		G_Robot_Direction += 1;
 		G_Robot_Lastaction = 1;
-	} else {	//後ろ
-		Robot_adjustment();
+	} else {	//後ろ(Robot_adjustment() と同じ。前壁合わせが済んでいれば省く)
+		Motor_Stop();
+		if (!s_front_aligned) {
+			Robot_Align_If_Wall(G_Wall_data[0] == 1 && G_Wall_data[3] == 1);	//前の壁
+		}
+		Motor_trapezoid_Turn(90, 600, 20000);
+		Motor_Stop();
+		Robot_Align_If_Wall(G_Wall_data[1] == 1);	//元の左の壁(今の前)
+		Motor_trapezoid_Turn(90, 600, 20000);
+		Motor_Stop();
 		G_Robot_Direction += 2;
 		G_Robot_Lastaction = 2;
 		G_Just_UTurned = 1;
 	}
+	s_front_aligned = 0;
 	Motor_trapezoid_PID(0, v, v, ac, 90);
 }
 
 /* 境目を通過中の状態から、次の区画の入口で壁を見て(Maze_Wall_Update)、
- * 区画の中央で止まり、G_Stop_Hook の計算をしてから発進する。
+ * 区画の中央で止まり、前に壁があれば壁合わせをして、G_Stop_Hook の計算をしてから発進する。
  * suction: 1なら吸引探索(1000mm/s)、0ならスラローム探索(500mm/s)の動き */
 void Robot_Maze_Stop_And_Go(int suction) {
 	if (suction) {
@@ -192,6 +209,8 @@ void Robot_Maze_Stop_And_Go(int suction) {
 		Motor_trapezoid(500, 500, 0, 5000, 70);
 	}
 	Motor_Stop();
+	Robot_Align_If_Wall(G_Wall_data[0] == 1 && G_Wall_data[3] == 1);	//止まったついでに前壁合わせ
+	s_front_aligned = 1;
 	Stop_Hook_Run();
 	if (suction) {
 		Robot_Maze_Go_From_Stop(1000, 10000);

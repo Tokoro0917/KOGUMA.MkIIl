@@ -212,7 +212,8 @@ static void run_to_cell(const char *scenario, const char *phase, int dest_x,
  * 未確認である間だけ移動を続ける (G_MAZE_Explored[target]==0 ではない —
  * 既に別の面から立ったことのあるセルでも、その壁面自体はまだ未確認の
  * ことがあるため)。戻り値: Uターンした、または目標に辿り着けなかった
- * (main.cと同じくステップ上限で打ち切り)場合は1、壁を確認できた場合は0
+ * (main.cと同じくステップ上限で打ち切り)場合と、確認した壁が実際にあった
+ * (経路がふさがれた、2026-10-13 追加)場合は1、壁がなかった場合は0
  * — main.cの「need_recompute」と同じ意味 */
 static int run_until_wall_known(const char *scenario, const char *phase) {
 	G_Just_UTurned = 0;
@@ -225,6 +226,10 @@ static int run_until_wall_known(const char *scenario, const char *phase) {
 		if (G_Just_UTurned == 1) {
 			break;
 		}
+	}
+	if (sub_steps < MAX_STEP && Maze_Unknown_Wall_Still_Unknown() == 0
+			&& Maze_Unknown_Wall_Is_Wall()) {
+		return 1;	/* 壁があって経路がふさがれた: main.cと同じく計算し直す */
 	}
 	return (G_Just_UTurned == 1) || (sub_steps >= MAX_STEP);
 }
@@ -261,7 +266,8 @@ static void run_scenario_a(void) {
 /* ---- シナリオB: Dijkstra誘導 未知壁探索 (main.c モード0 No.6/No.7 相当) ----
  * スタート→ゴール固定方向でDijkstra経路を計算し、経路上の未確認の壁を
  * 現在位置から直接見に行く。Dijkstraの再計算はゴール到達直後とUターン
- * 発生時だけ行い、それ以外は同じ経路データのまま次の未知壁を探す。
+ * 発生時、確認した壁が実際にあったとき(経路がふさがれた)だけ行い、
+ * それ以外は同じ経路データのまま次の未知壁を探す。
  * ゴールやスタートまで戻る「シャトル」構造は使わない(往路の後、
  * 全ての壁が確認できたら一度だけスタートに戻って最終走行する) */
 static void run_scenario_b(void) {
