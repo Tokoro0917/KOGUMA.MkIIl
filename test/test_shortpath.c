@@ -480,6 +480,116 @@ static int raw_cells(void) {
 	return c;
 }
 
+/* ---- ダイクストラの経路が本当に最短か ---------------------------------
+ * Maze.c のコスト(ST_COST / DIAG_COST / CON_COST)で、経路のコストを数える。
+ * 経路は壁の中点から壁の中点へのホップの並び。縦横のホップは半区画2つ、斜めのホップは
+ * 半区画1つずつ縦横に進む。各ホップのコストは、ゴール側の次のホップと同じ向きなら CON_COST、
+ * 違えば縦横 ST_COST・斜め DIAG_COST(最後のホップはゴールに入る向きと比べる)。
+ * 本当の最短は、状態を「壁の中点 + そこに来た向き(8方向)」にして、変化がなくなるまで
+ * 全部の状態を見直す素朴な方法で求める(Maze.c とは別に書いた参照実装)。 */
+
+static int hop_cost(int h, int next_h) {
+	if (h == next_h)
+		return CON_COST;
+	return (h % 2 == 0) ? ST_COST : DIAG_COST;
+}
+
+/* 圧縮前の G_Short_Pass のコスト */
+static int raw_cost(void) {
+	static int hops[MAX_STEP * 2];
+	int n = 0, h = 0;
+	for (int i = 1; i < MAX_STEP && G_Short_Pass[i] != 0; i++) {
+		int t = G_Short_Pass[i];
+		if (t > 0) {
+			for (int k = 0; k < t / 2; k++)
+				hops[n++] = h;
+		} else if (t == -2) {	//左: 進む向きの左45度の斜めのホップ
+			hops[n++] = (h + 7) % 8;
+			h = (h + 6) % 8;
+		} else if (t == -3) {	//右
+			hops[n++] = (h + 1) % 8;
+			h = (h + 2) % 8;
+		}
+	}
+	int cost = 0;
+	int next_h = h;	//ゴールに入る向き
+	for (int i = n - 1; i >= 0; i--) {
+		cost += hop_cost(hops[i], next_h);
+		next_h = hops[i];
+	}
+	return cost;
+}
+
+/* 半区画単位の座標(cx,cy)の壁の中点が通れるか(外周と真の迷路の壁は通れない) */
+static int ref_open(int cx, int cy) {
+	if (cx < 0 || cx > 2 * N || cy < 0 || cy > 2 * N)
+		return 0;
+	if (cx % 2 == 1 && cy % 2 == 0)	//横の壁 G_Maze_Row[cy/2] の bit (cx-1)/2
+		return !(true_row[cy / 2] & (1u << ((cx - 1) / 2)));
+	if (cx % 2 == 0 && cy % 2 == 1)	//縦の壁 G_Maze_Column[cx/2] の bit (cy-1)/2
+		return !(true_col[cx / 2] & (1u << ((cy - 1) / 2)));
+	return 0;
+}
+
+#define REF_INF 1000000
+static int ref_cost[2 * N + 1][2 * N + 1][8];
+
+static int ref_shortest_cost(void) {
+	for (int x = 0; x <= 2 * N; x++)
+		for (int y = 0; y <= 2 * N; y++)
+			for (int h = 0; h < 8; h++)
+				ref_cost[x][y][h] = REF_INF;
+	/* ゴール2x2区画の外側の境界を、外へ向かう向きでコスト0にする */
+	for (int gx = MAZE_GOOL_X; gx <= MAZE_GOOL_X + 1; gx++) {
+		for (int gy = MAZE_GOOL_Y; gy <= MAZE_GOOL_Y + 1; gy++) {
+			for (int d = 0; d < 4; d++) {
+				if (in_goal(gx + DX[d], gy + DY[d]))
+					continue;
+				int ex = 2 * gx + 1 + DX[d], ey = 2 * gy + 1 + DY[d];
+				if (ref_open(ex, ey))
+					ref_cost[ex][ey][2 * d] = 0;
+			}
+		}
+	}
+	int changed = 1;
+	while (changed) {
+		changed = 0;
+		for (int x = 0; x <= 2 * N; x++) {
+			for (int y = 0; y <= 2 * N; y++) {
+				for (int h = 0; h < 8; h++) {
+					int c = ref_cost[x][y][h];
+					if (c >= REF_INF)
+						continue;
+					/* 通り抜けている向き(横の壁なら北か南、縦の壁なら東か西)の先の区画を通る3本 */
+					int fwd;
+					if (y % 2 == 0)
+						fwd = (HY[h] > 0) ? 0 : 4;
+					else
+						fwd = (HX[h] > 0) ? 2 : 6;
+					for (int k = -1; k <= 1; k++) {
+						int nh = (fwd + k + 8) % 8;
+						int step = (nh % 2 == 0) ? 2 : 1;
+						int nx = x + HX[nh] * step, ny = y + HY[nh] * step;
+						if (!ref_open(nx, ny))
+							continue;
+						int nc = c + hop_cost(nh, h);
+						if (nc < ref_cost[nx][ny][nh]) {
+							ref_cost[nx][ny][nh] = nc;
+							changed = 1;
+						}
+					}
+				}
+			}
+		}
+	}
+	/* スタート区画の北の壁(1,2)を、ゴール側から見て南向きに通る状態 */
+	int best = REF_INF;
+	for (int h = 3; h <= 5; h++)
+		if (ref_cost[1][2][h] < best)
+			best = ref_cost[1][2][h];
+	return best;
+}
+
 static int run_suite(const char *name, int dijkstra, int count, int loops,
 		unsigned seed0, int show) {
 	int fails = 0;
@@ -500,6 +610,14 @@ static int run_suite(const char *name, int dijkstra, int count, int loops,
 		}
 		if (ok)
 			ok = check_start_token();
+		if (ok && dijkstra) {
+			int rc = raw_cost(), best = ref_shortest_cost();
+			if (rc != best) {
+				snprintf(g_msg, sizeof(g_msg),
+						"Dijkstra path cost %d, optimum %d", rc, best);
+				ok = 0;
+			}
+		}
 		if (ok && !dijkstra) {
 			/* スタートマスから入るので、最初の1マスは数に入らない */
 			int rc = raw_cells() + 1;
