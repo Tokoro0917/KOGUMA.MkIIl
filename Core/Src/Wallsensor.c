@@ -274,7 +274,10 @@ float Edge_Off[2][2] = { { 99.0f, 94.5f }, { 87.0f, 96.0f } };
  * 左右・種類どれも同じ傾き。原因は分かっていない)ので、c にこの値 × 速度 を足す。
  * 1000〜2400 で、補正したあとの残りのばらつきは約1mm(標準偏差) */
 float Edge_V_K = 0.0060f;
-float Edge_Tan = 1.07f;		//横のずれ1mmで、見える位置が何mm変わるか(90/84。横にずらして置いて実測で直す)
+/* 横のずれ1mmで、見える位置が何mm変わるか。CAD(2026-10-18、docs/pillar_cut_design.md の 2.)では、
+ * 横センサは反対側に付いて交差し、真横から前へ30°の向きなので tan30° = 0.58(以前は 90/84 = 1.07 と仮定していた)。
+ * 横にずらして置いて実測で確かめる */
+float Edge_Tan = 0.58f;
 float Edge_Pair_Tol = 15;	//左右の推定がこれ以内なら平均する[mm]
 
 #define EDGE_Q 4	//左右それぞれ、最後の何個の推定を残すか
@@ -481,7 +484,8 @@ void Edge_Log_Print() {
 			}
 			break;
 		case EDGE_LOG_ST:
-			printf("st,%s,%.1f,%.0f", side_name[r->info ? 1 : 0], x, r->a);
+			/* info は曲がる向き(0 左、1 右)。2026-10-18 まではここが逆(左ターンを R)と出ていた */
+			printf("st,%s,%.1f,%.0f", r->info ? "R" : "L", x, r->a);
 			break;
 		case EDGE_LOG_ST_CUT:
 			printf("st_cut,%d,%.1f,%.1f", r->info, x, (r->info & 0x13) ? r->a - Edge_Log_X0 : -1.0f);

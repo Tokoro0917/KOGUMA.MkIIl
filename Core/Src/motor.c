@@ -109,7 +109,16 @@ float Cut_L_NA = 150;
  *    後距離はXだけ走る(ターンのあと次の境目の柱はターンの終わりのすぐ後に見えるので、後距離のうちには使えない。
  *    その境目は次の前距離で使う) */
 int G_WallCut_Pillar = 0;
-float Edge_Win = 20;	//前距離で、境目の推定を探す範囲(区画中心 ± 90 からの ±)[mm]
+/* 前距離で、境目の推定を探す範囲(区画中心 ± 90 からの ±)[mm]。
+ * 2026-10-18 の最短走行(2000)で、境目の推定が「区画中心 + 90」から 13〜38mm 先に出ていた(距離のずれ)ので
+ * 20 → 40 にした。隣の境目までは 180mm あるので、40 でも取り違えない */
+float Edge_Win = 40;
+/* 柱のときの前距離の読み替え: 曲がり始め = 境目 - 90 + (X × Pillar_X_Scale + Pillar_X_Offs)。
+ * 前距離の X は従来の壁切れ(壁が切れてから X の半分で曲がる)に合わせて調整してある。2026-10-18 の最短走行(2000)では、
+ * 曲がる側に壁がある前距離で、従来は実際には「区画中心 + X/2 - 5mm」くらいで曲がっていたので、その値から始める。
+ * ターンの種類ごとに合わせ直すまでのつなぎ(1.0 / 0 にすると X そのまま)。境目が見つからないときは今までどおり 区画中心 + X */
+float Pillar_X_Scale = 0.5f;
+float Pillar_X_Offs = -5.0f;
 #define EDGE_SRC_BEHIND 4	//前距離で、後ろの境目(区画中心 - 90)を使った
 #define EDGE_SRC_CONV_CUT 16	//従来の前距離で、壁切れした(Wallsensor.h の EDGE_SRC_CONV_* と同じ値)
 #define EDGE_SRC_CONV_NONE 32	//従来の前距離で、曲がる側に壁がなく距離だけで走った
@@ -1004,15 +1013,17 @@ static void Cut_ST_Conv(int direction, float x_center, float X, float X_act, Cut
 
 /* 柱の前距離。前距離の始めは区画中心(x_center、G_Odo_X)で、そこから X 走ったら曲がり始める。
  * 境目の推定があれば、その実測で曲がり始めを直す:
- *   前の境目(x_center + 90 ± Edge_Win)があれば  曲がり始め = 境目 + X - 90
- *   なければ後ろの境目(x_center - 90 ± Edge_Win)  曲がり始め = 境目 + 90 + X
+ *   前の境目(x_center + 90 ± Edge_Win)があれば  曲がり始め = 境目 + Xp - 90
+ *   なければ後ろの境目(x_center - 90 ± Edge_Win)  曲がり始め = 境目 + 90 + Xp
  *   どちらもなければ x_center + X(距離だけ)
+ * Xp = X × Pillar_X_Scale + Pillar_X_Offs(従来に合わせて調整した X の読み替え)
  * 横センサは区画中心で柱の真ん中を見る向きなので、前の境目の柱の端は区画中心の少し先で見える。
  * Xがそれより短いと前の境目は間に合わず、後ろの境目(前の区間で見たもの)を使う */
 static void Cut_ST_Pillar(int direction, float x_center, float X, CutTick tick) {
 	float b0 = x_center + 90.0f;
 	float b1 = x_center - 90.0f;
 	float target = x_center + X;
+	float Xp = X * Pillar_X_Scale + Pillar_X_Offs;	//境目から合わせるときの X
 	float c = 0;
 	int src = 0;
 	Edge_Log_Mark(EDGE_LOG_ST, direction, x_center, X, 0);
@@ -1021,11 +1032,11 @@ static void Cut_ST_Pillar(int direction, float x_center, float X, CutTick tick) 
 		float cc;
 		int sr;
 		if (Edge_Cut_Find(b0 - Edge_Win, b0 + Edge_Win, &cc, &sr)) {
-			target = cc + X - 90.0f;
+			target = cc + Xp - 90.0f;
 			c = cc;
 			src = sr;
 		} else if (Edge_Cut_Find(b1 - Edge_Win, b1 + Edge_Win, &cc, &sr)) {
-			target = cc + 90.0f + X;
+			target = cc + 90.0f + Xp;
 			c = cc;
 			src = sr | EDGE_SRC_BEHIND;
 		} else {
