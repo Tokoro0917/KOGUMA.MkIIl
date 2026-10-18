@@ -1450,6 +1450,7 @@ static void Maze_Search(int flags) {
 
 	Motor_Setup();
 	Motor_Stop();
+	Search_Cut_Reset();	//探索の直進の壁切れのログ(出力はモード4 No.7)
 	if (flags & SEARCH_SUCTION) {
 		Suction_Start(35);
 	}
@@ -1540,6 +1541,9 @@ static void Output_All(void) {
 	}
 	if (SensorNoise_Has_Data()) {
 		SensorNoise_Print();
+	}
+	if (Search_Cut_Has_Data()) {
+		Search_Cut_Print();
 	}
 	printf("\r\n#DONE\r\n");
 }
