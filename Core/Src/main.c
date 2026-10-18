@@ -71,8 +71,9 @@
 /* USER CODE BEGIN PV */
 /* 1 にすると、最短走行(モード1、モード0 No.8〜10 の探索後の最短)の壁切れを柱で見る
  * (区画の境目の柱の端から境目の位置を求め、前距離を直す。motor.c の G_WallCut_Pillar、
- * 設計は docs/pillar_cut_design.md)。0 なら従来どおり。探索中と斜めの壁切れはいつも従来どおり */
-static int Short_WallCut_Pillar = 0;
+ * 設計は docs/pillar_cut_design.md)。0 なら従来どおり。探索中と斜めの壁切れはいつも従来どおり。
+ * 2026-10-18 から 1(柱で前距離を合わせる。前距離の X の読み替えは motor.c の Pillar_X_Scale / Pillar_X_Ofs) */
+static int Short_WallCut_Pillar = 1;
 
 /* USER CODE END PV */
 

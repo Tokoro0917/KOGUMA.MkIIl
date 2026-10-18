@@ -102,7 +102,7 @@ STM32F446RE(STM32CubeIDE)をベースにしたマイクロマウス(クラシッ
 | 10 | BFS | ターンごと(`docs/turnv_design.md`) | 20000 | 15000 | `Short_NANAME_MoveTurnV` |
 | 11 | ダイクストラ | ターンごと(`docs/turnv_design.md`) | 20000 | 15000 | `Short_Dijkstra_MoveTurnV` |
 
-`main.c`の`Short_WallCut_Pillar`を1にすると、最短走行(モード1、モード0 No.8〜10の探索後の最短)の壁切れを柱で見る(「壁切れ」)。既定は0。
+`main.c`の`Short_WallCut_Pillar`を1にすると、最短走行(モード1、モード0 No.8〜10の探索後の最短)の壁切れを柱で見る(「壁切れ」)。既定は1(2026-10-18 から。0 で従来に戻る)。
 
 No.10・No.11(ターンごとの通過速度)の考え方と速度の決め方は`docs/turnv_design.md`。
 
@@ -213,7 +213,8 @@ RAMに残っているデータを全部、迷路 → 壁切れのログ → 走�
 
 | 設定 | 場所 | 今の値 | 内容 |
 |---|---|---|---|
-| `Short_WallCut_Pillar` | `main.c` | 0 | 1で、最短走行の壁切れを柱で見る(「壁切れ」) |
+| `Short_WallCut_Pillar` | `main.c` | 1 | 1で、最短走行の壁切れを柱で見る(「壁切れ」)。0で従来 |
+| `Pillar_X_Scale` / `Pillar_X_Offs` | `motor.c` | 0.5 / −5 | 柱のとき、前距離の X を X × Scale + Offs に読み替える(X は従来に合わせて調整した値のため) |
 | `ac_nn` | `main.c`(モード1の番号ごと) | 上の表 | 最短走行の斜めの直線の加速度(0なら直線の加速度-5000) |
 | `G_WallCtrl_Use_mm` | `Wallsensor.c` | 1 | 横壁制御。1=距離版、0=センサ値版 |
 | `Kp_mm` / `Kd_mm` | `Wallsensor.c` | 0.30 / 0.06 | 距離版の横壁制御のゲイン(センサ値版の`Kp`=0.05 / `Kd`=0.01と同じ効き) |
@@ -300,7 +301,7 @@ RAMに残っているデータを全部、迷路 → 壁切れのログ → 走�
 
 ### 壁切れ(`motor.c`)
 
-ターンの前後の直線(前距離・後距離)を、横の壁や柱を基準にして合わせる。`main.c`の`Short_WallCut_Pillar`(既定0)で、最短走行の間だけ方法を切り替える(`G_WallCut_Pillar`)。探索中と斜めの壁切れ(`Cut_L_NA`/`Cut_R_NA`、150)はいつも従来どおり。
+ターンの前後の直線(前距離・後距離)を、横の壁や柱を基準にして合わせる。`main.c`の`Short_WallCut_Pillar`(既定1)で、最短走行の間だけ方法を切り替える(`G_WallCut_Pillar`)。探索中と斜めの壁切れ(`Cut_L_NA`/`Cut_R_NA`、150)はいつも従来どおり。
 
 **従来**(`Short_WallCut_Pillar` = 0)。横センサ(`g_sensor_av`)が`Cut_L`/`Cut_R`(80)を下回ったところを壁の終わりとみなす。
 - 前距離: Xの半分まで走り、曲がる側に壁があれば下回るまで待ってから、残りX/2を走る
