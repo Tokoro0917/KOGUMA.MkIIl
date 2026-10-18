@@ -334,9 +334,16 @@ function addBlock(b, source) {
   if (source === "serial" && !STREAM_TYPES.has(b.type)) autoSave(b);
   if (bulk) return;
   /* 出力(迷路 → 壁切れ → 走行ログ)は続けて届くので、届き終わってから最後のものだけ描く
-   * (届いているあいだに描くと、そのあいだ受け取りが止まる) */
+   * (届いているあいだに描くと、そのあいだ受け取りが止まる)。ただし3秒より長くは待たない。
+   * 出し続ける種類(感度合わせ)は、届いているあいだずっと待つことになるので、今までどおりすぐ描く */
   clearTimeout(selectTimer);
-  const later = () => { selectTimer = setTimeout(() => (performance.now() - lastRx < 300 ? later() : select(b)), 100); };
+  const t0 = performance.now(), quick = STREAM_TYPES.has(b.type);
+  const later = () => {
+    selectTimer = setTimeout(() => {
+      const now = performance.now();
+      if (!quick && now - lastRx < 300 && now - t0 < 3000) later(); else select(b);
+    }, quick ? 60 : 100);
+  };
   later();
   renderList();
 }
