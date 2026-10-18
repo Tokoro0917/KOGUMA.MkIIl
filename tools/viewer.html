@@ -302,11 +302,12 @@ function summary(b) {
     return (+p.border >= 0 ? `テスト ${p.v} mm/s` : "最短走行") + ` 柱の端 ${nf}`;
   }
   if (b.type === "MAZE") return `${p.size}×${p.size}`;
+  if (b.type === "SCUT") { const r = parseScut(b); return `直進 ${r.length}(直した ${r.filter((x) => x.src).length})`; }
   if (b.type === "NOISE") { const n = b.lines.filter((l) => l.startsWith("batt,")).length; return `${n} 組${+p.trace > 0 ? "(生の値あり)" : "(表だけ)"}`; }
   if (STREAM_TYPES.has(b.type) && b.updates > 1) return `測定中 ${b.updates} 回(最後 ${timeStr(b.lastTime)})`;
   return `${b.lines.length} 行`;
 }
-const typeName = { LOG: "走行ログ", EDGE: "壁切れ", MAZE: "迷路", CENTER: "感度合わせ", NOISE: "センサのノイズ" };
+const typeName = { LOG: "走行ログ", EDGE: "壁切れ", MAZE: "迷路", CENTER: "感度合わせ", NOISE: "センサのノイズ", SCUT: "探索の直進の壁切れ" };
 
 let bulk = false;	//ファイルを読み込むあいだは、データ1つごとに描き直さない(終わってから1回だけ)
 /* 測っているあいだ出し続ける種類(感度合わせ)。続けて届いたら一覧に増やさず、いちばん新しい値に置き換える。
@@ -1543,6 +1544,45 @@ function renderCenter(view, b) {
   view.append(card);
   rawCard(view, b);
 }
+/* ================= 探索の直進の壁切れ(SCUT) ================= */
+/* 行: b(予想した次の境目),dc(推定 - 予想),corr(直した量),src(0 見つからず、1 右、2 左、3 両方、+8 左右が合わず片方) */
+function parseScut(b) {
+  return b.lines.filter((l) => /^-?[\d.]+,/.test(l)).map((l) => { const f = l.split(",").map(Number); return { b: f[0], dc: f[1], corr: f[2], src: f[3] }; });
+}
+function renderScut(view, b) {
+  const R = parseScut(b);
+  const found = R.filter((r) => r.src);
+  const max = +b.params.max || 15;
+  const s = stats(found.map((r) => r.dc));
+  const side = (src) => ["", "右", "左", "左右の平均"][src & 3] + (src & 8 ? "(左右が合わず片方)" : "");
+  const card = el("div", { class: "card" });
+  card.append(el("h2", { text: `探索の直進の壁切れ(${timeStr(b.time)})` }),
+    el("div", { class: "note", text: `探索で1区画まっすぐ進むたびに、次の境目の柱の端から境目を推定し、残りの距離を直した記録。dc は「推定 − 距離から予想した位置」(正なら境目が予想より先にあった)。直す量は ±${max}mm まで、予想 ± ${b.params.win || 20}mm の推定だけ使う。両側とも壁が続くところは端がないので直さない。${+b.params.on ? "" : "このときは直していない(Search_WallCut = 0、記録だけ)。"}` }));
+  const t = el("table");
+  const row = (k, v) => t.append(el("tr", null, el("td", { class: "l", text: k }), el("td", { text: v })));
+  row("直進の数", `${R.length}` + (+b.params.lost ? `(ほかに入りきらなかった ${b.params.lost})` : ""));
+  row("端が見つかって直した", `${found.length}(右 ${found.filter((r) => (r.src & 3) === 1).length}、左 ${found.filter((r) => (r.src & 3) === 2).length}、左右の平均 ${found.filter((r) => (r.src & 3) === 3).length})`);
+  if (s.n) {
+    row("dc の平均・ばらつき", `${fmt(s.mean, 1)} mm ・ ${fmt(s.sd, 1)} mm`);
+    row("dc の最小・最大", `${fmt(s.min, 1)} mm ・ ${fmt(s.max, 1)} mm`);
+    row(`上限(±${max})で止めた数`, `${found.filter((r) => Math.abs(r.dc) > max).length}`);
+  }
+  card.append(t);
+  if (R.length) {
+    const x = Float64Array.from(R, (_, i) => i + 1);
+    const points = R.map((r, i) => r.src ? { x: i + 1, y: r.dc, color: css("--s1"), label: `${i + 1}本目: dc ${fmt(r.dc, 1)} mm、直した ${fmt(r.corr, 1)} mm(${side(r.src)})` }
+      : { x: i + 1, y: 0, color: css("--muted"), label: `${i + 1}本目: 端が見つからず、距離のまま` });
+    const link = new LinkedX();
+    card.append(el("div", { class: "row" }, link.resetButton()));
+    new LineChart(card, "直進ごとの dc と直した量(灰色の点は見つからず、距離のまま)", "mm", [
+      { name: "dc(推定 − 予想)", color: css("--s1"), x, y: Float64Array.from(R, (r) => r.dc) },
+      { name: "直した量", color: css("--s2"), x, y: Float64Array.from(R, (r) => r.corr), dashed: true },
+    ], link, 220, { xName: "何本目の直進か", xDigits: 0, points });
+  }
+  view.append(card);
+  rawCard(view, b);
+}
+
 function rawCard(view, b) {
   const btn = el("button", { text: "ファイルに保存" });
   btn.addEventListener("click", () => download(fileName(b), b.raw));
@@ -1564,6 +1604,7 @@ function renderView() {
     else if (b.type === "MAZE") renderMaze(view, b);
     else if (b.type === "CENTER") renderCenter(view, b);
     else if (b.type === "NOISE") renderNoise(view, b);
+    else if (b.type === "SCUT") renderScut(view, b);
     else if (b === LIVE) renderLive(view);
     else rawCard(view, b);
   } catch (e) {

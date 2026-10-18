@@ -83,7 +83,7 @@ void Robot_Maze_Sula_Action() {
 	Motor_Sula_before(500, 500, 500, 5000, 20);
 	if ((G_Maze_Flont <= G_Maze_Left) && (G_Maze_Flont <= G_Maze_Right)	//前進
 			&& (G_Maze_Flont <= G_Maze_Back)) {
-		Motor_trapezoid_PID(500, 500, 500, 5000, 160);
+		Motor_Search_Straight(500, 160);	//柱の端で残りの距離を直す(Search_WallCut)
 		G_Robot_Direction += 0;
 		G_Robot_Lastaction = 0;
 
@@ -223,7 +223,7 @@ void Robot_Maze_Suction_Action() {
 	Motor_Sula_before(1000, 1000, 1000, 5000, 15);
 	if ((G_Maze_Flont <= G_Maze_Left) && (G_Maze_Flont <= G_Maze_Right)	//前進
 			&& (G_Maze_Flont <= G_Maze_Back)) {
-		Motor_trapezoid_PID(1000, 1000, 1000, 5000, 165);
+		Motor_Search_Straight(1000, 165);	//柱の端で残りの距離を直す(Search_WallCut)
 		G_Robot_Direction += 0;
 		G_Robot_Lastaction = 0;
 
