@@ -441,7 +441,7 @@ int main(void) {
 					Buzzer_Enter();
 					Sensor_Start();
 					__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, 90);
-					__HAL_TIM_SET_AUTORELOAD(&htim2, 100);
+					__HAL_TIM_SET_AUTORELOAD(&htim2, 99);
 					HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
 					while (1) {
 						if (Sensor_Enter() == 1) {
