@@ -33,6 +33,33 @@ volatile uint16_t g_sensor_settle_us = 0;
 volatile int8_t g_sensor_smp_req = -1;
 static uint8_t sensor_ph[3];	//読み終えたときの吸引のPWMの位置(TIM2のカウンタ)
 
+/* 吸引のPWMに合わせて読む(2026-10-18)。
+ * モード3 No.10で測ると、吸引を回したときFLとLだけ、点灯時も消灯時も同じだけ揺れていた(標準偏差 約2 → 約12・6)。
+ * 揺れは吸引のPWMの位置で決まっていて、ファンに電流が流れているあいだは値が上がり、切れた瞬間に大きく下がる。
+ * 点灯時と消灯時を毎回PWMの同じ位置で読めば、同じだけずれるので差(g_sensor)では消える。
+ * そこで、LEDを切り替える前に TIM2 のカウンタが SENSOR_SYNC_CNT になるまで待つ(最大1周期 約20us)。
+ * 待ってから切り替えるので、LEDを切り替えてから読むまでの時間は今までと同じ(値の大きさは変わらない)。
+ * 吸引を止めているとき(TIM2 が止まっている)は待たない */
+#define SENSOR_SYNC_CNT 5
+#define SENSOR_SYNC_TIMEOUT_US 25
+volatile uint8_t g_sensor_pwm_sync = 1;
+
+static void sensor_pwm_sync(void) {
+	if (!g_sensor_pwm_sync || !(TIM2->CR1 & TIM_CR1_CEN)) {
+		return;
+	}
+	uint32_t t0 = TIM6->CNT;
+	for (;;) {
+		uint32_t c = TIM2->CNT;
+		if (c >= SENSOR_SYNC_CNT && c < SENSOR_SYNC_CNT + 4) {
+			return;
+		}
+		if ((TIM6->CNT + 1000 - t0) % 1000 >= SENSOR_SYNC_TIMEOUT_US) {
+			return;	//念のため(周期を変えたときなど)
+		}
+	}
+}
+
 static void sensor_settle(void) {
 	uint16_t us = g_sensor_settle_us;
 	if (us == 0) {
@@ -85,6 +112,7 @@ void pl_callback_getSensor(void) {
 
 	switch (AD_step) {
 	case 0:
+		sensor_pwm_sync();
 		HAL_GPIO_WritePin(WallLED_12_GPIO_Port, WallLED_12_Pin, GPIO_PIN_SET);
 		HAL_GPIO_WritePin(WallLED_34_GPIO_Port, WallLED_34_Pin, GPIO_PIN_RESET);
 		sensor_settle();
@@ -94,6 +122,7 @@ void pl_callback_getSensor(void) {
 		g_sensor_on[0] = g_ADCBuffer[4];
 		g_sensor_on[1] = g_ADCBuffer[3];
 
+		sensor_pwm_sync();
 		HAL_GPIO_WritePin(WallLED_12_GPIO_Port, WallLED_12_Pin, GPIO_PIN_RESET);
 		HAL_GPIO_WritePin(WallLED_34_GPIO_Port, WallLED_34_Pin, GPIO_PIN_SET);
 		sensor_settle();
@@ -103,6 +132,7 @@ void pl_callback_getSensor(void) {
 		sensor_ph[1] = (uint8_t) TIM2->CNT;
 		g_sensor_on[2] = g_ADCBuffer[2];
 		g_sensor_on[3] = g_ADCBuffer[1];
+		sensor_pwm_sync();
 		HAL_GPIO_WritePin(WallLED_12_GPIO_Port, WallLED_12_Pin, GPIO_PIN_RESET);
 		HAL_GPIO_WritePin(WallLED_34_GPIO_Port, WallLED_34_Pin, GPIO_PIN_RESET);
 		sensor_settle();
