@@ -1121,7 +1121,7 @@ function parseNoise(b) {
   for (const l of b.lines) {
     const f = l.split(",");
     if (f[0] === "stat" && f.length >= 11) {
-      const r = { c: +f[1], settle: +f[2], cyc: +f[3], duty: +f[4], ch: f[5], kind: f[6], mean: +f[7], sd: +f[8], min: +f[9], max: +f[10] };
+      const r = { c: +f[1], settle: +f[2], cyc: +f[3], duty: +f[4], ch: f[5], kind: f[6], mean: +f[7], sd: +f[8], min: +f[9], max: +f[10], sync: f.length > 11 ? +f[11] : null };
       N.stat.push(r); N.conds.set(r.c, r); N.duties.add(r.duty);
     } else if (f[0] === "batt" && f.length >= 9) {
       N.batt.push({ c: +f[1], duty: +f[4], mean: +f[5], sd: +f[6], min: +f[7], max: +f[8] });
@@ -1136,7 +1136,14 @@ function parseNoise(b) {
   N.get = (c, duty, ch, kind) => N.stat.find((r) => r.c === c && r.duty === duty && r.ch === ch && r.kind === kind);
   return N;
 }
-const condName = (r) => `待ち ${r.settle}us・取り込み ${r.cyc}サイクル${r.settle === 0 && r.cyc === 3 ? "(今のまま)" : ""}`;
+/* 読み方の名前。sync(PWMに合わせて読むか)がない古いログは、待ちと取り込み時間だけ */
+const condName = (r) => {
+  const parts = [];
+  if (r.sync != null) parts.push(r.sync ? "PWMに合わせて読む" : "PWMに合わせない(10-18まで)");
+  if (r.settle || r.sync == null) parts.push(`待ち ${r.settle}us`);
+  if (r.cyc !== 3 || r.sync == null) parts.push(`取り込み ${r.cyc}サイクル`);
+  return parts.join("・") + (r.sync == null && r.settle === 0 && r.cyc === 3 ? "(10-18までの読み方)" : "");
+};
 /* 吸引でばらつきがどれだけ増えたか(いちばん強い吸引 / 吸引なし)。小さい値は0.5で頭打ちにして割る */
 const growth = (s0, s1) => (s0 && s1) ? s1.sd / Math.max(0.5, s0.sd) : null;
 function noiseJudge(N, c, ch) {
@@ -1200,7 +1207,7 @@ function renderNoise(view, b) {
       });
     }
     card.append(t,
-      el("div", { class: "note", text: "緑はいちばん強い吸引で、今の読み方の半分以下になったところ。待ちを入れると減る → LED を点けた直後(受光の立ち上がりの途中)を読んでいた。取り込み時間を伸ばすと減る → 取り込みが短すぎた。取り込みを伸ばすと読むのも遅くなるので、待ちの効果も少し混ざる。差の平均が読み方で変わったら、閾値と距離の表(Wallsensor.c / WallDistance.c)を測り直す。" }));
+      el("div", { class: "note", text: "緑はいちばん強い吸引で、1行目の読み方の半分以下になったところ。PWMに合わせて読むと減る → PWMの電流の揺れを拾っていた(点灯時と消灯時が同じだけずれるので差で消える)。待ちを入れると減る → LED を点けた直後(受光の立ち上がりの途中)を読んでいた。取り込み時間を伸ばすと減る → 取り込みが短すぎた。取り込みを伸ばすと読むのも遅くなるので、待ちの効果も少し混ざる。差の平均が読み方で変わったら、閾値と距離の表(Wallsensor.c / WallDistance.c)を測り直す。" }));
   }
   view.append(card);
 
