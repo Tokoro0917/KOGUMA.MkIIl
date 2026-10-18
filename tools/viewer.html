@@ -1349,7 +1349,8 @@ const LIVE = { type: "LIVE" };
 const LIVE_KEEP_S = 60;	//覚えておく長さ[s]
 const LIVE_SHOW_S = 10;	//グラフに出す長さ[s]
 const live = { kind: null, t: [], cols: {}, t0: 0, rate: 0, count: 0, rateT: 0, paused: false };
-const RE_SENSOR = /FL\s*=\s*(-?\d+)\s*\/\/\s*L\s*=\s*(-?\d+)\s*\/\/\s*R\s*=\s*(-?\d+)\s*\/\/\s*FR\s*=\s*(-?\d+)\s*\/\/\s*BATT\s*=\s*(-?[\d.]+)\s*\/\/\s*GyroZ\s*=\s*(-?[\d.]+)/;
+/* FL・L・R・FR があれば読む。BATT・GyroZ は数字が出ていなくても(printf が小数に対応していないなど)読み飛ばす */
+const RE_SENSOR = /FL\s*=\s*(-?\d+)\s*\/\/\s*L\s*=\s*(-?\d+)\s*\/\/\s*R\s*=\s*(-?\d+)\s*\/\/\s*FR\s*=\s*(-?\d+)(?:\s*\/\/\s*BATT\s*=\s*(-?[\d.]*))?(?:\s*\/\/\s*GyroZ\s*=\s*(-?[\d.]*))?/;
 const LIVE_COLS = {
   sensor: ["FL", "L", "R", "FR", "BATT", "GyroZ"],
   cal: ["FL", "L", "R", "FR", "FL_mm", "L_mm", "R_mm", "FR_mm"],
@@ -1357,7 +1358,7 @@ const LIVE_COLS = {
 function liveLine(line) {
   let kind = null, vals = null;
   const m = line.match(RE_SENSOR);
-  if (m) { kind = "sensor"; vals = m.slice(1).map(Number); }
+  if (m) { kind = "sensor"; vals = m.slice(1).map((v) => (v ? Number(v) : NaN)); }
   else if (/^CAL,-?\d/.test(line)) { const f = line.split(",").slice(1).map(Number); if (f.length >= 8 && f.every(isFinite)) { kind = "cal"; vals = f.slice(0, 8); } }
   if (!kind || live.paused) return;
   /* USBシリアルは数行まとめて届くので、同じときに届いた行は、前に届いた時刻から今までのあいだに等間隔に並べる */
@@ -1383,11 +1384,13 @@ function livePush(kind, vals, tAt, now) {
   if (cut > 500) { live.t.splice(0, cut); for (const c in live.cols) live.cols[c].splice(0, cut); }
   live.count++;
   if (now - live.rateT >= 1) { live.rate = Math.round(live.count / (now - live.rateT || 1)); live.count = 0; live.rateT = now; liveListDirty = true; }
-  if (first) liveListDirty = true;
+  if (first) { liveListDirty = true; if (!selected) liveAutoSelect = true; }
   liveDirty = true;
 }
 let liveDirty = false, liveListDirty = false, liveView = null;
+let liveAutoSelect = false;	//何も選んでいないときに値が届き始めたら、センサの値のグラフを開く
 setInterval(() => {
+  if (liveAutoSelect) { liveAutoSelect = false; if (!selected) { select(LIVE); return; } }
   if (liveListDirty) { liveListDirty = false; renderList(); }
   if (liveDirty && selected === LIVE && liveView) { liveDirty = false; liveView.update(); }
 }, 150);
@@ -1428,7 +1431,7 @@ function renderLive(view) {
         chart.full = [t0, Math.max(t1, t0 + 0.001)];
         chart.draw();
       }
-      for (const [c, v] of tileEls) { const a = live.cols[c]; if (a && a.length) v.textContent = String(a[a.length - 1]); }
+      for (const [c, v] of tileEls) { const a = live.cols[c]; if (a && a.length) { const x = a[a.length - 1]; v.textContent = Number.isFinite(x) ? String(x) : "-"; } }
     },
   };
   liveView.update();
