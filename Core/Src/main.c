@@ -193,10 +193,12 @@ int main(void) {
 				Maze_Search(flags);
 			}
 		} else if (Encorder_mode_out() == 1) {		//�?短
-			/* 最短走行。No.0 と No.12〜15 は何もしない */
+			/* 最短走行。No.0 と No.14〜15 は何もしない。
+			 * No.12・No.13 は No.8・No.5 と同じ走りを、壁切れだけ従来(Short_WallCut_Pillar = 0)で走る(柱と比べる用) */
 			int n = Encorder_number_out();
 			void (*run)(int, int) = NULL;
 			int ac = 0;
+			int conv = 0;	//1 なら壁切れを従来にする
 			int ac_nn = 0;	//斜めの直線の加速度(0 なら既定: ac-5000)
 			if (n == 1) {			//BFS コーナー2000 直線6000 加速15000
 				run = Short_NANAME_Move2000;
@@ -242,11 +244,26 @@ int main(void) {
 				run = Short_Dijkstra_MoveTurnV;
 				ac = 20000;
 				ac_nn = 15000;
+			} else if (n == 12) {	//No.8 と同じ(ダイクストラ 2400)、壁切れは従来
+				run = Short_Dijkstra_Move2400;
+				ac = 20000;
+				ac_nn = 15000;
+				conv = 1;
+			} else if (n == 13) {	//No.5 と同じ(ダイクストラ 2000)、壁切れは従来
+				run = Short_Dijkstra_Move2000;
+				ac = 20000;
+				ac_nn = 15000;
+				conv = 1;
 			}
 			if ((run != NULL) && (Sensor_Enter() == 1)) {
+				int pillar_prev = Short_WallCut_Pillar;
+				if (conv) {
+					Short_WallCut_Pillar = 0;
+				}
 				G_Short_AC_NANAME = ac_nn;
 				Maze_Shortest_Run(run, 6000, ac);
 				G_Short_AC_NANAME = 0;
+				Short_WallCut_Pillar = pillar_prev;
 			}
 		} else if (Encorder_mode_out() == 2) {		//サーキ�?�?
 
