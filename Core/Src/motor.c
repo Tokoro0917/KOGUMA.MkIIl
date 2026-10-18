@@ -170,7 +170,7 @@ void Suction_Start(int duty) {
 		Fun_Flag = 0;
 	}
 	HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
-	__HAL_TIM_SET_AUTORELOAD(&htim2, 100);
+	__HAL_TIM_SET_AUTORELOAD(&htim2, 99);	//周期 20us。車輪のPWM(TIM3)とぴったり同じにする(PL_sensor.c の sensor_pwm_sync)
 	duty = duty * (15.8 / Run_Voltage);
 	for (int i = 1; duty > i; i += 1) {
 		__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, i);

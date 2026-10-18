@@ -441,7 +441,7 @@ int main(void) {
 					Buzzer_Enter();
 					Sensor_Start();
 					__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, 90);
-					__HAL_TIM_SET_AUTORELOAD(&htim2, 100);
+					__HAL_TIM_SET_AUTORELOAD(&htim2, 99);
 					HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
 					while (1) {
 						if (Sensor_Enter() == 1) {
@@ -472,16 +472,17 @@ int main(void) {
 				}
 			} else if (Encorder_number_out() == 8) {		//直進(横壁制御をセンサ値版で)
 				/* No.1と同じ直進を、この走行のあいだだけ G_WallCtrl_Use_mm = 0
-				 * (従来のセンサ値版、ゲインは Kp / Kd)で走る。標準(距離版)との比較・切り戻し用 */
+				 * (従来のセンサ値版、ゲインは Kp / Kd)で走る。標準(距離版)との比較・切り戻し用。
+				 * 比べられるように、速度・加速度・吸引・距離はNo.1と同じにする(2026-10-18 まではNo.1と違い 3000・吸引35だった) */
 				if (Sensor_Enter() == 1) {
 					Buzzer_Enter();
 					Sensor_Start();
 					Motor_Setup();
-					Suction_Start(35);
+					Suction_Start(70);
 					LOG_get_start();
 					int use_mm_prev = G_WallCtrl_Use_mm;
 					G_WallCtrl_Use_mm = 0;
-					Motor_trapezoid_PID(0, 3000, 0, 10000, 180*8);
+					Motor_trapezoid_PID(0, 1000, 0, 5000, 180 * 8);
 					Motor_Stop();
 					G_WallCtrl_Use_mm = use_mm_prev;
 					Suction_Stop();
