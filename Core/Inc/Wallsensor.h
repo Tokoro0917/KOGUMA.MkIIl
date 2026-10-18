@@ -33,8 +33,9 @@ int Wall_Sensor_Med3(int i);
 extern float Edge_Off[2][2];
 extern float Edge_Tan;
 void Wall_Edge_Sample();
-/* 境目の推定が [lo, hi](G_Odo_X)にあれば1。左右にあれば平均。src は EDGE_SRC_*(PillarEdge.h) */
-int Edge_Cut_Find(float lo, float hi, float *c, int *src);
+/* 境目の推定が [lo, hi](G_Odo_X)にあれば1。左右にあれば平均。src は EDGE_SRC_*(PillarEdge.h)。
+ * sides: 使う側(EDGE_SRC_R / EDGE_SRC_L の組み合わせ) */
+int Edge_Cut_Find(float lo, float hi, int sides, float *c, int *src);
 
 /* 壁切れのログ */
 #define EDGE_LOG_FALL 0

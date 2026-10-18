@@ -14,6 +14,7 @@
 #include "lsm6dsr.h"
 #include "PL_sensor.h"
 #include "Wallsensor.h"
+#include "PillarEdge.h"
 #include "Maze.h"
 #include "WallDistance.h"
 #include "UI.h"
@@ -124,6 +125,11 @@ float Pillar_X_Offs = -5.0f;
  * 境目は「区画中心 + 90」より 10〜38mm(平均約22mm)先にあり、その端は前距離の始めの前後(約 -10〜+15mm)で見える。
  * 距離だけ(区画中心 + X)で曲がり始めると、端が見える前に曲がってしまうことがあった(端が1mm後に見えた) */
 float Pillar_Wait_Ofs = 25.0f;
+/* X がこれより小さい前距離(2400の斜め入り、X = 3)は、曲がる側の境目だけを使い、見つからなければ従来と同じ
+ * 区画中心 + X で曲がり始める。2026-10-18 の 2400 の最短(柱)で、このターンだけ従来より 19〜25mm 遅く曲がり始め
+ * (反対側の境目を使った +30.1、待つ距離いっぱいの +23.7。従来は +5)、斜めの出口のあとで右の壁にぶつかった。
+ * 2000 の前距離(X = 5 以上)は今までどおり */
+float Pillar_Short_X = 5.0f;
 #define EDGE_SRC_BEHIND 4	//前距離で、後ろの境目(区画中心 - 90)を使った
 #define EDGE_SRC_CONV_CUT 16	//従来の前距離で、壁切れした(Wallsensor.h の EDGE_SRC_CONV_* と同じ値)
 #define EDGE_SRC_CONV_NONE 32	//従来の前距離で、曲がる側に壁がなく距離だけで走った
@@ -1021,6 +1027,7 @@ static void Cut_ST_Conv(int direction, float x_center, float X, float X_act, Cut
  *   前の境目(x_center + 90 ± Edge_Win)があれば  曲がり始め = 境目 + Xp - 90
  *   なければ後ろの境目(x_center - 90 ± Edge_Win)  曲がり始め = 境目 + 90 + Xp
  *   どちらもなければ x_center + Xp + Pillar_Wait_Ofs(距離だけ。それまでに端が見えたらそちらで直す)
+ * X < Pillar_Short_X のときは曲がる側の境目だけを使い、どちらもなければ x_center + X
  * Xp = X × Pillar_X_Scale + Pillar_X_Offs(従来に合わせて調整した X の読み替え)
  * 横センサは区画中心で柱の真ん中を見る向きなので、前の境目の柱の端は区画中心の少し先で見える。
  * Xがそれより短いと前の境目は間に合わず、後ろの境目(前の区間で見たもの)を使う */
@@ -1028,7 +1035,10 @@ static void Cut_ST_Pillar(int direction, float x_center, float X, CutTick tick) 
 	float b0 = x_center + 90.0f;
 	float b1 = x_center - 90.0f;
 	float Xp = X * Pillar_X_Scale + Pillar_X_Offs;	//境目から合わせるときの X
-	float target = x_center + Xp + Pillar_Wait_Ofs;
+	int short_x = X < Pillar_Short_X;
+	int sides = short_x ? (direction == 1 ? EDGE_SRC_R : EDGE_SRC_L) : (EDGE_SRC_R | EDGE_SRC_L);
+	float wait = short_x ? x_center + X : x_center + Xp + Pillar_Wait_Ofs;
+	float target = wait;
 	float c = 0;
 	int src = 0;
 	Edge_Log_Mark(EDGE_LOG_ST, direction, x_center, X, 0);
@@ -1036,16 +1046,16 @@ static void Cut_ST_Pillar(int direction, float x_center, float X, CutTick tick) 
 		if (tick) tick();
 		float cc;
 		int sr;
-		if (Edge_Cut_Find(b0 - Edge_Win, b0 + Edge_Win, &cc, &sr)) {
+		if (Edge_Cut_Find(b0 - Edge_Win, b0 + Edge_Win, sides, &cc, &sr)) {
 			target = cc + Xp - 90.0f;
 			c = cc;
 			src = sr;
-		} else if (Edge_Cut_Find(b1 - Edge_Win, b1 + Edge_Win, &cc, &sr)) {
+		} else if (Edge_Cut_Find(b1 - Edge_Win, b1 + Edge_Win, sides, &cc, &sr)) {
 			target = cc + 90.0f + Xp;
 			c = cc;
 			src = sr | EDGE_SRC_BEHIND;
 		} else {
-			target = x_center + Xp + Pillar_Wait_Ofs;
+			target = wait;
 			src = 0;
 		}
 		if (G_Odo_X >= target) {

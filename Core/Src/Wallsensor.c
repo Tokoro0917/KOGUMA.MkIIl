@@ -381,11 +381,12 @@ void Wall_Edge_Sample() {
 	}
 }
 
-int Edge_Cut_Find(float lo, float hi, float *c, int *src) {
+int Edge_Cut_Find(float lo, float hi, int sides, float *c, int *src) {
 	int have[2] = { 0, 0 };
 	float cs[2] = { 0, 0 }, hs[2] = { 0, 0 };
 	float mask_x = Edge_Mask_X;
 	for (int s = 0; s < 2; s++) {
+		if (!(sides & (s == 0 ? EDGE_SRC_R : EDGE_SRC_L))) continue;
 		/* 割り込み(Wall_Edge_Sample)が書き足すあいだに読んだら、読み直す(割り込みは止めない) */
 		unsigned n;
 		do {
