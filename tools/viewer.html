@@ -329,12 +329,14 @@ function addBlock(b, source) {
   blocks.push(b);
   if (source === "serial" && !STREAM_TYPES.has(b.type)) autoSave(b);
   if (bulk) return;
-  /* 出力(迷路 → 壁切れ → 走行ログ)は続けて届くので、少し待って最後のものだけ描く */
+  /* 出力(迷路 → 壁切れ → 走行ログ)は続けて届くので、届き終わってから最後のものだけ描く
+   * (届いているあいだに描くと、そのあいだ受け取りが止まる) */
   clearTimeout(selectTimer);
-  selectTimer = setTimeout(() => select(b), 60);
+  const later = () => { selectTimer = setTimeout(() => (performance.now() - lastRx < 300 ? later() : select(b)), 100); };
+  later();
   renderList();
 }
-let selectTimer = 0;
+let selectTimer = 0, lastRx = 0;
 function renderList() {
   $("count").textContent = blocks.length;
   const list = $("list");
@@ -371,7 +373,15 @@ function select(b) {
 
 /* ================= シリアル(Web Serial) ================= */
 let port = null, reader = null;
-const serialParser = new Parser((l) => { addLine(l); liveLine(l); }, (b) => addBlock(b, "serial"));
+/* 出力(モード4 No.7)はいつも迷路から始まり #DONE で終わる。迷路が届かなかったら知らせる */
+let outGot = new Set();
+const serialParser = new Parser((l) => {
+  addLine(l); liveLine(l);
+  if (l.trim() === "#DONE") {
+    if (!outGot.has("MAZE")) addLine("[迷路が届きませんでした(届く途中で抜けた)。もう一度、出力(モード4 No.7)してください]");
+    outGot = new Set();
+  }
+}, (b) => { outGot.add(b.type); addBlock(b, "serial"); });
 function setStatus(text, on) { const s = $("status"); s.textContent = text; s.classList.toggle("on", !!on); }
 async function connect() {
   if (!("serial" in navigator)) {
@@ -381,7 +391,10 @@ async function connect() {
   }
   try {
     port = await navigator.serial.requestPort();
-    await port.open({ baudRate: 115200 });
+    /* 受け取りの入れ物は既定だと255バイト(115200bpsで約22ms分)しかなく、グラフを描いているあいだに
+     * あふれて、まとまって抜ける(2026-10-18、走行ログの100ms分や迷路がまるごと消えた)。1MB(約90秒分)にする */
+    try { await port.open({ baudRate: 115200, bufferSize: 1 << 20 }); }
+    catch (e) { if (e.name === "InvalidStateError") throw e; await port.open({ baudRate: 115200 }); }
   } catch (e) {
     port = null;
     if (e.name !== "NotFoundError") alert("接続できませんでした: " + e.message + "\nTera Term などで同じ COM ポートを開いていたら閉じてください。");
@@ -402,6 +415,7 @@ async function readLoop() {
         const { value, done } = await reader.read();
         if (done) break;
         const text = dec.decode(value, { stream: true });
+        lastRx = performance.now();
         addSession(text);
         serialParser.feed(text);
       }
@@ -741,6 +755,8 @@ function renderLog(view, b) {
   const xb = B ? (useX && B.data.x ? B.data.x : B.data.t) : null;
   const card = el("div", { class: "card" });
   card.append(el("h2", { text: `走行ログ ${timeStr(b.time)}(${A.n} 行、${b.params.div || 1} msおき)` + (B ? ` と ${timeStr(compare.time)}(破線)` : "") }));
+  if (+b.params.n > 0 && A.n !== +b.params.n)
+    card.append(el("div", { class: "note warn", text: `行の数が合わない(ロボットは ${b.params.n} 行出したが、読めたのは ${A.n} 行)。届く途中で抜けたか、2回分がつながっている。時刻が飛んでいるところは、そのあいだのデータがない。` }));
   /* 横軸の切り替え */
   const sel = el("select");
   sel.append(el("option", { value: "t", text: "横軸: 時間[s]" }), el("option", { value: "x", text: "横軸: 走った距離[mm]" }));
