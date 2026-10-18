@@ -116,9 +116,14 @@ float Edge_Win = 40;
 /* 柱のときの前距離の読み替え: 曲がり始め = 境目 - 90 + (X × Pillar_X_Scale + Pillar_X_Offs)。
  * 前距離の X は従来の壁切れ(壁が切れてから X の半分で曲がる)に合わせて調整してある。2026-10-18 の最短走行(2000)では、
  * 曲がる側に壁がある前距離で、従来は実際には「区画中心 + X/2 - 5mm」くらいで曲がっていたので、その値から始める。
- * ターンの種類ごとに合わせ直すまでのつなぎ(1.0 / 0 にすると X そのまま)。境目が見つからないときは今までどおり 区画中心 + X */
+ * ターンの種類ごとに合わせ直すまでのつなぎ(1.0 / 0 にすると X そのまま)。境目が見つからないときは 区画中心 + Xp + Pillar_Wait_Ofs */
 float Pillar_X_Scale = 0.5f;
 float Pillar_X_Offs = -5.0f;
+/* 柱のとき、境目が見つからないうちに曲がり始めるのは 区画中心 + Xp + Pillar_Wait_Ofs まで待ってから。
+ * 曲がる側は境目の先が開いているので、前の境目の柱の端は必ずある。2026-10-18 の最短走行(2000)では、
+ * 境目は「区画中心 + 90」より 10〜38mm(平均約22mm)先にあり、その端は前距離の始めの前後(約 -10〜+15mm)で見える。
+ * 距離だけ(区画中心 + X)で曲がり始めると、端が見える前に曲がってしまうことがあった(端が1mm後に見えた) */
+float Pillar_Wait_Ofs = 25.0f;
 #define EDGE_SRC_BEHIND 4	//前距離で、後ろの境目(区画中心 - 90)を使った
 #define EDGE_SRC_CONV_CUT 16	//従来の前距離で、壁切れした(Wallsensor.h の EDGE_SRC_CONV_* と同じ値)
 #define EDGE_SRC_CONV_NONE 32	//従来の前距離で、曲がる側に壁がなく距離だけで走った
@@ -1015,15 +1020,15 @@ static void Cut_ST_Conv(int direction, float x_center, float X, float X_act, Cut
  * 境目の推定があれば、その実測で曲がり始めを直す:
  *   前の境目(x_center + 90 ± Edge_Win)があれば  曲がり始め = 境目 + Xp - 90
  *   なければ後ろの境目(x_center - 90 ± Edge_Win)  曲がり始め = 境目 + 90 + Xp
- *   どちらもなければ x_center + X(距離だけ)
+ *   どちらもなければ x_center + Xp + Pillar_Wait_Ofs(距離だけ。それまでに端が見えたらそちらで直す)
  * Xp = X × Pillar_X_Scale + Pillar_X_Offs(従来に合わせて調整した X の読み替え)
  * 横センサは区画中心で柱の真ん中を見る向きなので、前の境目の柱の端は区画中心の少し先で見える。
  * Xがそれより短いと前の境目は間に合わず、後ろの境目(前の区間で見たもの)を使う */
 static void Cut_ST_Pillar(int direction, float x_center, float X, CutTick tick) {
 	float b0 = x_center + 90.0f;
 	float b1 = x_center - 90.0f;
-	float target = x_center + X;
 	float Xp = X * Pillar_X_Scale + Pillar_X_Offs;	//境目から合わせるときの X
+	float target = x_center + Xp + Pillar_Wait_Ofs;
 	float c = 0;
 	int src = 0;
 	Edge_Log_Mark(EDGE_LOG_ST, direction, x_center, X, 0);
@@ -1040,7 +1045,7 @@ static void Cut_ST_Pillar(int direction, float x_center, float X, CutTick tick) 
 			c = cc;
 			src = sr | EDGE_SRC_BEHIND;
 		} else {
-			target = x_center + X;
+			target = x_center + Xp + Pillar_Wait_Ofs;
 			src = 0;
 		}
 		if (G_Odo_X >= target) {
