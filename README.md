@@ -368,6 +368,7 @@ STM32F446RETX_*.ld   リンカスクリプト
 | `docs/wall_research.md` | 壁制御・壁切れのほかの人のやり方 |
 | `docs/sensor_noise.md` | 吸引のときのセンサのノイズの調べ方(モード3 No.10) |
 | `docs/maze_algorithm.md` | 迷路探索(BFS・ダイクストラ・行き止まり潰し・迷路サイズ)、迷路の出力とPCでの確認 |
+| `docs/test_maze_recompute.md` | 「見に行った壁があったら止まって計算し直す」を確かめる8×6の迷路と、正しい動き |
 | `docs/turnv_design.md` | ターンごとの通過速度(モード1 No.10・No.11) |
 | `docs/turn_speed_research.md` | ほかの人のターン速度の決め方 |
 | `docs/testing.md` | テストが確かめていること |
