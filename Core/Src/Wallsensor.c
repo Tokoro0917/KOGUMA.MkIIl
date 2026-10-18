@@ -266,8 +266,14 @@ float Edge_Lag_S = 0.0012f;	//中央値(約1ms)とLPF(約0.2ms)の遅れ[s]。�
 float Edge_Max_W = 150;		//角速度がこれを超えたら(ターン中など)履歴を空にする[deg/s]
 /* 端の位置から境目までの距離[mm]。[0: 右 / 1: 左][EDGE_KIND_WALL / EDGE_KIND_PILLAR]。
  * センサが区画中心で柱の真ん中を見る向きなので、下がる端は境目の約84mm手前で見える(PCのモデルで約84)。
- * モード3 No.6〜9 の c-border が0になるように実測で直す */
-float Edge_Off[2][2] = { { 84, 84 }, { 84, 84 } };
+ * モード3 No.6〜9 の c-border が0になるように実測で直す。
+ * 2026-10-18 の実測(1000・2000・2400 を2回ずつ、logs/20261018-16*_edge_*.txt)から、速度0に戻した値。
+ * 84 のままだと、境目を 1000mm/s で約6〜20mm、2000mm/s で約12〜28mm 手前に推定していた */
+float Edge_Off[2][2] = { { 99.0f, 94.5f }, { 87.0f, 96.0f } };
+/* 速度の補正[mm/(mm/s)]。速いほど境目を手前に推定していた(1000mm/s 速くなるごとに約6mm。
+ * 左右・種類どれも同じ傾き。原因は分かっていない)ので、c にこの値 × 速度 を足す。
+ * 1000〜2400 で、補正したあとの残りのばらつきは約1mm(標準偏差) */
+float Edge_V_K = 0.0060f;
 float Edge_Tan = 1.07f;		//横のずれ1mmで、見える位置が何mm変わるか(90/84。横にずらして置いて実測で直す)
 float Edge_Pair_Tol = 15;	//左右の推定がこれ以内なら平均する[mm]
 
@@ -338,7 +344,7 @@ void Wall_Edge_Sample() {
 					&& d_other <= 120) {
 				r.d_eff = 2 * WALLDIST_CENTER_MM - d_other;
 			}
-			r.c = r.ev.x + Edge_Off[s][r.ev.kind];
+			r.c = r.ev.x + Edge_Off[s][r.ev.kind] + Edge_V_K * v_robot;
 			if (r.d_eff >= 0) {
 				r.c += (r.d_eff - WALLDIST_CENTER_MM) * Edge_Tan;
 			}
@@ -451,8 +457,8 @@ void Edge_Log_Print() {
 	static const char *side_name[2] = { "R", "L" };
 	static const char *kind_name[2] = { "wall", "pillar" };
 	/* tools/viewer.html で読む。border は区画の境目(first_border + 180k)、v はテストの速度(-1 は最短走行のログ) */
-	printf("\r\n#BEGIN EDGE border=%.0f v=%.0f off_r_wall=%.1f off_r_pillar=%.1f off_l_wall=%.1f off_l_pillar=%.1f tan=%.2f min_high=%.0f high_len=%.0f pillar=%d fast=%d cut_l=%.0f cut_r=%.0f\r\n",
-			first_border, speed, Edge_Off[0][0], Edge_Off[0][1], Edge_Off[1][0], Edge_Off[1][1], Edge_Tan,
+	printf("\r\n#BEGIN EDGE border=%.0f v=%.0f off_r_wall=%.1f off_r_pillar=%.1f off_l_wall=%.1f off_l_pillar=%.1f tan=%.2f vk=%.4f min_high=%.0f high_len=%.0f pillar=%d fast=%d cut_l=%.0f cut_r=%.0f\r\n",
+			first_border, speed, Edge_Off[0][0], Edge_Off[0][1], Edge_Off[1][0], Edge_Off[1][1], Edge_Tan, Edge_V_K,
 			Edge_Min_High, Edge_High_Len, G_WallCut_Pillar, G_WallCut_Fast, Cut_L, Cut_R);
 	for (int n = 0; n < Edge_Log_Count; n++) {
 		const EdgeLogRec *r = &Edge_Log[n];
