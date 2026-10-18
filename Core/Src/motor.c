@@ -729,20 +729,25 @@ static float Front_Wall_mm(void) {
 			+ WallDist_mm(WALLDIST_FR, g_sensor[3][0])) / 2;
 }
 
-/* ---- 探索の直進の壁切れ(2026-10-18、TODO の「探索の直進に壁切れの距離補正」) ----
- * 探索の行動は区画の境目で始まる(Motor_Sula_before の直前で壁を読む位置が境目)。1区画まっすぐ進むときは、
- * 境目から次の境目までの180mmを、前半は距離で走り、区画の Search_Look_From(4割)を過ぎたら
- * 次の境目の柱の端(Wallsensor.c の Edge_Cut_Find、最短走行の柱の壁切れと同じ推定)を探し、
- * 見つかればその推定に合わせて残りの距離を直す。速度は変えない。
- *  - 次の境目の柱の端は、区画中心を少し過ぎたあたり(境目から約90〜100mm)で見える
- *  - 見える端: 今の区画に壁あり → 次になし(壁の終わり)、両方なし(柱だけ)。左右どちらかで見つかれば直し、両方なら平均
- *  - 両側とも「壁あり → 壁あり」のときは端がないので直さない(距離のまま)。曲がる区画の手前では、
- *    曲がる側に必ず端があるので、ターンの前は必ず直せる
- *  - 誤検出を防ぐため、予想した境目 ± Search_Edge_Win の推定だけ使い、直す量は ± Search_Corr_Max まで
- * 0 にすると今までどおり(距離だけ)。直した量は Search_Cut_Print(出力のモード4 No.7、SCUT)で見る */
+/* ---- 探索の直進の壁切れ(2026-10-18 作り直し、設計は docs/search_wallcut_design.md) ----
+ * 探索の行動は「判断位置」(Motor_Sula_before で壁を読む位置。区画の境目のはず)で始まる。1区画まっすぐ進むときは、
+ * 区画の Search_Look_From(4割)を過ぎたら次の境目の柱の端(Wallsensor.c の Edge_Cut_Find、最短走行の柱の壁切れと
+ * 同じ推定)を探し、dc = 推定 - 距離から予想した境目 を出す。
+ *  - 探索のターン(前距離15・後距離50など)は、今の判断位置のまま調整してある。判断位置が本当の境目からずれていても
+ *    (最短走行の2000では、ターンのあとの境目は予想より 13〜38mm 先だった)、ターンはそのずれ込みで合っている。
+ *    推定にそのまま合わせると判断位置が動いてターンの位置がずれるので、「今のずれの中央値」Search_Edge_Ref を基準にし、
+ *    dc - Search_Edge_Ref だけ直す(ずれの平均は今のまま、ばらつきだけ消す)
+ *  - Search_WallCut: 0 使わない、1 記録だけ(走りは今までどおり。Search_Edge_Ref を測る)、2 直す
+ *  - 直すとき: 推定が 予想 + Ref ± Search_Edge_Win にあり、左右の推定が食い違っていない(EDGE_SRC_DISAGREE でない)ときだけ。
+ *    直す量 = Search_Corr_Gain × (dc - Ref) を ± Search_Corr_Max まで
+ *  - 両側とも壁が続くところは端がないので、どの段階でも何もしない
+ * 記録は Search_Cut_Print(出力のモード4 No.7、SCUT)。ビューアが基準のずれ(中央値)を出す */
 int Search_WallCut = 1;
-float Search_Edge_Win = 20;		//予想した境目 ± これの範囲の推定だけ使う[mm]
-float Search_Corr_Max = 15;		//1回に直す量の上限[mm]
+float Search_Edge_Ref = 0;		//基準のずれ[mm](記録で測った dc の中央値を書き写す)
+float Search_Edge_Win = 20;		//直すとき、予想 + Ref ± これの推定だけ使う[mm]
+float Search_Rec_Win = 60;		//記録するとき、予想 ± これの推定を残す[mm](隣の境目までは180mm)
+float Search_Corr_Max = 10;		//1回に直す量の上限[mm]
+float Search_Corr_Gain = 1.0f;	//dc - Ref のうち、どれだけ直すか
 float Search_Look_From = 0.4f;	//区画(180mm)のこの割合を進んでから探す
 
 #define SCUT_N 200
@@ -750,15 +755,20 @@ typedef struct {
 	float b;		//予想した次の境目(G_Odo_X)
 	float dc;		//推定 - 予想[mm](推定がなければ 0)
 	float corr;		//直した量[mm]
-	int8_t src;		//使った推定(EDGE_SRC_*、0 は見つからず)
+	uint16_t act;	//探索を始めてから何番目の行動か(1から)
+	int8_t prev;	//直前の行動(G_Robot_Lastaction: 0 直進、1 右、2 Uターン、3 左、5 まだなし。止まって向きを変えたときは進んだ向き)
+	int8_t src;		//推定(EDGE_SRC_*、0 は見つからず)
+	int8_t x, y, dir;	//区画と向き(Maze_Wall_Update のあと = いま入った区画)
 } SearchCutRec;
 static SearchCutRec Scut[SCUT_N];
 static int Scut_Count = 0;
 static int Scut_Lost = 0;	//入りきらなかった数
+static uint16_t Scut_Action = 0;	//探索の行動の数(Motor_Sula_before のたびに1増やす)
 
 void Search_Cut_Reset(void) {
 	Scut_Count = 0;
 	Scut_Lost = 0;
+	Scut_Action = 0;
 }
 
 int Search_Cut_Has_Data(void) {
@@ -766,19 +776,21 @@ int Search_Cut_Has_Data(void) {
 }
 
 void Search_Cut_Print(void) {
-	printf("\r\n#BEGIN SCUT n=%d lost=%d on=%d win=%.0f max=%.0f look=%.2f\r\n", Scut_Count, Scut_Lost,
-			Search_WallCut, Search_Edge_Win, Search_Corr_Max, Search_Look_From);
-	printf("b,dc,corr,src\r\n");
+	printf("\r\n#BEGIN SCUT n=%d lost=%d mode=%d ref=%.1f win=%.0f rec_win=%.0f max=%.0f gain=%.2f look=%.2f\r\n",
+			Scut_Count, Scut_Lost, Search_WallCut, Search_Edge_Ref, Search_Edge_Win, Search_Rec_Win, Search_Corr_Max,
+			Search_Corr_Gain, Search_Look_From);
+	printf("act,prev,x,y,dir,b,dc,corr,src\r\n");
 	for (int i = 0; i < Scut_Count; i++) {
 		const SearchCutRec *r = &Scut[i];
-		printf("%.1f,%.1f,%.1f,%d\r\n", r->b, r->dc, r->corr, r->src);
+		printf("%d,%d,%d,%d,%d,%.1f,%.1f,%.1f,%d\r\n", r->act, r->prev, r->x, r->y, r->dir, r->b, r->dc, r->corr,
+				r->src);
 	}
 	printf("#END SCUT\r\n");
 }
 
-/* 探索の1区画の直進。X は今の位置から次の境目までの距離(境目から始まる行動の、Motor_Sula_before のあとの残り) */
+/* 探索の1区画の直進。X は今の位置から次の境目までの距離(判断位置から始まる行動の、Motor_Sula_before のあとの残り) */
 void Motor_Search_Straight(float V, float X) {
-	if (!Search_WallCut) {
+	if (Search_WallCut == 0) {
 		Motor_trapezoid_PID(V, V, V, 5000, X);
 		return;
 	}
@@ -798,7 +810,10 @@ void Motor_Search_Straight(float V, float X) {
 	Gyro_Sigma_error = 0;
 	G_Motor_Count = 0;
 
+	int correct = (Search_WallCut == 2);
 	float b = G_Odo_X + X;	//予想した次の境目
+	float lo = correct ? b + Search_Edge_Ref - Search_Edge_Win : b - Search_Rec_Win;
+	float hi = correct ? b + Search_Edge_Ref + Search_Edge_Win : b + Search_Rec_Win;
 	float look = X - 180.0f * (1.0f - Search_Look_From);	//ここまで進んだら端を探す
 	float corr = 0, dc = 0;
 	int src = 0;
@@ -806,12 +821,14 @@ void Motor_Search_Straight(float V, float X) {
 		if (G_Motor_X >= look) {
 			float cc;
 			int sr;
-			if (Edge_Cut_Find(b - Search_Edge_Win, b + Search_Edge_Win, EDGE_SRC_R | EDGE_SRC_L, &cc, &sr)) {
+			if (Edge_Cut_Find(lo, hi, EDGE_SRC_R | EDGE_SRC_L, &cc, &sr)) {
 				dc = cc - b;
 				src = sr;
-				corr = dc;
-				if (corr > Search_Corr_Max) corr = Search_Corr_Max;
-				if (corr < -Search_Corr_Max) corr = -Search_Corr_Max;
+				if (correct && !(sr & EDGE_SRC_DISAGREE)) {
+					corr = Search_Corr_Gain * (dc - Search_Edge_Ref);
+					if (corr > Search_Corr_Max) corr = Search_Corr_Max;
+					if (corr < -Search_Corr_Max) corr = -Search_Corr_Max;
+				}
 			}
 		}
 		if (G_Motor_X >= X + corr) {
@@ -819,11 +836,16 @@ void Motor_Search_Straight(float V, float X) {
 		}
 	}
 	if (Scut_Count < SCUT_N) {
-		Scut[Scut_Count].b = b;
-		Scut[Scut_Count].dc = dc;
-		Scut[Scut_Count].corr = corr;
-		Scut[Scut_Count].src = (int8_t) src;
-		Scut_Count++;
+		SearchCutRec *r = &Scut[Scut_Count++];
+		r->b = b;
+		r->dc = dc;
+		r->corr = corr;
+		r->act = Scut_Action;
+		r->prev = (int8_t) G_Robot_Lastaction;
+		r->src = (int8_t) src;
+		r->x = (int8_t) G_Robot_MAZE_X;
+		r->y = (int8_t) G_Robot_MAZE_Y;
+		r->dir = (int8_t) (G_Robot_Direction % 4);
 	} else {
 		Scut_Lost++;
 	}
@@ -832,6 +854,7 @@ void Motor_Search_Straight(float V, float X) {
 }
 
 void Motor_Sula_before(float Vst, float Vmax, float Vend, float Ac, float X) {
+	Scut_Action++;	//探索の直進の壁切れの記録で、何番目の行動かを残す
 	G_Log_Phase = LOG_PH_PRE;
 	G_Motor_Flag = 1;
 	PID_Mode = 1;
