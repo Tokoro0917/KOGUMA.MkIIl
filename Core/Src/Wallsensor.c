@@ -481,7 +481,8 @@ void Edge_Log_Print() {
 			}
 			break;
 		case EDGE_LOG_ST:
-			printf("st,%s,%.1f,%.0f", side_name[r->info ? 1 : 0], x, r->a);
+			/* info は曲がる向き(0 左、1 右)。2026-10-18 まではここが逆(左ターンを R)と出ていた */
+			printf("st,%s,%.1f,%.0f", r->info ? "R" : "L", x, r->a);
 			break;
 		case EDGE_LOG_ST_CUT:
 			printf("st_cut,%d,%.1f,%.1f", r->info, x, (r->info & 0x13) ? r->a - Edge_Log_X0 : -1.0f);
