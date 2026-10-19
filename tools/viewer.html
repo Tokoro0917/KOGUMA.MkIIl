@@ -306,11 +306,12 @@ function summary(b) {
     const r = parseScut(b), m = p.mode != null ? +p.mode : (+p.on ? 2 : 1);
     return m === 2 ? `直進 ${r.length}(直した ${r.filter((x) => x.corr).length})` : `直進 ${r.length}(端あり ${r.filter((x) => x.src).length}、記録だけ)`;
   }
+  if (b.type === "FWALL") return +b.params.n ? `分かれた ${b.params.n} 回` : "分かれたことはなかった";
   if (b.type === "NOISE") { const n = b.lines.filter((l) => l.startsWith("batt,")).length; return `${n} 組${+p.trace > 0 ? "(生の値あり)" : "(表だけ)"}`; }
   if (STREAM_TYPES.has(b.type) && b.updates > 1) return `測定中 ${b.updates} 回(最後 ${timeStr(b.lastTime)})`;
   return `${b.lines.length} 行`;
 }
-const typeName = { LOG: "走行ログ", EDGE: "壁切れ", MAZE: "迷路", CENTER: "感度合わせ", NOISE: "センサのノイズ", SCUT: "探索の直進の壁切れ" };
+const typeName = { LOG: "走行ログ", EDGE: "壁切れ", MAZE: "迷路", CENTER: "感度合わせ", NOISE: "センサのノイズ", SCUT: "探索の直進の壁切れ", FWALL: "前壁の読み分かれ" };
 
 let bulk = false;	//ファイルを読み込むあいだは、データ1つごとに描き直さない(終わってから1回だけ)
 /* 測っているあいだ出し続ける種類(感度合わせ)。続けて届いたら一覧に増やさず、いちばん新しい値に置き換える。
@@ -1581,6 +1582,9 @@ function renderScut(view, b) {
     el("div", { class: "note", text: `探索で1区画まっすぐ進むたびに、次の境目の柱の端から境目を推定した記録。dc = 推定 − 距離から予想した位置(正なら境目が予想より先)。` +
       (mode === 2 ? `基準のずれ ${fmt(ref, 1)}mm との差を ±${P.max}mm まで直した(予想 + 基準 ± ${P.win}mm の推定だけ)。` : `記録だけ(予想 ± ${P.rec_win || P.win}mm の推定を残す)。`) +
       "両側とも壁が続くところは端がないので何もしない。" }));
+  if (P.gyro_ofs != null) card.append(el("div", { class: "note", text: +P.gyro_sd >= 0
+    ? `ジャイロのゼロ点 ${fmt(+P.gyro_ofs, 3)} dps(測ったときのばらつき ${fmt(+P.gyro_sd, 3)} dps、測ったが使わなかった ${P.gyro_rej || 0} 回)。`
+    : `ジャイロのゼロ点はまだ測れていない(測ったが使わなかった ${P.gyro_rej || 0} 回。不感帯 0.5 dps のまま)。` }));
   const t = el("table");
   t.append(el("tr", null, ...["", "直進", "端あり", "dc の中央値", "ばらつき", "最小〜最大"].map((h, i) => el("th", { class: i ? "" : "l", text: h }))));
   const line = (name, rows) => {
@@ -1615,6 +1619,40 @@ function renderScut(view, b) {
   rawCard(view, b);
 }
 
+/* ================= 前壁の読み分かれ(FWALL) ================= */
+/* 探索の判断位置で、左右の前センサの片方だけが閾値を超えたときの記録(motor.c の Front_Wall_Decide、2026-10-19)。
+ * 列: act,x,y,dir,fl,fr,avg。avg = 左右の平均で見たら壁あり。mode 1 は記録だけ(迷路には壁なしと書いた)、2 は avg を書いた */
+function renderFwall(view, b) {
+  const P = b.params, mode = +P.mode;
+  const hi = b.lines.findIndex((l) => l.startsWith("act,"));
+  const cols = hi >= 0 ? b.lines[hi].split(",") : [];
+  const R = hi < 0 ? [] : b.lines.slice(hi + 1).filter((l) => /^-?\d/.test(l)).map((l) => {
+    const f = l.split(",").map(Number), r = {}; cols.forEach((c, j) => { r[c] = f[j]; }); return r;
+  });
+  const th = (P.th || "").split(",");
+  const card = el("div", { class: "card" });
+  card.append(el("h2", { text: `前壁の読み分かれ(${timeStr(b.time)}、${["使っていない", "記録だけ(迷路は今までどおり)", "平均でも壁ありにしている"][mode] || ""})` }),
+    el("div", { class: "note", text: `探索の判断位置で、前の左右のセンサの片方だけが閾値(左 ${th[0] || "?"}、右 ${th[1] || "?"})を超えたとき。` +
+      "迷路には左右とも超えたときだけ前壁を書く。前距離を決める判断は左右の平均で見ているので、ここに出たところは2つの判断が食い違っていた。" +
+      "本当の迷路と比べて、壁があったところが多ければ Front_Wall_Map = 2 にする。壁がなかったところで「平均で見ると壁あり」が多ければ 1 のまま。" }));
+  if (+P.lost) card.append(el("div", { class: "card warn", text: `記録しきれなかった ${P.lost} 回` }));
+  if (!R.length) {
+    card.append(el("p", { text: "左右が分かれたことはなかった。" }));
+  } else {
+    const t = el("table");
+    t.append(el("tr", null, ...["何番目の行動", "区画", "前壁の向き", "前の左", "前の右", "平均で見ると", "迷路に書いた"].map((h, i) => el("th", { class: i ? "" : "l", text: h }))));
+    for (const r of R) {
+      const wrote = mode === 2 ? r.avg : 0;
+      t.append(el("tr", null, el("td", { class: "l", text: r.act }), el("td", { text: r.x >= 0 ? `(${r.x},${r.y})` : "?" }),
+        el("td", { text: "北東南西"[r.dir] || "?" }), el("td", { text: r.fl }), el("td", { text: r.fr }),
+        el("td", { text: r.avg ? "壁あり" : "壁なし" }), el("td", { text: wrote ? "壁あり" : "壁なし" })));
+    }
+    card.append(t);
+  }
+  view.append(card);
+  rawCard(view, b);
+}
+
 function rawCard(view, b) {
   const btn = el("button", { text: "ファイルに保存" });
   btn.addEventListener("click", () => download(fileName(b), b.raw));
@@ -1637,6 +1675,7 @@ function renderView() {
     else if (b.type === "CENTER") renderCenter(view, b);
     else if (b.type === "NOISE") renderNoise(view, b);
     else if (b.type === "SCUT") renderScut(view, b);
+    else if (b.type === "FWALL") renderFwall(view, b);
     else if (b === LIVE) renderLive(view);
     else rawCard(view, b);
   } catch (e) {

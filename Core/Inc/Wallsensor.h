@@ -33,6 +33,10 @@ int Wall_Sensor_Med3(int i);
 extern float Edge_Off[2][2];
 extern float Edge_Tan;
 void Wall_Edge_Sample();
+/* 前壁を左右の平均でも見る(1 壁あり)。左右とも閾値を超えたとき、または左右の平均が閾値を超え低いほうも閾値の1/3を超えたとき */
+int Wall_Front_For_Map(void);
+extern float Front_Wall_Min_Ratio;
+extern int Wall_threshold[];
 /* 境目の推定が [lo, hi](G_Odo_X)にあれば1。左右にあれば平均。src は EDGE_SRC_*(PillarEdge.h)。
  * sides: 使う側(EDGE_SRC_R / EDGE_SRC_L の組み合わせ) */
 int Edge_Cut_Find(float lo, float hi, int sides, float *c, int *src);

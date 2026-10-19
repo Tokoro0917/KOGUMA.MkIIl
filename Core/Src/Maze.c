@@ -75,6 +75,10 @@ int G_Robot_Lastaction = 5; //0~3 直進　右　後ろ　左
  * Dijkstra誘導 未知壁探索(main.c)が「Uターンした時だけ経路を再計算する」
  * ための検出に使う。呼び出し側が使い終わったら自分で0に戻すこと */
 int G_Just_UTurned = 0;
+/* 迷路に書く前壁を、壁を読む側(motor.c の Motor_Sula_before)が決めて渡す。-1 なら今までどおり
+ * G_Wall_data[0] と [3] の両方(Wallsensor.c の Wall_Front_For_Map、2026-10-19) */
+int G_Maze_Front_Override = -1;
+#define MAZE_FRONT_WALL() ((G_Maze_Front_Override >= 0) ? G_Maze_Front_Override : (G_Wall_data[0] == 1 && G_Wall_data[3] == 1))
 
 uint16_t G_Maze_Flont;
 uint16_t G_Maze_Back;
@@ -384,7 +388,7 @@ static void Maze_Wall_Update_Body(void) {
 				G_Maze_Column[G_Robot_MAZE_X] = G_Maze_Column[G_Robot_MAZE_X]
 						| (1u << (G_Robot_MAZE_Y));
 			}
-			if (G_Wall_data[0] == 1 && G_Wall_data[3] == 1) {		//前壁がある//
+			if (MAZE_FRONT_WALL()) {		//前壁がある//
 				G_Maze_Row[G_Robot_MAZE_Y + 1] = G_Maze_Row[G_Robot_MAZE_Y + 1]
 						| (1u << (G_Robot_MAZE_X));
 			}
@@ -433,7 +437,7 @@ static void Maze_Wall_Update_Body(void) {
 				G_Maze_Row[G_Robot_MAZE_Y + 1] = G_Maze_Row[G_Robot_MAZE_Y + 1]
 						| (1u << (G_Robot_MAZE_X));
 			}
-			if (G_Wall_data[0] == 1 && G_Wall_data[3] == 1) {		//前壁がある
+			if (MAZE_FRONT_WALL()) {		//前壁がある
 				G_Maze_Column[G_Robot_MAZE_X + 1] = G_Maze_Column[G_Robot_MAZE_X
 						+ 1] | (1u << (G_Robot_MAZE_Y));
 			}
@@ -481,7 +485,7 @@ static void Maze_Wall_Update_Body(void) {
 				G_Maze_Column[G_Robot_MAZE_X + 1] = G_Maze_Column[G_Robot_MAZE_X
 						+ 1] | (1u << (G_Robot_MAZE_Y));
 			}
-			if (G_Wall_data[0] == 1 && G_Wall_data[3] == 1) {		//前壁がある
+			if (MAZE_FRONT_WALL()) {		//前壁がある
 				G_Maze_Row[G_Robot_MAZE_Y] = G_Maze_Row[G_Robot_MAZE_Y]
 						| (1u << (G_Robot_MAZE_X));
 			}
@@ -532,7 +536,7 @@ static void Maze_Wall_Update_Body(void) {
 				G_Maze_Row[G_Robot_MAZE_Y] = G_Maze_Row[G_Robot_MAZE_Y]
 						| (1u << (G_Robot_MAZE_X));
 			}
-			if (G_Wall_data[0] == 1 && G_Wall_data[3] == 1) {		//前壁がある
+			if (MAZE_FRONT_WALL()) {		//前壁がある
 				G_Maze_Column[G_Robot_MAZE_X] = G_Maze_Column[G_Robot_MAZE_X]
 						| (1u << (G_Robot_MAZE_Y));
 			}

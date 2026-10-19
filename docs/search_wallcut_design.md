@@ -45,7 +45,7 @@
 直進ごとに1行。
 
 ```
-#BEGIN SCUT n=.. lost=.. mode=.. ref=.. win=.. rec_win=.. max=.. gain=.. look=..
+#BEGIN SCUT n=.. lost=.. mode=.. ref=.. win=.. rec_win=.. max=.. gain=.. look=.. gyro_ofs=.. gyro_sd=.. gyro_rej=..
 act,prev,x,y,dir,b,dc,corr,src
 ```
 
@@ -60,6 +60,8 @@ act,prev,x,y,dir,b,dc,corr,src
 | src | 推定(0 見つからず、1 右、2 左、3 左右の平均、+8 左右が合わず片方) |
 
 ビューアは、直前の行動ごとに dc の中央値・ばらつきを表にし、書き写す `Search_Edge_Ref` を出す。
+
+見出しの `gyro_ofs` / `gyro_sd` / `gyro_rej` は、ジャイロのゼロ点[dps]、それを測ったときのばらつき、測ったが使わなかった回数(2026-10-19 から。`docs/search_stability_research.md` の「段階2を入れた結果」)。同じ出力で `SCUT` の前に、前壁の読み分かれ(`FWALL`)も出る。
 
 ## 進め方
 
