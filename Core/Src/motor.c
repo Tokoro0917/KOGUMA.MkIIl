@@ -149,6 +149,10 @@ float Bff = 0.50;
 float FF_offset = 15.0;
 
 void Motor_Setup() {
+	/* 走り出す前にジャイロのゼロ点を測る(0.3秒。2026-10-19)。動いているときは測らない */
+	if (fabsf(G_Tire_Speed_L) < 20 && fabsf(G_Tire_Speed_R) < 20) {
+		Gyro_Calibrate(300);
+	}
 	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
 	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);
 	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3);
@@ -765,20 +769,78 @@ static int Scut_Count = 0;
 static int Scut_Lost = 0;	//入りきらなかった数
 static uint16_t Scut_Action = 0;	//探索の行動の数(Motor_Sula_before のたびに1増やす)
 
+/* ---- 迷路に書く前壁(2026-10-19、docs/search_stability_research.md) ----
+ * 迷路には左右の前センサがどちらも閾値を超えたときだけ前壁を書く(Maze.c)。同じ判断位置で前距離を決める front_wall は
+ * 左右の平均(SULA_FRONT_WALL_TH)で見ているので、左右が分かれた(片方だけ超えた)ときは2つの判断が食い違うことがある。
+ * 境目で前壁があれば左右とも約140なので、壁があって片方が60を切ることは考えにくく、むしろ壁がないのに片方が柱などを
+ * 見ていることがありうる。そこで、まず分かれたときを記録して(FWALL)、本当の壁と比べてから決める。
+ *  - Front_Wall_Map: 0 今までどおり、1 記録だけ(迷路は今までどおり)、2 平均でも壁ありにする(Wallsensor.c の Wall_Front_For_Map) */
+int Front_Wall_Map = 1;
+#define FWALL_N 64
+typedef struct {
+	uint16_t act;	//探索を始めてから何番目の行動か
+	int16_t fl, fr;	//前センサ(左・右、g_sensor_av10)
+	int8_t x, y, dir;	//いま入った区画と向き(前壁はこの区画の dir 側)
+	int8_t avg;		//左右の平均で見たら壁ありか(Wall_Front_For_Map)
+} FrontWallRec;
+static FrontWallRec Fwall[FWALL_N];
+static int Fwall_Count = 0;
+static int Fwall_Lost = 0;
+
+/* Motor_Sula_before の Wall_search() のあとに呼ぶ。迷路に書く前壁を G_Maze_Front_Override に入れ、左右が分かれたら記録する */
+static void Front_Wall_Decide(void) {
+	int split = (G_Wall_data[0] != G_Wall_data[3]);
+	int avg = Wall_Front_For_Map();
+	G_Maze_Front_Override = (Front_Wall_Map == 2) ? avg : -1;
+	if (!split || Front_Wall_Map == 0) {
+		return;
+	}
+	if (Fwall_Count >= FWALL_N) {
+		Fwall_Lost++;
+		return;
+	}
+	FrontWallRec *r = &Fwall[Fwall_Count++];
+	r->act = Scut_Action;
+	r->fl = (int16_t) g_sensor_av10[0];
+	r->fr = (int16_t) g_sensor_av10[3];
+	r->avg = (int8_t) avg;
+	r->x = r->y = r->dir = -1;	//区画は Maze_Wall_Update のあとに入れる(Front_Wall_Rec_Cell)
+}
+
+static void Front_Wall_Rec_Cell(void) {
+	if (Fwall_Count > 0 && Fwall[Fwall_Count - 1].act == Scut_Action && Fwall[Fwall_Count - 1].x < 0) {
+		FrontWallRec *r = &Fwall[Fwall_Count - 1];
+		r->x = (int8_t) G_Robot_MAZE_X;
+		r->y = (int8_t) G_Robot_MAZE_Y;
+		r->dir = (int8_t) G_Robot_Direction;
+	}
+}
+
 void Search_Cut_Reset(void) {
 	Scut_Count = 0;
 	Scut_Lost = 0;
 	Scut_Action = 0;
+	Fwall_Count = 0;
+	Fwall_Lost = 0;
 }
 
 int Search_Cut_Has_Data(void) {
-	return Scut_Count > 0;
+	return Scut_Count > 0 || Fwall_Count > 0;
 }
 
 void Search_Cut_Print(void) {
-	printf("\r\n#BEGIN SCUT n=%d lost=%d mode=%d ref=%.1f win=%.0f rec_win=%.0f max=%.0f gain=%.2f look=%.2f\r\n",
+	printf("\r\n#BEGIN FWALL n=%d lost=%d mode=%d th=%d,%d ratio=%.2f\r\n", Fwall_Count, Fwall_Lost, Front_Wall_Map,
+			Wall_threshold[0], Wall_threshold[3], Front_Wall_Min_Ratio);
+	printf("act,x,y,dir,fl,fr,avg\r\n");
+	for (int i = 0; i < Fwall_Count; i++) {
+		const FrontWallRec *r = &Fwall[i];
+		printf("%d,%d,%d,%d,%d,%d,%d\r\n", r->act, r->x, r->y, r->dir, r->fl, r->fr, r->avg);
+	}
+	printf("#END FWALL\r\n");
+
+	printf("\r\n#BEGIN SCUT n=%d lost=%d mode=%d ref=%.1f win=%.0f rec_win=%.0f max=%.0f gain=%.2f look=%.2f gyro_ofs=%.3f gyro_sd=%.3f gyro_rej=%d\r\n",
 			Scut_Count, Scut_Lost, Search_WallCut, Search_Edge_Ref, Search_Edge_Win, Search_Rec_Win, Search_Corr_Max,
-			Search_Corr_Gain, Search_Look_From);
+			Search_Corr_Gain, Search_Look_From, gyro_z_offset, G_Gyro_Offset_SD, G_Gyro_Cal_Reject);
 	printf("act,prev,x,y,dir,b,dc,corr,src\r\n");
 	for (int i = 0; i < Scut_Count; i++) {
 		const SearchCutRec *r = &Scut[i];
@@ -877,7 +939,10 @@ void Motor_Sula_before(float Vst, float Vmax, float Vend, float Ac, float X) {
 	}
 
 	Wall_search();
+	Front_Wall_Decide();	//迷路に書く前壁(左右が分かれたら記録する。2026-10-19)
 	Maze_Wall_Update();
+	G_Maze_Front_Override = -1;
+	Front_Wall_Rec_Cell();
 
 	while (1) {
 		if (G_Motor_X > X) {

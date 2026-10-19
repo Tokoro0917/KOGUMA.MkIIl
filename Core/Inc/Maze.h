@@ -38,6 +38,7 @@ extern uint32_t G_Maze_Column[MAZE_SIZE+1];
 
 extern int G_Robot_Direction;
 extern int G_Robot_Lastaction;
+extern int G_Maze_Front_Override;	//迷路に書く前壁(-1 なら G_Wall_data[0] と [3] の両方)
 extern int G_Just_UTurned;
 
 extern uint16_t G_Maze_Flont;

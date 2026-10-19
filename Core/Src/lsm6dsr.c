@@ -18,7 +18,18 @@
  */
 
 float gyro_z_old = 0;
-float gyro_z_offset = 0.2;
+/* ジャイロのゼロ点[dps]。走る前に止まって測る(Gyro_Calibrate、Motor_Setup から呼ぶ)。2026-10-19 まではここが 0.2 の決め打ちで、
+ * しかも引く処理がコメントアウトされ、±0.5 dps の不感帯でごまかしていた(docs/search_stability_research.md)。
+ * LSM6DSR のゼロ点のずれは typ ±1 dps。引かないと、横壁のない直線で向きが流れる */
+float gyro_z_offset = 0;
+float Gyro_Deadband = 0.15f;	//ゼロ点を測ったあと、これより小さい角速度は0にする[dps](1 LSB = 0.14 dps)
+#define GYRO_DEADBAND_UNCAL 0.5f	//まだ一度も測れていないときの不感帯(以前と同じ)
+#define GYRO_CAL_SD_MAX 1.5f	//ばらつきがこれより大きければ測り直さない[dps](手で触っている、吸引を回している。吸引中は 4〜5 dps)
+#define GYRO_CAL_MEAN_MAX 5.0f	//平均がこれより大きければ測り直さない[dps](止まっていない)
+float G_Gyro_Offset_SD = -1;	//ゼロ点を決めたときのばらつき[dps](-1 はまだ測れていない)
+int G_Gyro_Cal_Reject = 0;	//測ったが使わなかった回数(電源を入れてから)
+static int gyro_calibrated = 0;
+static volatile float gyro_z_filt = 0;	//フィルタのあと、ゼロ点を引く前の値(Gyro_Calibrate が平均する)
 
 float G_Gyro_Z=0;
 
@@ -130,15 +141,43 @@ float read_NoiseCut_gyro_z() {
 
 	float gyro_z = read_gyro_z_axis();
 
-	float z = 1.01*(gyro_z * 0.95 + gyro_z_old * 0.05) ;//- gyro_z_offset
+	float f = gyro_z * 0.95 + gyro_z_old * 0.05;
+	gyro_z_filt = f;
+	float z = 1.01 * (f - gyro_z_offset);
 
 	gyro_z_old = gyro_z;
 
-	if(fabs(z)<0.5){
-		z=0;
+	if (fabs(z) < (gyro_calibrated ? Gyro_Deadband : GYRO_DEADBAND_UNCAL)) {
+		z = 0;
 	}
 
 	return z;
+}
+
+/* ジャイロのゼロ点を測る。止まっているときに呼ぶ(1msごとに割り込みが読む値を n 回平均する。n ms かかる)。
+ * ばらつきや平均が大きいとき(動いている、手で触っている、吸引を回している)は、ゼロ点を変えない(前に測った値のまま)。
+ * 戻り値: 1 測った、0 変えなかった */
+int Gyro_Calibrate(int n) {
+	float sum = 0, sq = 0;
+	for (int i = 0; i < n; i++) {
+		uint32_t t = HAL_GetTick();
+		while (HAL_GetTick() == t) {	//次の1msまで待つ(HAL_Delay(1) は2ms待つ)
+		}
+		float v = gyro_z_filt;
+		sum += v;
+		sq += v * v;
+	}
+	float mean = sum / n;
+	float var = sq / n - mean * mean;
+	float sd = var > 0 ? sqrtf(var) : 0;
+	if (sd > GYRO_CAL_SD_MAX || fabsf(mean) > GYRO_CAL_MEAN_MAX) {
+		G_Gyro_Cal_Reject++;
+		return 0;
+	}
+	gyro_z_offset = mean;
+	G_Gyro_Offset_SD = sd;
+	gyro_calibrated = 1;
+	return 1;
 }
 
 float read_average_acc_x() {

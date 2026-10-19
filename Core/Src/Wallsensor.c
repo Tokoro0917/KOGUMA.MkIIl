@@ -124,6 +124,21 @@ int Sensor_Start() {
 
 }
 
+/* 前壁を左右の平均でも見る(2026-10-19、docs/search_stability_research.md)。迷路には左右とも閾値を超えたときだけ前壁を書くが、
+ * 同じ判断位置で前距離を決める front_wall(motor.c の Motor_Sula_before)は左右の平均で見ている。
+ * 左右とも超えたとき、または左右の平均が閾値の平均を超え、低いほうも閾値の Front_Wall_Min_Ratio 倍を超えたときに1
+ * (片方だけが柱などを強く見ているときは除く)。motor.c の Front_Wall_Map が 2 のときだけ迷路に使う */
+float Front_Wall_Min_Ratio = 0.33f;
+int Wall_Front_For_Map(void) {
+	float fl = g_sensor_av10[0], fr = g_sensor_av10[3];
+	if (fl > Wall_threshold[0] && fr > Wall_threshold[3]) {
+		return 1;
+	}
+	float th = (Wall_threshold[0] + Wall_threshold[3]) * 0.5f;
+	float lo = (fl < fr) ? fl : fr;
+	return ((fl + fr) * 0.5f > th && lo > th * Front_Wall_Min_Ratio);
+}
+
 float Wall_Flont_Av() {
 	float av = 0;
 	av = (g_sensor[0][0] + g_sensor[3][0]) / 2;
