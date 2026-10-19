@@ -40,6 +40,11 @@ extern int Wall_threshold[];
 /* 境目の推定が [lo, hi](G_Odo_X)にあれば1。左右にあれば平均。src は EDGE_SRC_*(PillarEdge.h)。
  * sides: 使う側(EDGE_SRC_R / EDGE_SRC_L の組み合わせ) */
 int Edge_Cut_Find(float lo, float hi, int sides, float *c, int *src);
+/* 最後に見つけた柱の端(2026-10-19)。sides の側(EDGE_SRC_R / EDGE_SRC_L の組み合わせ)で、いちばん新しい端を返す。
+ * 戻り値: 0 なし、EDGE_SRC_R か EDGE_SRC_L(その端の側)。
+ * since: 端から今まで進んだ距離[mm](G_Odo_X - 端の位置)、c: その端からの境目の推定(G_Odo_X)、kind: EDGE_KIND_*。いらなければ NULL。
+ * ターン(角速度で履歴を空にした)より前の端は返さない。後ろに下がると G_Odo_X が減るので since も減る */
+int Edge_Last(int sides, float *since, float *c, int *kind);
 
 /* 壁切れのログ */
 #define EDGE_LOG_FALL 0

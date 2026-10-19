@@ -425,6 +425,42 @@ int Edge_Cut_Find(float lo, float hi, int sides, float *c, int *src) {
 	return sr != 0;
 }
 
+int Edge_Last(int sides, float *since, float *c, int *kind) {
+	float mask_x = Edge_Mask_X;
+	int side = 0;
+	float bx = 0, bc = 0;
+	int bk = 0;
+	for (int s = 0; s < 2; s++) {
+		if (!(sides & (s == 0 ? EDGE_SRC_R : EDGE_SRC_L))) continue;
+		/* 割り込み(Wall_Edge_Sample)が書き足すあいだに読んだら、読み直す(割り込みは止めない) */
+		unsigned n;
+		float x = 0, cc = 0;
+		int k = 0;
+		do {
+			n = Edge_Count[s];
+			if (n == 0) break;
+			const volatile EdgeRec *r = &Edge_Rec[s][(n - 1) % EDGE_Q];
+			x = r->ev.x;
+			cc = r->c;
+			k = r->ev.kind;
+		} while (n != Edge_Count[s]);
+		/* ターンをはさんだ端は、まっすぐ進んだ距離にならないので返さない */
+		if (n == 0 || x < mask_x) continue;
+		if (!side || x > bx) {
+			side = (s == 0) ? EDGE_SRC_R : EDGE_SRC_L;
+			bx = x;
+			bc = cc;
+			bk = k;
+		}
+	}
+	if (side) {
+		if (since) *since = G_Odo_X - bx;
+		if (c) *c = bc;
+		if (kind) *kind = bk;
+	}
+	return side;
+}
+
 /* with_thresholds: 閾値の判定と1mmごとのセンサ値も残す(テスト)。border / speed: テストの区画の境目と速度(最短走行は -1) */
 void Edge_Log_Start(int with_thresholds, float border, float speed) {
 	Edge_Log_On = 0;
