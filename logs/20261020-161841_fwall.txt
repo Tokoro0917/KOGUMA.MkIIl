@@ -1,0 +1,3 @@
+#BEGIN FWALL n=0 lost=0 mode=1 th=60,60 ratio=0.33
+act,x,y,dir,fl,fr,avg
+#END FWALL
