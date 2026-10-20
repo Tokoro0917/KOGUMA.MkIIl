@@ -1274,6 +1274,30 @@ int main(void) {
 
 				Encorder_count_reset();
 			}
+		} else if (Encorder_mode_out() == 11) {		//2200のターンの停止位置テスト(Turn-Sim_KOGUMA)
+			/* No.1〜7: Move.c の G_Turn2200 の値で、ターンを1つ(左)。後ろの直線 509mm で止まる(壁制御なし)。
+			 * 1=大回り90, 2=大回り180, 3=斜め入り45, 4=斜め入り135, 5=斜め出45, 6=斜め出135, 7=V90。
+			 * 止まった位置を、理想の停止位置からのずれ(前後・横)として測り、シミュレーターに入れる */
+			int n = Encorder_number_out();
+			if ((n >= 1) && (n <= 7) && (Sensor_Enter() == 1)) {
+				Buzzer_Enter();
+				Sensor_Start();
+
+				Motor_Setup();
+				Suction_Start(70);
+
+				HAL_Delay(1000);
+				LOG_get_start();
+				Turn2200_Test(n);
+
+				Motor_Stop();
+
+				HAL_Delay(500);
+				Suction_Stop();
+				LOG_get_end();
+
+				Encorder_count_reset();
+			}
 		}
 	}
 	/* USER CODE END 3 */
