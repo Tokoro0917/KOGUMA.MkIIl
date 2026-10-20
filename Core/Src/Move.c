@@ -864,6 +864,55 @@ void Turn2000_Test(int kind) {
 	}
 }
 
+/* ---- 2200のターン(2026-10-20、Turn-Sim_KOGUMA で作る) ----
+ * https://tokoro0917.github.io/Turn-Sim_KOGUMA/ の「Cの表をコピー」の行を、そのまま下に貼る(並びもシミュレーターと同じ)。
+ * offset_st(前距離)はターン区間の始まり(大回り・斜め入りは区画の中心、斜め出・V90 は斜めの壁の中点)から曲がり始めるまで、
+ * offset_end(後距離)は曲がり終わってから直進する距離[mm]。左ターンの値。v_mid(ターン中の最低速度)は使わない(速度一定で回る)。
+ * 今の値は仮(2000の表を角速度 ×1.1、角加速度 ×1.21 にしただけ。前距離・後距離は壁切れからの値なので意味が違う)。
+ * 実機の停止位置テストはモード11 No.1〜7(Turn2200_Test) */
+TurnSim_Param G_Turn2200[TS_NUM] = {
+	/*            v     v_mid   angle  w_max     w_ac    offset_st offset_end */
+	/* 斜め入り45 */ {   2200,    2200,     45,    2090,  145200,     5.0,   110.0},
+	/* V90 */ {   2200,    2200,     90,    2200,  157300,    15.0,    90.0},
+	/* 斜め入り135 */ {   2200,    2200,    135,    1650,   96800,    31.0,    80.0},
+	/* 斜め出45 */ {   2200,    2200,     45,    1650,   48400,     8.0,    33.0},
+	/* 斜め出135 */ {   2200,    2200,    135,    1485,   96800,     5.0,    80.0},
+	/* 大回り90 */ {   2200,    2200,     90,    2200,   48400,    10.0,    75.0},
+	/* 大回り180 */ {   2200,    2200,    180,    1342,   48400,     5.0,    73.0},
+};
+
+/* モード11 No.1〜7 の番号(モード6と同じ並び: 1 大回り90、2 大回り180、3 斜め入り45、4 斜め入り135、5 斜め出45、6 斜め出135、7 V90)
+ * から G_Turn2200 の並び(シミュレーターの並び)へ */
+static const int8_t Turn2200_No_To_TS[7] = { TS_BIG90, TS_BIG180, TS_IN45, TS_IN135, TS_OUT45, TS_OUT135, TS_V90 };
+
+#define TURN2200_TEST_LEN 509.1f	//停止位置テストの後ろの直線[mm](Turn-Sim の既定: 斜め4区間 = 4 × 180 / √2)
+#define TURN2200_AC 15000.0f	//停止位置テストの加速度・減速度
+
+/* モード11 No.1〜7: Turn-Sim_KOGUMA の停止位置テスト(手順3・6・7)。G_Turn2200 の値で、ターンを1つ(左)。
+ * 加速の直線 → 前距離 → ターン → 後距離 → 後ろの直線 509mm で減速して止まる。壁切れは使わない。
+ * 後ろの直線(後距離から)は壁制御を切る(効いていると横ずれが補正されて見えなくなる)。
+ *  - 区画の中心から入るターン(大回り・斜め入り): スタート区画に置き、2区画先の区画の中心(スタート位置から 24 + 360mm)まで
+ *    で速度 v まで上げ、そこから前距離
+ *  - 斜めから入るターン(斜め出・V90): 機体を斜めに置き、斜め2区間(254.6mm)で速度 v まで上げ、そこ(斜めの壁の中点)から前距離 */
+void Turn2200_Test(int no) {
+	if (no < 1 || no > 7) {
+		return;
+	}
+	int ts = Turn2200_No_To_TS[no - 1];
+	const TurnSim_Param *p = &G_Turn2200[ts];
+	float V = p->v;
+	if (ts == TS_OUT45 || ts == TS_OUT135 || ts == TS_V90) {
+		Motor_trapezoid(0, V, V, TURN2200_AC, 254.6f);
+		Motor_trapezoid(V, V, V, TURN2200_AC, p->st);
+	} else {
+		Motor_trapezoid_PID(0, V, V, TURN2200_AC, SHORT_START_X + 360);
+		Motor_trapezoid_PID(V, V, V, TURN2200_AC, p->st);
+	}
+	Motor_Sula_COS(V, p->angle, p->w_max, p->w_ac);
+	Motor_trapezoid(V, V, V, TURN2200_AC, p->end);
+	Motor_trapezoid(V, V, 0, TURN2200_AC, TURN2200_TEST_LEN);
+}
+
 void Short_NANAME_Move2000(int MAX, int AC) {
 	Maze_Road();
 	Maze_Wall_fill();

@@ -74,6 +74,22 @@ extern Turn2000_Param G_Turn2000[T2000_NUM];
 void Turn2000_Run(int kind, int dir);
 void Turn2000_Test(int kind);	/* モード6 No.1〜7 */
 
+/* 2200のターン(Move.c の G_Turn2200、Turn-Sim_KOGUMA の「Cの表をコピー」をそのまま貼る)。並びはシミュレーターと同じ */
+enum {
+	TS_IN45, TS_V90, TS_IN135, TS_OUT45, TS_OUT135, TS_BIG90, TS_BIG180, TS_NUM
+};
+typedef struct {
+	float v;		/* 速度[mm/s] */
+	float v_mid;	/* ターン中の最低速度(使わない) */
+	float angle;	/* 角度[deg](左) */
+	float w_max;	/* 最大角速度[deg/s] */
+	float w_ac;		/* 角加速度[deg/s^2] */
+	float st;		/* 前距離[mm](ターン区間の始まりから) */
+	float end;		/* 後距離[mm] */
+} TurnSim_Param;
+extern TurnSim_Param G_Turn2200[TS_NUM];
+void Turn2200_Test(int no);	/* モード11 No.1〜7(停止位置テスト) */
+
 extern void (*G_Stop_Hook)(void);	//区画の中央で止まっているあいだに呼ぶ計算
 void Robot_Maze_Go_From_Stop(float, float);
 void Robot_Maze_Stop_And_Go(int);
