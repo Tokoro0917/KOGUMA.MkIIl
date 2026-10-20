@@ -885,11 +885,14 @@ TurnSim_Param G_Turn2200[TS_NUM] = {
  * から G_Turn2200 の並び(シミュレーターの並び)へ */
 static const int8_t Turn2200_No_To_TS[7] = { TS_BIG90, TS_BIG180, TS_IN45, TS_IN135, TS_OUT45, TS_OUT135, TS_V90 };
 
-#define TURN2200_TEST_LEN 509.1f	//停止位置テストの後ろの直線[mm](Turn-Sim の既定: 斜め4区間 = 4 × 180 / √2)
+#define TURN2200_TEST_LEN_NANAME 254.6f	//停止位置テストの後ろの直線[mm]、斜めに出るターン(斜め入り45・135、V90): 斜め2区間。斜めの壁の中点で止まる
+#define TURN2200_TEST_LEN_ST 180.0f	//同じく、まっすぐ出るターン(大回り、斜め出): 1区画。次の区画の中心で止まる
 #define TURN2200_AC 15000.0f	//停止位置テストの加速度・減速度
 
 /* モード11 No.1〜7: Turn-Sim_KOGUMA の停止位置テスト(手順3・6・7)。G_Turn2200 の値で、ターンを1つ(左)。
- * 加速の直線 → 前距離 → ターン → 後距離 → 後ろの直線 509mm で減速して止まる。壁切れは使わない。
+ * 加速の直線 → 前距離 → ターン → 後距離 → 後ろの直線(斜めに出るなら 254.6mm、まっすぐ出るなら 180mm)で減速して止まる。壁切れは使わない。
+ * 後ろの直線は短くてよい: シミュレーターのモデルでは滑りのずれはターンを出たところで決まり、直線の長さでは変わらない
+ * (長くすると角度の誤差のほうが大きく出て k に紛れる)。2200 から減速度 15000 で止まるのは 161mm。
  * 後ろの直線(後距離から)は壁制御を切る(効いていると横ずれが補正されて見えなくなる)。
  *  - 区画の中心から入るターン(大回り・斜め入り): スタート区画に置き、2区画先の区画の中心(スタート位置から 24 + 360mm)まで
  *    で速度 v まで上げ、そこから前距離
@@ -910,7 +913,8 @@ void Turn2200_Test(int no) {
 	}
 	Motor_Sula_COS(V, p->angle, p->w_max, p->w_ac);
 	Motor_trapezoid(V, V, V, TURN2200_AC, p->end);
-	Motor_trapezoid(V, V, 0, TURN2200_AC, TURN2200_TEST_LEN);
+	int naname_out = (ts == TS_IN45 || ts == TS_IN135 || ts == TS_V90);
+	Motor_trapezoid(V, V, 0, TURN2200_AC, naname_out ? TURN2200_TEST_LEN_NANAME : TURN2200_TEST_LEN_ST);
 }
 
 void Short_NANAME_Move2000(int MAX, int AC) {
