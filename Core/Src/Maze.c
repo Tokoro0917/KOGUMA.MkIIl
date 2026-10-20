@@ -1648,7 +1648,8 @@ void Shortest_Pass_Compression() {
 /* 最短走行の命令列(G_Short_Pass_NANAME)が、区画の境目で終わるか(2026-10-20)。
  * 経路はゴールに入ったところで終わる。最後が直進(-1 を除いた最後の命令が正)なら、ゴールに入る境目で終わる。
  * 最後がターン(大回り・斜め出)なら、そのターンがゴールの区画の中心で終わる。
- * 最短走行の最後に止まるまでの距離を決めるのに使う(Move.c の Short_Goal_X)。test/test_shortpath.c で確かめている */
+ * 最短走行の最後に止まるまでの距離を決めるのに使う(Move.c の Short_Goal_X)。test/test_shortpath.c で確かめている。
+ * 命令列は走っているあいだに書き換わる(Move.c の Short_Start)ので、走る前に呼ぶ(Move.c の Short_Pass_Check) */
 int Short_Pass_Ends_At_Boundary(void) {
 	int16_t last = 0;
 	for (int k = 0; k < MAX_STEP && G_Short_Pass_NANAME[k] != 0; k++) {
@@ -1663,7 +1664,9 @@ int Short_Pass_Ends_At_Boundary(void) {
  * (test/test_shortpath.c の run_tokens と同じ動き。スタートは (0,0) の中心で北向き)、最後に止まるまでの距離
  * (境目で終わるなら1.5区画、区画の中心で終わるなら1区画。Move.c の Short_Goal_X)を足した位置を出す。
  * x, y: 区画、dir: 止まったときの向き(0 北、1 東、2 南、3 西。最後の Robot_adjustment で向きを変える前)。
- * 戻り値: 1 求めた、0 命令列が読めない(斜めで終わる、知らない命令など) */
+ * 戻り値: 1 求めた、0 命令列が読めない(斜めで終わる、知らない命令など)。
+ * 命令列は走っているあいだに書き換わる(Move.c の Short_Start が最初の直線を半区画減らす)ので、走る前に呼ぶ
+ * (Move.c の Short_Pass_Check。走ったあとに呼ぶと半区画ずれる) */
 int Short_Pass_End_Cell(int *x, int *y, int *dir) {
 	static const int8_t hx[8] = { 0, 1, 1, 1, 0, -1, -1, -1 };
 	static const int8_t hy[8] = { 1, 1, 0, -1, -1, -1, 0, 1 };

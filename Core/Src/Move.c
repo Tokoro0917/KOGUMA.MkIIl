@@ -407,10 +407,21 @@ void Robot_Maze_Pass_Action() {
  * (探索が途中で止まった、未確認の壁を壁とみなすと塞がる等)では
  * Maze_Shortest_Calculation()/Maze_Dijkstra_Calculation()が空の経路を返すので、
  * そのときはエラーを知らせて走らずに戻る。戻り値1=走ってよい */
+/* 最短走行の止まり方(2026-10-20)。命令列(G_Short_Pass_NANAME)は走っているあいだに書き換わる
+ * (Short_Start が最初の直線を半区画減らし、Short_First_Turn が最初のターンを -1 にする)ので、
+ * 走る前(Short_Pass_Check)に求めておく。走ったあとの命令列から求めると半区画ずれる
+ * (10-20、モード0 No.11 で最短のあとの帰りを始めたとたんに壁に当たった) */
+static int s_goal_boundary = 0;	//命令列が境目で終わる(Short_Goal_X)
+int G_Short_End_OK = 0;	//止まる区画を求められた
+int G_Short_End_X = 0, G_Short_End_Y = 0, G_Short_End_Dir = 0;	//止まる区画と向き(Robot_adjustment で向きを変える前)
+
 static int Short_Pass_Check(void) {
 	if (G_Short_Pass[0] != 0) {
+		s_goal_boundary = Short_Pass_Ends_At_Boundary();
+		G_Short_End_OK = Short_Pass_End_Cell(&G_Short_End_X, &G_Short_End_Y, &G_Short_End_Dir);
 		return 1;
 	}
+	G_Short_End_OK = 0;
 	printf("ERROR: no shortest path (start cannot reach goal)\r\n");
 	LED_Path_Error();
 	return 0;
@@ -640,7 +651,7 @@ static float Short_Start(float V) {
  * 命令列が境目で終わるとき(最後が直進)は 1.5区画、区画の中心で終わるとき(最後がターン)は 1区画。
  * それまでは、どちらも1区画(180mm)だったので、最後が直進のときはゴールの区画の境目で止まっていた */
 static float Short_Goal_X(void) {
-	return Short_Pass_Ends_At_Boundary() ? 270.0f : 180.0f;
+	return s_goal_boundary ? 270.0f : 180.0f;	//走る前に求めた値(Short_Pass_Check)
 }
 
 void Short_NANAME_Move1000(int MAX, int AC) {
