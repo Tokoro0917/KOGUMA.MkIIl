@@ -103,6 +103,8 @@ float Align_Still_V = 10.0f;	//左右の車輪の速さがこれより小さけ�
 int G_Align_Count = 0;	//前壁合わせの回数(電源を入れてから)
 int G_Align_Timeout = 0;	//そのうち上限まで続いた回数
 float G_Align_Time_Sum = 0;	//かかった時間の合計[s]
+float G_Align_Err_Sum = 0;	//終わったときの前後の誤差の大きさの合計[mm](左右の距離の平均 - Align_Front_mm)
+float G_Align_Diff_Sum = 0;	//終わったときの左右の距離の差の大きさの合計[mm](向きのずれ)
 
 
 float Cut_R = 80;
@@ -847,10 +849,12 @@ void Search_Cut_Print(void) {
 	}
 	printf("#END FWALL\r\n");
 
-	printf("\r\n#BEGIN SCUT n=%d lost=%d mode=%d ref=%.1f win=%.0f rec_win=%.0f max=%.0f gain=%.2f look=%.2f align_n=%d align_ms=%.0f align_to=%d gyro_ofs=%.3f gyro_sd=%.3f gyro_rej=%d gyro_torn=%lu gyro_try=",
+	printf("\r\n#BEGIN SCUT n=%d lost=%d mode=%d ref=%.1f win=%.0f rec_win=%.0f max=%.0f gain=%.2f look=%.2f align_n=%d align_ms=%.0f align_to=%d align_mm=%d align_err=%.1f align_diff=%.1f gyro_ofs=%.3f gyro_sd=%.3f gyro_rej=%d gyro_torn=%lu gyro_try=",
 			Scut_Count, Scut_Lost, Search_WallCut, Search_Edge_Ref, Search_Edge_Win, Search_Rec_Win, Search_Corr_Max,
 			Search_Corr_Gain, Search_Look_From, G_Align_Count,
-			G_Align_Count ? 1000.0f * G_Align_Time_Sum / G_Align_Count : 0.0f, G_Align_Timeout, gyro_z_offset,
+			G_Align_Count ? 1000.0f * G_Align_Time_Sum / G_Align_Count : 0.0f, G_Align_Timeout, Align_Use_mm,
+			G_Align_Count ? G_Align_Err_Sum / G_Align_Count : 0.0f, G_Align_Count ? G_Align_Diff_Sum / G_Align_Count : 0.0f,
+			gyro_z_offset,
 			G_Gyro_Offset_SD, G_Gyro_Cal_Reject, (unsigned long) G_Gyro_Torn);
 	/* 最近測った順に「ばらつき:平均」(使わなかったものも) */
 	int k0 = (G_Gyro_Cal_Count > GYRO_CAL_TRY_N) ? G_Gyro_Cal_Count - GYRO_CAL_TRY_N : 0;
@@ -1734,6 +1738,12 @@ void Motor_Robot_Alignment() {
 	}
 	G_Align_Count++;
 	G_Align_Time_Sum += G_Motor_Count;
+	{
+		float fl = WallDist_mm(WALLDIST_FL, g_sensor[0][0]);
+		float fr = WallDist_mm(WALLDIST_FR, g_sensor[3][0]);
+		G_Align_Err_Sum += fabsf((fl + fr) * 0.5f - Align_Front_mm);
+		G_Align_Diff_Sum += fabsf(fl - fr);
+	}
 	Enc_Sigma_error = 0;
 	Gyro_Sigma_error = 0;
 	PID_Mode = 0;
