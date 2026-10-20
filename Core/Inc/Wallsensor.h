@@ -35,6 +35,8 @@ extern float Edge_Tan;
 void Wall_Edge_Sample();
 /* 前壁を左右の平均でも見る(1 壁あり)。左右とも閾値を超えたとき、または左右の平均が閾値を超え低いほうも閾値の1/3を超えたとき */
 int Wall_Front_For_Map(void);
+extern int Align_Use_mm;	//止まったときの前壁合わせを距離で行う(0 は生の値)
+extern float Align_Front_mm;	//前壁合わせの目標[mm]
 extern float Front_Wall_Min_Ratio;
 extern int Wall_threshold[];
 /* 境目の推定が [lo, hi](G_Odo_X)にあれば1。左右にあれば平均。src は EDGE_SRC_*(PillarEdge.h)。

@@ -42,6 +42,17 @@ float Kd_FW = 0.0;
 float Kp_FW_dire = 0.1;
 float Kd_FW_dire = 0.0;
 
+/* 止まったときの前壁合わせを距離で行う(2026-10-20)。0 にすると今までどおり前センサの生の値で合わせる。
+ * 生の値では、前後は左右の平均が FlontWall_Distance(636)、向きは左右の差が0になるように合わせていたが、
+ * 左右のセンサの感度の差(表で区画中心が左645・右627、会場の倍率 WallDist_Scale)がそのまま向きと位置のずれになっていた。
+ * 距離では、感度合わせした左右の距離(WallDist_mm)で、前後は平均が Align_Front_mm、向きは左右の差が0になるように合わせる。
+ * ゲインは、区画中心の近くで生の値と同じ効きになるように換算した(表で84mm付近は1mmで約18) */
+int Align_Use_mm = 1;
+float Align_Front_mm = WALLDIST_CENTER_MM;	//前壁までの目標[mm](区画中心)
+float Kp_FW_mm = 1.8f;		//前後[PWM/mm](= Kp_FW × 18)
+float Kp_FW_dire_mm = 1.8f;	//向き[PWM/mm](= Kp_FW_dire × 18)
+float Align_Err_Max_mm = 20;	//前後の誤差をこれで頭打ちにする[mm]
+
 float KP, KD;
 
 /* 区画中心(壁まで84mm)での横センサの値。2026-10-06の実測の表(WallDistance.c)から
@@ -727,6 +738,14 @@ float calWallConrol_NANAME() {
 float calWallConrol_Flontwall_ST() {
 	float PID_Wall = 0;
 
+	if (Align_Use_mm) {
+		float fl = WallDist_mm(WALLDIST_FL, g_sensor[0][0]);
+		float fr = WallDist_mm(WALLDIST_FR, g_sensor[3][0]);
+		float e = (fl + fr) * 0.5f - Align_Front_mm;	//正なら遠い(前へ)
+		if (e > Align_Err_Max_mm) e = Align_Err_Max_mm;
+		if (e < -Align_Err_Max_mm) e = -Align_Err_Max_mm;
+		return Kp_FW_mm * e;
+	}
 	if (Wall_Flont_Av() > 1000) {
 		Wall_error_FW = FlontWall_Distance - 1000;
 	} else {
@@ -743,6 +762,11 @@ float calWallConrol_Flontwall_ST() {
 float calWallConrol_Flontwall_Turn() {
 	float PID_Wall = 0;
 
+	if (Align_Use_mm) {
+		float fl = WallDist_mm(WALLDIST_FL, g_sensor[0][0]);
+		float fr = WallDist_mm(WALLDIST_FR, g_sensor[3][0]);
+		return Kp_FW_dire_mm * (fr - fl);	//正なら左が近い(左へ回る。生の値の 左 - 右 と同じ向き)
+	}
 	Wall_error_FW = (g_sensor[0][0]) - (g_sensor[3][0]);
 
 	Wall_Delta_error_FW = Wall_error_FW - Wall_old_error_FW;
