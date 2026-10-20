@@ -46,13 +46,16 @@ static void Robot_Align_If_Wall(int wall_in_front) {
 /* その場Uターン(左90°を2回)。前に壁があれば前壁に、左90°回ったあとは
  * 元の左の壁(今の前)があればそれに合わせる。
  * 以前は2回目も元の「前」の壁の有無で判定していたため、前が壁で左が空いている
- * 区画では、何もない方向に向かって前壁合わせをして急に前進していた */
+ * 区画では、何もない方向に向かって前壁合わせをして急に前進していた。
+ * 2回目は、回ったあとの前センサで元の左の壁(今の前)を見て決める(2026-10-20)。それまでは G_Wall_data[1] で
+ * 決めていたが、G_Wall_data は1msごとに読み直すので、回ったあとは元の後ろ(来た向きで、いつも壁がない)を見ていて、
+ * 2回目の壁合わせはほとんどしていなかった */
 void Robot_adjustment() {
 	Motor_Stop();
 	Robot_Align_If_Wall(G_Wall_data[0] == 1 && G_Wall_data[3] == 1);	//前の壁
 	Motor_trapezoid_Turn(90, 600, 20000);
 	Motor_Stop();
-	Robot_Align_If_Wall(G_Wall_data[1] == 1);	//元の左の壁(今の前)
+	Robot_Align_If_Wall(G_Wall_data[0] == 1 && G_Wall_data[3] == 1);	//今の前の壁(元の左の壁)
 	Motor_trapezoid_Turn(90, 600, 20000);
 	Motor_Stop();
 }
@@ -186,7 +189,7 @@ void Robot_Maze_Go_From_Stop(float v, float ac) {
 		}
 		Motor_trapezoid_Turn(90, 600, 20000);
 		Motor_Stop();
-		Robot_Align_If_Wall(G_Wall_data[1] == 1);	//元の左の壁(今の前)
+		Robot_Align_If_Wall(G_Wall_data[0] == 1 && G_Wall_data[3] == 1);	//今の前の壁(元の左の壁。Robot_adjustment の説明)
 		Motor_trapezoid_Turn(90, 600, 20000);
 		Motor_Stop();
 		G_Robot_Direction += 2;
