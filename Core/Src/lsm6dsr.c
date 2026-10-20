@@ -28,6 +28,10 @@ float Gyro_Deadband = 0.15f;	//ゼロ点を測ったあと、これより小さ�
 #define GYRO_CAL_MEAN_MAX 5.0f	//平均がこれより大きければ測り直さない[dps](止まっていない)
 float G_Gyro_Offset_SD = -1;	//ゼロ点を決めたときのばらつき[dps](-1 はまだ測れていない)
 int G_Gyro_Cal_Reject = 0;	//測ったが使わなかった回数(電源を入れてから)
+float G_Gyro_Cal_SD[GYRO_CAL_TRY_N];	//最近 GYRO_CAL_TRY_N 回の、測ったときのばらつき[dps](使ったかどうかによらない)
+float G_Gyro_Cal_Mean[GYRO_CAL_TRY_N];	//同じく平均[dps]
+int G_Gyro_Cal_Count = 0;	//測った回数(電源を入れてから)
+volatile uint32_t G_Gyro_Torn = 0;	//上位と下位が別の値の組み合わせになりかけて、読み直した回数(電源を入れてから)
 static int gyro_calibrated = 0;
 static volatile float gyro_z_filt = 0;	//フィルタのあと、ゼロ点を引く前の値(Gyro_Calibrate が平均する)
 
@@ -102,8 +106,18 @@ void lsm6dsr_init(void) {
 
 float read_gyro_z_axis() {
 	float gyro_z;
-	int16_t data = (int16_t) ((uint16_t) read_byte(OUTZ_H_G) << 8)
-			| (uint16_t) read_byte(OUTZ_L_G);
+	/* 上位と下位を別々に読むので、そのあいだにジャイロが次の値に替わると、上位と下位が別の値の組み合わせになる
+	 * (0 の近くで符号が変わると ±256 LSB = ±35.8 dps の飛び。2026-10-20、止まっていても約1%の割合で出ていて、
+	 * Gyro_Calibrate のばらつきが閾値を超えていた)。上位を読み直し、替わっていたら下位も読み直す */
+	uint8_t h = read_byte(OUTZ_H_G);
+	uint8_t l = read_byte(OUTZ_L_G);
+	uint8_t h2 = read_byte(OUTZ_H_G);
+	if (h2 != h) {
+		l = read_byte(OUTZ_L_G);
+		h = h2;
+		G_Gyro_Torn++;
+	}
+	int16_t data = (int16_t) (((uint16_t) h << 8) | l);
 	gyro_z = (float) ((float) data * (1.0f) * 140.0f / 1000.0f);
 
 	return gyro_z;
@@ -170,6 +184,9 @@ int Gyro_Calibrate(int n) {
 	float mean = sum / n;
 	float var = sq / n - mean * mean;
 	float sd = var > 0 ? sqrtf(var) : 0;
+	G_Gyro_Cal_SD[G_Gyro_Cal_Count % GYRO_CAL_TRY_N] = sd;
+	G_Gyro_Cal_Mean[G_Gyro_Cal_Count % GYRO_CAL_TRY_N] = mean;
+	G_Gyro_Cal_Count++;
 	if (sd > GYRO_CAL_SD_MAX || fabsf(mean) > GYRO_CAL_MEAN_MAX) {
 		G_Gyro_Cal_Reject++;
 		return 0;

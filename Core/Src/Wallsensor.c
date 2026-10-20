@@ -320,6 +320,7 @@ static int Edge_Log_Th = 0;	//閾値の判定(従来・中央値)も残すか
 static float Edge_Log_X0 = 0;
 static float Edge_Log_Border = -1;	//区画の境目(Edge_Log_Border + 180k)。-1 は最短走行のログ
 static float Edge_Log_Speed = -1;	//テストの速度。-1 は最短走行のログ
+static int Edge_Log_Pillar = 0;	//ログを始めたときの G_WallCut_Pillar(出力するときには0に戻っているため)
 static int Edge_Th_Arm[2][2];
 /* 壁切れのテスト(モード3 No.6〜9)のときだけ、横センサの値(3回の中央値)を1mmごとに残す。
  * ビューアで「センサ値と距離」のグラフにし、柱のところで値がどう下がるかを見る */
@@ -425,11 +426,48 @@ int Edge_Cut_Find(float lo, float hi, int sides, float *c, int *src) {
 	return sr != 0;
 }
 
+int Edge_Last(int sides, float *since, float *c, int *kind) {
+	float mask_x = Edge_Mask_X;
+	int side = 0;
+	float bx = 0, bc = 0;
+	int bk = 0;
+	for (int s = 0; s < 2; s++) {
+		if (!(sides & (s == 0 ? EDGE_SRC_R : EDGE_SRC_L))) continue;
+		/* 割り込み(Wall_Edge_Sample)が書き足すあいだに読んだら、読み直す(割り込みは止めない) */
+		unsigned n;
+		float x = 0, cc = 0;
+		int k = 0;
+		do {
+			n = Edge_Count[s];
+			if (n == 0) break;
+			const volatile EdgeRec *r = &Edge_Rec[s][(n - 1) % EDGE_Q];
+			x = r->ev.x;
+			cc = r->c;
+			k = r->ev.kind;
+		} while (n != Edge_Count[s]);
+		/* ターンをはさんだ端は、まっすぐ進んだ距離にならないので返さない */
+		if (n == 0 || x < mask_x) continue;
+		if (!side || x > bx) {
+			side = (s == 0) ? EDGE_SRC_R : EDGE_SRC_L;
+			bx = x;
+			bc = cc;
+			bk = k;
+		}
+	}
+	if (side) {
+		if (since) *since = G_Odo_X - bx;
+		if (c) *c = bc;
+		if (kind) *kind = bk;
+	}
+	return side;
+}
+
 /* with_thresholds: 閾値の判定と1mmごとのセンサ値も残す(テスト)。border / speed: テストの区画の境目と速度(最短走行は -1) */
 void Edge_Log_Start(int with_thresholds, float border, float speed) {
 	Edge_Log_On = 0;
 	Edge_Log_Border = border;
 	Edge_Log_Speed = speed;
+	Edge_Log_Pillar = G_WallCut_Pillar;
 	Edge_Log_Count = 0;
 	Edge_Log_X0 = G_Odo_X;
 	Edge_Log_Th = with_thresholds;
@@ -478,7 +516,7 @@ void Edge_Log_Print() {
 	/* tools/viewer.html で読む。border は区画の境目(first_border + 180k)、v はテストの速度(-1 は最短走行のログ) */
 	printf("\r\n#BEGIN EDGE border=%.0f v=%.0f off_r_wall=%.1f off_r_pillar=%.1f off_l_wall=%.1f off_l_pillar=%.1f tan=%.2f vk=%.4f min_high=%.0f high_len=%.0f pillar=%d fast=%d cut_l=%.0f cut_r=%.0f\r\n",
 			first_border, speed, Edge_Off[0][0], Edge_Off[0][1], Edge_Off[1][0], Edge_Off[1][1], Edge_Tan, Edge_V_K,
-			Edge_Min_High, Edge_High_Len, G_WallCut_Pillar, G_WallCut_Fast, Cut_L, Cut_R);
+			Edge_Min_High, Edge_High_Len, Edge_Log_Pillar, G_WallCut_Fast, Cut_L, Cut_R);
 	for (int n = 0; n < Edge_Log_Count; n++) {
 		const EdgeLogRec *r = &Edge_Log[n];
 		float x = r->x - Edge_Log_X0;

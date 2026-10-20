@@ -1585,6 +1585,13 @@ function renderScut(view, b) {
   if (P.gyro_ofs != null) card.append(el("div", { class: "note", text: +P.gyro_sd >= 0
     ? `ジャイロのゼロ点 ${fmt(+P.gyro_ofs, 3)} dps(測ったときのばらつき ${fmt(+P.gyro_sd, 3)} dps、測ったが使わなかった ${P.gyro_rej || 0} 回)。`
     : `ジャイロのゼロ点はまだ測れていない(測ったが使わなかった ${P.gyro_rej || 0} 回。不感帯 0.5 dps のまま)。` }));
+  if (P.gyro_try) {
+    /* 2026-10-20: 測るたびの「ばらつき:平均」(使わなかったものも)と、読み直した回数 */
+    const tries = P.gyro_try.split(",").filter(Boolean).map((t) => t.split(":").map(Number));
+    card.append(el("div", { class: "note", text: `ジャイロを測った値(古い順、ばらつき 1.5 dps 以下・平均 5 dps 以下なら使う): ` +
+      tries.map(([sd, m]) => `ばらつき ${fmt(sd, 2)}・平均 ${fmt(m, 3)}${sd <= 1.5 && Math.abs(m) <= 5 ? "" : "(使わず)"}`).join("、") +
+      (P.gyro_torn != null ? `。上位と下位がずれかけて読み直した回数 ${P.gyro_torn}(電源を入れてから)` : "") + "。" }));
+  }
   const t = el("table");
   t.append(el("tr", null, ...["", "直進", "端あり", "dc の中央値", "ばらつき", "最小〜最大"].map((h, i) => el("th", { class: i ? "" : "l", text: h }))));
   const line = (name, rows) => {
