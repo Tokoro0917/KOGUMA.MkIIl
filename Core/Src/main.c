@@ -1571,10 +1571,12 @@ static void Maze_Search(int flags) {
 			 * SEARCH_REPEAT なら SEARCH_REPEAT_N 回。2回目からは、前の最短のゴールからスタートへ帰ってから走る。
 			 * 走行ログ・壁切れのログは、最後に走った最短のものが残る */
 			int runs = (flags & SEARCH_REPEAT) ? SEARCH_REPEAT_N : 1;
+			int done = 0;
 			for (int k = 0; k < runs; k++) {
 				if ((k > 0) && !Maze_Return_From_Goal(flags)) {
 					break;
 				}
+				done++;
 				HAL_Delay(2000);
 				Motor_Setup();
 				Motor_Stop();
@@ -1589,6 +1591,11 @@ static void Maze_Search(int flags) {
 				G_WallCut_Pillar = 0;
 				LED_Reset();
 				HAL_Delay(500);
+			}
+			/* SEARCH_REPEAT: 最後の最短のあともスタートへ帰り(自律賞は、全部の走行を終えて最後にスタートへ戻るまで
+			 * ノータッチが条件。NTF の評価基準)、帰れたら曲を流す */
+			if ((flags & SEARCH_REPEAT) && (done == runs) && Maze_Return_From_Goal(flags)) {
+				Buzzer_Finish();
 			}
 		}
 	} else {
