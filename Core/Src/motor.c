@@ -838,9 +838,16 @@ void Search_Cut_Print(void) {
 	}
 	printf("#END FWALL\r\n");
 
-	printf("\r\n#BEGIN SCUT n=%d lost=%d mode=%d ref=%.1f win=%.0f rec_win=%.0f max=%.0f gain=%.2f look=%.2f gyro_ofs=%.3f gyro_sd=%.3f gyro_rej=%d\r\n",
+	printf("\r\n#BEGIN SCUT n=%d lost=%d mode=%d ref=%.1f win=%.0f rec_win=%.0f max=%.0f gain=%.2f look=%.2f gyro_ofs=%.3f gyro_sd=%.3f gyro_rej=%d gyro_torn=%lu gyro_try=",
 			Scut_Count, Scut_Lost, Search_WallCut, Search_Edge_Ref, Search_Edge_Win, Search_Rec_Win, Search_Corr_Max,
-			Search_Corr_Gain, Search_Look_From, gyro_z_offset, G_Gyro_Offset_SD, G_Gyro_Cal_Reject);
+			Search_Corr_Gain, Search_Look_From, gyro_z_offset, G_Gyro_Offset_SD, G_Gyro_Cal_Reject,
+			(unsigned long) G_Gyro_Torn);
+	/* 最近測った順に「ばらつき:平均」(使わなかったものも) */
+	int k0 = (G_Gyro_Cal_Count > GYRO_CAL_TRY_N) ? G_Gyro_Cal_Count - GYRO_CAL_TRY_N : 0;
+	for (int k = k0; k < G_Gyro_Cal_Count; k++) {
+		printf("%s%.2f:%.3f", (k > k0) ? "," : "", G_Gyro_Cal_SD[k % GYRO_CAL_TRY_N], G_Gyro_Cal_Mean[k % GYRO_CAL_TRY_N]);
+	}
+	printf("\r\n");
 	printf("act,prev,x,y,dir,b,dc,corr,src\r\n");
 	for (int i = 0; i < Scut_Count; i++) {
 		const SearchCutRec *r = &Scut[i];

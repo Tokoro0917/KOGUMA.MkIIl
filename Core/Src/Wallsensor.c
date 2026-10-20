@@ -320,6 +320,7 @@ static int Edge_Log_Th = 0;	//閾値の判定(従来・中央値)も残すか
 static float Edge_Log_X0 = 0;
 static float Edge_Log_Border = -1;	//区画の境目(Edge_Log_Border + 180k)。-1 は最短走行のログ
 static float Edge_Log_Speed = -1;	//テストの速度。-1 は最短走行のログ
+static int Edge_Log_Pillar = 0;	//ログを始めたときの G_WallCut_Pillar(出力するときには0に戻っているため)
 static int Edge_Th_Arm[2][2];
 /* 壁切れのテスト(モード3 No.6〜9)のときだけ、横センサの値(3回の中央値)を1mmごとに残す。
  * ビューアで「センサ値と距離」のグラフにし、柱のところで値がどう下がるかを見る */
@@ -466,6 +467,7 @@ void Edge_Log_Start(int with_thresholds, float border, float speed) {
 	Edge_Log_On = 0;
 	Edge_Log_Border = border;
 	Edge_Log_Speed = speed;
+	Edge_Log_Pillar = G_WallCut_Pillar;
 	Edge_Log_Count = 0;
 	Edge_Log_X0 = G_Odo_X;
 	Edge_Log_Th = with_thresholds;
@@ -514,7 +516,7 @@ void Edge_Log_Print() {
 	/* tools/viewer.html で読む。border は区画の境目(first_border + 180k)、v はテストの速度(-1 は最短走行のログ) */
 	printf("\r\n#BEGIN EDGE border=%.0f v=%.0f off_r_wall=%.1f off_r_pillar=%.1f off_l_wall=%.1f off_l_pillar=%.1f tan=%.2f vk=%.4f min_high=%.0f high_len=%.0f pillar=%d fast=%d cut_l=%.0f cut_r=%.0f\r\n",
 			first_border, speed, Edge_Off[0][0], Edge_Off[0][1], Edge_Off[1][0], Edge_Off[1][1], Edge_Tan, Edge_V_K,
-			Edge_Min_High, Edge_High_Len, G_WallCut_Pillar, G_WallCut_Fast, Cut_L, Cut_R);
+			Edge_Min_High, Edge_High_Len, Edge_Log_Pillar, G_WallCut_Fast, Cut_L, Cut_R);
 	for (int n = 0; n < Edge_Log_Count; n++) {
 		const EdgeLogRec *r = &Edge_Log[n];
 		float x = r->x - Edge_Log_X0;

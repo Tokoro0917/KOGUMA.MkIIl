@@ -45,7 +45,7 @@
 直進ごとに1行。
 
 ```
-#BEGIN SCUT n=.. lost=.. mode=.. ref=.. win=.. rec_win=.. max=.. gain=.. look=.. gyro_ofs=.. gyro_sd=.. gyro_rej=..
+#BEGIN SCUT n=.. lost=.. mode=.. ref=.. win=.. rec_win=.. max=.. gain=.. look=.. gyro_ofs=.. gyro_sd=.. gyro_rej=.. gyro_torn=.. gyro_try=..
 act,prev,x,y,dir,b,dc,corr,src
 ```
 
@@ -61,7 +61,7 @@ act,prev,x,y,dir,b,dc,corr,src
 
 ビューアは、直前の行動ごとに dc の中央値・ばらつきを表にし、書き写す `Search_Edge_Ref` を出す。
 
-見出しの `gyro_ofs` / `gyro_sd` / `gyro_rej` は、ジャイロのゼロ点[dps]、それを測ったときのばらつき、測ったが使わなかった回数(2026-10-19 から。`docs/search_stability_research.md` の「段階2を入れた結果」)。同じ出力で `SCUT` の前に、前壁の読み分かれ(`FWALL`)も出る。
+見出しの `gyro_ofs` / `gyro_sd` / `gyro_rej` は、ジャイロのゼロ点[dps]、それを測ったときのばらつき、測ったが使わなかった回数(2026-10-19 から)。`gyro_try` は最近4回の測った値(古い順に「ばらつき:平均」、使わなかったものも)、`gyro_torn` はジャイロの上位と下位がずれかけて読み直した回数(電源を入れてから。2026-10-20 から。`docs/search_stability_research.md` の「段階2を入れた結果」)。同じ出力で `SCUT` の前に、前壁の読み分かれ(`FWALL`)も出る。
 
 ## 進め方
 
