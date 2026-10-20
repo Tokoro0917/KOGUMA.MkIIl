@@ -384,6 +384,13 @@ static int run_tokens(void) {
 	if (!in_goal(px / 2, py / 2))
 		return snprintf(g_msg, sizeof(g_msg),
 				"stops at cell (%d,%d), not goal", px / 2, py / 2), 0;
+	/* ロボットが経路から出す止まる区画と向き(Maze.c の Short_Pass_End_Cell。最短のあとゴールから帰るのに使う) */
+	int ex, ey, ed;
+	if (!Short_Pass_End_Cell(&ex, &ey, &ed) || ex != px / 2 || ey != py / 2
+			|| ed != ph / 2)
+		return snprintf(g_msg, sizeof(g_msg),
+				"Short_Pass_End_Cell gives (%d,%d) dir %d, run stops at (%d,%d) dir %d",
+				ex, ey, ed, px / 2, py / 2, ph / 2), 0;
 	return 1;
 }
 

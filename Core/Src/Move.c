@@ -1186,7 +1186,11 @@ void Short_NANAME_Move2700(int MAX, int AC) {
 
 }
 
+/* Short_Dijkstra_Move2000 がゴールまで走りきったら1(2026-10-20。モード0 No.11 が、最短のあとゴールから帰るかを決めるのに使う) */
+int G_Short_Reached = 0;
+
 void Short_Dijkstra_Move2000(int MAX, int AC) {
+	G_Short_Reached = 0;
 	Maze_Road();
 	Maze_Wall_fill();
 	G_Gool_X = MAZE_GOOL_X;
@@ -1252,6 +1256,7 @@ void Short_Dijkstra_Move2000(int MAX, int AC) {
 
 		Robot_adjustment();
 		LED_Goal();
+		G_Short_Reached = 1;
 	} else {
 		Failsafe_Flag_OFF();
 	}
