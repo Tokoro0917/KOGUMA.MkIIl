@@ -1645,6 +1645,108 @@ void Shortest_Pass_Compression() {
 	G_Short_Pass_CP[term_idx] = 0;
 }
 
+/* 最短走行の命令列(G_Short_Pass_NANAME)が、区画の境目で終わるか(2026-10-20)。
+ * 経路はゴールに入ったところで終わる。最後が直進(-1 を除いた最後の命令が正)なら、ゴールに入る境目で終わる。
+ * 最後がターン(大回り・斜め出)なら、そのターンがゴールの区画の中心で終わる。
+ * 最短走行の最後に止まるまでの距離を決めるのに使う(Move.c の Short_Goal_X)。test/test_shortpath.c で確かめている */
+int Short_Pass_Ends_At_Boundary(void) {
+	int16_t last = 0;
+	for (int k = 0; k < MAX_STEP && G_Short_Pass_NANAME[k] != 0; k++) {
+		if (G_Short_Pass_NANAME[k] != -1) {
+			last = G_Short_Pass_NANAME[k];
+		}
+	}
+	return last > 0;
+}
+
+/* 最短走行で止まる区画と向き(2026-10-20)。命令列(G_Short_Pass_NANAME)を半区画の格子でたどり
+ * (test/test_shortpath.c の run_tokens と同じ動き。スタートは (0,0) の中心で北向き)、最後に止まるまでの距離
+ * (境目で終わるなら1.5区画、区画の中心で終わるなら1区画。Move.c の Short_Goal_X)を足した位置を出す。
+ * x, y: 区画、dir: 止まったときの向き(0 北、1 東、2 南、3 西。最後の Robot_adjustment で向きを変える前)。
+ * 戻り値: 1 求めた、0 命令列が読めない(斜めで終わる、知らない命令など) */
+int Short_Pass_End_Cell(int *x, int *y, int *dir) {
+	static const int8_t hx[8] = { 0, 1, 1, 1, 0, -1, -1, -1 };
+	static const int8_t hy[8] = { 1, 1, 0, -1, -1, -1, 0, 1 };
+	int px = 1, py = 1, ph = 0;	//半区画の格子(区画(x,y)の中心が(2x+1, 2y+1))と、45°ごとの向き(0 北、時計回り)
+/* 今の向きで、前に f、左に s 半区画動く */
+#define END_GO(f, s) do { px += (f) * hx[ph] + (s) * hx[(ph + 6) % 8]; \
+		py += (f) * hy[ph] + (s) * hy[(ph + 6) % 8]; } while (0)
+	for (int k = 0; k < MAX_STEP && G_Short_Pass_NANAME[k] != 0; k++) {
+		int t = G_Short_Pass_NANAME[k];
+		int diag = ph & 1;
+		int sgn;
+		if (t == -1) {
+			continue;
+		}
+		if (t > 0) {	//直進(半区画 × t)
+			if (diag) return 0;
+			END_GO(t, 0);
+		} else if (t <= -50 && t % 50 == 0) {	//斜めの直進
+			if (!diag) return 0;
+			px += (-t / 50) * hx[ph];
+			py += (-t / 50) * hy[ph];
+		} else if (t == -4 || t == -6) {	//大回り90(-4 左)
+			if (diag) return 0;
+			sgn = (t == -4) ? 1 : -1;
+			END_GO(2, 2 * sgn);
+			ph = (ph + 8 - 2 * sgn) % 8;
+		} else if (t == -5 || t == -7) {	//大回り180
+			if (diag) return 0;
+			sgn = (t == -5) ? 1 : -1;
+			END_GO(0, 2 * sgn);
+			ph = (ph + 4) % 8;
+		} else if (t == -51 || t == -53) {	//斜め入り45
+			if (diag) return 0;
+			sgn = (t == -51) ? 1 : -1;
+			END_GO(2, sgn);
+			ph = (ph + 8 - sgn) % 8;
+		} else if (t == -52 || t == -54) {	//斜め入り135
+			if (diag) return 0;
+			sgn = (t == -52) ? 1 : -1;
+			END_GO(1, 2 * sgn);
+			ph = (ph + 8 - 3 * sgn) % 8;
+		} else if (t == -61 || t == -63) {	//斜め出45
+			if (!diag) return 0;
+			sgn = (t == -61) ? 1 : -1;
+			px += hx[ph];
+			py += hy[ph];
+			ph = (ph + 8 - sgn) % 8;
+			END_GO(1, 0);
+		} else if (t == -62 || t == -64) {	//斜め出135
+			if (!diag) return 0;
+			sgn = (t == -62) ? 1 : -1;
+			px += hx[ph];
+			py += hy[ph];
+			ph = (ph + 8 - sgn) % 8;
+			END_GO(1, sgn);
+			ph = (ph + 8 - 2 * sgn) % 8;
+			END_GO(1, 0);
+		} else if (t == -65 || t == -66) {	//V90
+			if (!diag) return 0;
+			sgn = (t == -65) ? 1 : -1;
+			px += hx[ph];
+			py += hy[ph];
+			ph = (ph + 8 - 2 * sgn) % 8;
+			px += hx[ph];
+			py += hy[ph];
+		} else {
+			return 0;
+		}
+	}
+	if (ph & 1) {
+		return 0;
+	}
+	END_GO(((px & 1) && (py & 1)) ? 2 : 3, 0);	//最後に止まるまで(区画の中心からなら1区画、境目からなら1.5区画)
+#undef END_GO
+	if (!((px & 1) && (py & 1)) || px < 0 || py < 0) {
+		return 0;
+	}
+	*x = px / 2;
+	*y = py / 2;
+	*dir = ph / 2;
+	return 1;
+}
+
 void Shortest_Pass_Compression_NANAME() {
 	for (i = 0; G_Short_Pass_CP[i] != 0; i++) {
 		G_Short_Pass_NANAME[i] = G_Short_Pass_CP[i];

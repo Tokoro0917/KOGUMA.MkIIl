@@ -59,4 +59,4 @@ gcc -std=c11 -Wall -I Core/Inc -o test_shortpath test/test_shortpath.c Core/Src/
 ./test_shortpath --dump log.txt
 ```
 
-PCで同じ命令列が作られるか(`robot output: same as PC`)と、その命令列が壁に突っ込まずゴールに止まるか(`path: OK`)を表示する。スタートからゴールへ行けない場合は`no path`になる。
+PCで同じ命令列が作られるか(`robot output: same as PC`)と、その命令列が壁に突っ込まずゴールに止まるか(`path: OK`)を表示する。最後に止まるところは、ゴールに入った区画の1つ奥の区画の中心(命令列が境目で終わるときは1.5区画、区画の中心で終わるときは1区画進む。`Move.c` の `Short_Goal_X`、2026-10-20)。スタートからゴールへ行けない場合は`no path`になる。

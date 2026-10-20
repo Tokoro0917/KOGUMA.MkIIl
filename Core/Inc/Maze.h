@@ -102,6 +102,8 @@ void Maze_Wall_fill();
 void Maze_Shortest_Calculation();
 void Shortest_Pass_Compression();
 void Shortest_Pass_Compression_NANAME();
+int Short_Pass_Ends_At_Boundary(void);	//命令列が区画の境目で終わるか(最後が直進なら1、ターンなら区画の中心で終わるので0)
+int Short_Pass_End_Cell(int *x, int *y, int *dir);	//最短走行で止まる区画と向き(0 北、1 東、2 南、3 西)。1 求めた
 void Pass_zero_act();
 
 

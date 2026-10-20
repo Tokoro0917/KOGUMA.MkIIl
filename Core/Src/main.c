@@ -59,6 +59,8 @@
 #define SEARCH_KNOWN		0x08	//既知区間加速(探索済みの区間はまとめて速く走る)
 #define SEARCH_DIJKSTRA		0x10	//ゴール後にダイクストラ経路上の未確認の壁を見に行く
 #define SEARCH_SHORTEST		0x20	//スタートに戻ったあと最短走行(モード1 No.5と同じ)
+#define SEARCH_REPEAT		0x40	//最短走行を SEARCH_REPEAT_N 回(SEARCH_SHORTEST と一緒に。2回目からは、前の最短のゴールからスタートへ帰ってから走る)
+#define SEARCH_REPEAT_N		4
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -164,7 +166,7 @@ int main(void) {
 		Motor_Setup_Voltage();
 		if (Encorder_mode_out() == 0) {		//大会用
 			/* 探索の組み合わせは Maze_Search() の引数で指定する(下の SEARCH_*)。
-			 * No.0 と No.11〜15 は何もしない */
+			 * No.0 と No.12〜15 は何もしない */
 			int n = Encorder_number_out();
 			int flags = -1;
 			if (n == 1) {			//スラローム探索 往復
@@ -188,6 +190,9 @@ int main(void) {
 			} else if (n == 10) {	//ダイクストラ誘導+既知区間加速 → 最短
 				flags = SEARCH_SUCTION | SEARCH_DIJKSTRA | SEARCH_KNOWN
 						| SEARCH_SHORTEST;
+			} else if (n == 11) {	//No.10 の最短を4回(最短のあとはゴールから、帰りもダイクストラ誘導で探索しながらスタートへ帰る)
+				flags = SEARCH_SUCTION | SEARCH_DIJKSTRA | SEARCH_KNOWN
+						| SEARCH_SHORTEST | SEARCH_REPEAT;
 			}
 			if ((flags >= 0) && (Sensor_Enter() == 1)) {
 				Maze_Search(flags);
@@ -1386,7 +1391,7 @@ static void Maze_Unknown_Walls_Plan(void) {
  * 壁がなかった(通れた)ときは、止まらずに同じ経路データのまま次の未確認の壁を探す
  * (Maze_Unknown_Wall_Scan()は壁の確認状況をその都度ライブ判定する。
  *  ダイクストラは計算し直さず、歩数マップだけ走りながら作り直す) */
-static void Maze_Search_Unknown_Walls(int flags) {
+static void Maze_Search_Unknown_Walls(int flags, int from_stop) {
 	int suction = (flags & SEARCH_SUCTION) ? 1 : 0;
 
 	if (Failsafe_Flag() == 1) {
@@ -1394,7 +1399,15 @@ static void Maze_Search_Unknown_Walls(int flags) {
 	}
 	s_unknown_done = 0;
 	G_Stop_Hook = Maze_Unknown_Walls_Plan;
-	Robot_Maze_Stop_And_Go(suction);
+	if (from_stop) {
+		/* 止まっている(最短走行のあと、ゴールの区画の中心。Maze_Return_From_Goal)。ここで計算してから、
+		 * 前(来た区画)へまっすぐ出る。止まった区画のほかの壁は見ていないことがあるので、ほかの向きへは出ない */
+		Maze_Unknown_Walls_Plan();
+		Motor_trapezoid_PID(0, suction ? 1000 : 500, suction ? 1000 : 500,
+				suction ? 10000 : 5000, 90);
+	} else {
+		Robot_Maze_Stop_And_Go(suction);
+	}
 	G_MAZE_Explored[G_Robot_MAZE_X][G_Robot_MAZE_Y] = 1;
 
 	while ((Failsafe_Flag() == 0) && (s_unknown_done == 0)) {
@@ -1438,10 +1451,53 @@ static void Maze_Search_Unknown_Walls(int flags) {
 	}
 }
 
+/* 最短走行のあと、ゴールで止まったところからスタートへ帰る(2026-10-20、モード0 No.11)。
+ * 止まった区画と向きは命令列から求める(Maze.c の Short_Pass_End_Cell。ゴールに入った区画の1つ奥の区画の中心)。
+ * 最短走行の最後の Robot_adjustment で180°向きを変えているので、来た区画のほうを向いている。
+ * 帰りもダイクストラ誘導の未知壁探索(経路上に見ていない壁があれば見に行き、なければそのまま帰る)。
+ * 戻り値: 1 スタートに帰った、0 帰れなかった(最短がゴールまで走れなかった、フェイルセーフなど) */
+static int Maze_Return_From_Goal(int flags) {
+	int x, y, dir;
+	if (!G_Short_Reached || !Short_Pass_End_Cell(&x, &y, &dir)) {
+		return 0;
+	}
+	Maze_Road();	//最短走行が見ていない壁を壁で埋めた(Maze_Wall_fill)ので、保存した迷路に戻す
+	G_Robot_MAZE_X = x;
+	G_Robot_MAZE_Y = y;
+	G_Robot_Direction = (dir + 2) % 4;
+	G_Robot_Lastaction = 5;
+	G_MAZE_Explored[x][y] = 1;
+
+	Motor_Setup();	//吸引を回す前にジャイロのゼロ点を測る
+	Motor_Stop();
+	if (flags & SEARCH_SUCTION) {
+		Suction_Start(35);
+	}
+	Maze_Search_Unknown_Walls(flags, 1);
+	if (Failsafe_Flag() == 0) {
+		G_Gool_X = 0;
+		G_Gool_Y = 0;
+		G_MAZE_Explored[G_Gool_X][G_Gool_Y] = 0;
+		Maze_Step_Calculate();
+		Maze_Search_Until_Goal(flags);
+	}
+	Motor_Stop();
+	if (flags & SEARCH_SUCTION) {
+		Suction_Stop();
+	}
+	if (Failsafe_Flag() == 1) {
+		Failsafe_Flag_OFF();
+		return 0;
+	}
+	Maze_Save();
+	return 1;
+}
+
 /* モード0の探索。往路(スタート→ゴール)のあと、flags に応じて
  * 片道ならゴールで止まり、そうでなければ(全面探索・未知壁探索をしながら)
  * スタートへ戻る。区間の終わりごとに Maze_Save() する。
- * SEARCH_SHORTEST なら、スタートに戻ったあと2秒待って最短走行する */
+ * SEARCH_SHORTEST なら、スタートに戻ったあと2秒待って最短走行する
+ * (SEARCH_REPEAT なら SEARCH_REPEAT_N 回。2回目からは前の最短のゴールから帰ってから。Maze_Return_From_Goal) */
 static void Maze_Search(int flags) {
 	int v = (flags & (SEARCH_SUCTION | SEARCH_KNOWN)) ? 1000 : 500;
 
@@ -1481,7 +1537,7 @@ static void Maze_Search(int flags) {
 		}
 	} else {
 		if (flags & SEARCH_DIJKSTRA) {
-			Maze_Search_Unknown_Walls(flags);
+			Maze_Search_Unknown_Walls(flags, 0);
 		}
 		if (flags & SEARCH_ALL) {
 			Maze_Unkown_ALL_ModeSet();
@@ -1504,21 +1560,29 @@ static void Maze_Search(int flags) {
 	if (Failsafe_Flag() == 0) {
 		Maze_Save();
 		if ((flags & SEARCH_SHORTEST) && !(flags & SEARCH_ONEWAY)) {
-			//最短走行(モード1 No.5と同じ: ダイクストラ、コーナー2000、直線6000mm/s、加速20000)
-			HAL_Delay(2000);
-			Motor_Setup();
-			Motor_Stop();
-			G_WallCut_Pillar = Short_WallCut_Pillar;
-			Edge_Log_Start(0, -1, -1);
-			G_Log_Div = 4;		//走行ログは4msおき(8秒)
-			LOG_get_start();
-			Short_Dijkstra_Move2000(6000, 20000);
-			LOG_get_end();
-			G_Log_Div = 1;
-			Edge_Log_Stop();
-			G_WallCut_Pillar = 0;
-			LED_Reset();
-			HAL_Delay(500);
+			/* 最短走行(モード1 No.5と同じ: ダイクストラ、コーナー2000、直線6000mm/s、加速20000)。
+			 * SEARCH_REPEAT なら SEARCH_REPEAT_N 回。2回目からは、前の最短のゴールからスタートへ帰ってから走る。
+			 * 走行ログ・壁切れのログは、最後に走った最短のものが残る */
+			int runs = (flags & SEARCH_REPEAT) ? SEARCH_REPEAT_N : 1;
+			for (int k = 0; k < runs; k++) {
+				if ((k > 0) && !Maze_Return_From_Goal(flags)) {
+					break;
+				}
+				HAL_Delay(2000);
+				Motor_Setup();
+				Motor_Stop();
+				G_WallCut_Pillar = Short_WallCut_Pillar;
+				Edge_Log_Start(0, -1, -1);
+				G_Log_Div = 4;		//走行ログは4msおき(8秒)
+				LOG_get_start();
+				Short_Dijkstra_Move2000(6000, 20000);
+				LOG_get_end();
+				G_Log_Div = 1;
+				Edge_Log_Stop();
+				G_WallCut_Pillar = 0;
+				LED_Reset();
+				HAL_Delay(500);
+			}
 		}
 	} else {
 		Failsafe_Flag_OFF();

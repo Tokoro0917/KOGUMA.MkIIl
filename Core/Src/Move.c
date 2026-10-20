@@ -633,6 +633,13 @@ static float Short_Start(float V) {
 	return Short_First_Turn(V, f);
 }
 
+/* 最短走行の最後に止まるまでの距離(2026-10-20)。ゴールの奥の区画の中心で止まる。
+ * 命令列が境目で終わるとき(最後が直進)は 1.5区画、区画の中心で終わるとき(最後がターン)は 1区画。
+ * それまでは、どちらも1区画(180mm)だったので、最後が直進のときはゴールの区画の境目で止まっていた */
+static float Short_Goal_X(void) {
+	return Short_Pass_Ends_At_Boundary() ? 270.0f : 180.0f;
+}
+
 void Short_NANAME_Move1000(int MAX, int AC) {
 	Maze_Road();
 	Maze_Wall_fill();
@@ -749,7 +756,7 @@ void Short_NANAME_Move1000(int MAX, int AC) {
 
 	}
 	if (Failsafe_Flag() == 0) {
-		Motor_trapezoid_PID(1000, 1000, 0, 10000, 180);
+		Motor_trapezoid_PID(1000, 1000, 0, 10000, Short_Goal_X());
 		Motor_Stop();
 		Suction_Stop();
 
@@ -905,7 +912,7 @@ void Short_NANAME_Move2000(int MAX, int AC) {
 
 	}
 	if (Failsafe_Flag() == 0) {
-		Motor_trapezoid_PID(2000, 2000, 0, 15000, 180);
+		Motor_trapezoid_PID(2000, 2000, 0, 15000, Short_Goal_X());
 		Motor_Stop();
 		Suction_Stop();
 
@@ -1037,7 +1044,7 @@ void Short_NANAME_Move2400(int MAX, int AC) {
 
 	}
 	if (Failsafe_Flag() == 0) {
-		Motor_trapezoid_PID(2400, 2400, 0, 30000, 180);
+		Motor_trapezoid_PID(2400, 2400, 0, 30000, Short_Goal_X());
 		Motor_Stop();
 		Suction_Stop();
 
@@ -1167,7 +1174,7 @@ void Short_NANAME_Move2700(int MAX, int AC) {
 
 	}
 	if (Failsafe_Flag() == 0) {
-		Motor_trapezoid_PID(2700, 2700, 0, 33000, 180);
+		Motor_trapezoid_PID(2700, 2700, 0, 33000, Short_Goal_X());
 		Motor_Stop();
 		Suction_Stop();
 
@@ -1179,7 +1186,11 @@ void Short_NANAME_Move2700(int MAX, int AC) {
 
 }
 
+/* Short_Dijkstra_Move2000 がゴールまで走りきったら1(2026-10-20。モード0 No.11 が、最短のあとゴールから帰るかを決めるのに使う) */
+int G_Short_Reached = 0;
+
 void Short_Dijkstra_Move2000(int MAX, int AC) {
+	G_Short_Reached = 0;
 	Maze_Road();
 	Maze_Wall_fill();
 	G_Gool_X = MAZE_GOOL_X;
@@ -1239,12 +1250,13 @@ void Short_Dijkstra_Move2000(int MAX, int AC) {
 
 	}
 	if (Failsafe_Flag() == 0) {
-		Motor_trapezoid_PID(2000, 2000, 0, 20000, 180);
+		Motor_trapezoid_PID(2000, 2000, 0, 20000, Short_Goal_X());
 		Motor_Stop();
 		Suction_Stop();
 
 		Robot_adjustment();
 		LED_Goal();
+		G_Short_Reached = 1;
 	} else {
 		Failsafe_Flag_OFF();
 	}
@@ -1489,7 +1501,7 @@ void Short_NANAME_MoveTurnV(int MAX, int AC) {
 	}
 	if (Failsafe_Flag() == 0) {
 		float vg = plan.v_goal_in;
-		Motor_trapezoid_PID(vg, vg, 0, 30000, 180);
+		Motor_trapezoid_PID(vg, vg, 0, 30000, Short_Goal_X());
 		Motor_Stop();
 		Suction_Stop();
 
