@@ -1452,15 +1452,16 @@ static void Maze_Search_Unknown_Walls(int flags, int from_stop) {
 }
 
 /* 最短走行のあと、ゴールで止まったところからスタートへ帰る(2026-10-20、モード0 No.11)。
- * 止まった区画と向きは命令列から求める(Maze.c の Short_Pass_End_Cell。ゴールに入った区画の1つ奥の区画の中心)。
+ * 止まった区画と向きは、最短走行が走る前に命令列から求めた値(Move.c の G_Short_End_*、Maze.c の Short_Pass_End_Cell。
+ * ゴールに入った区画の1つ奥の区画の中心)。命令列は走っているあいだに書き換わるので、走ったあとに求めてはいけない。
  * 最短走行の最後の Robot_adjustment で180°向きを変えているので、来た区画のほうを向いている。
  * 帰りもダイクストラ誘導の未知壁探索(経路上に見ていない壁があれば見に行き、なければそのまま帰る)。
  * 戻り値: 1 スタートに帰った、0 帰れなかった(最短がゴールまで走れなかった、フェイルセーフなど) */
 static int Maze_Return_From_Goal(int flags) {
-	int x, y, dir;
-	if (!G_Short_Reached || !Short_Pass_End_Cell(&x, &y, &dir)) {
+	if (!G_Short_Reached || !G_Short_End_OK) {
 		return 0;
 	}
+	int x = G_Short_End_X, y = G_Short_End_Y, dir = G_Short_End_Dir;
 	Maze_Road();	//最短走行が見ていない壁を壁で埋めた(Maze_Wall_fill)ので、保存した迷路に戻す
 	G_Robot_MAZE_X = x;
 	G_Robot_MAZE_Y = y;
@@ -1470,6 +1471,12 @@ static int Maze_Return_From_Goal(int flags) {
 
 	Motor_Setup();	//吸引を回す前にジャイロのゼロ点を測る
 	Motor_Stop();
+	/* 前(来た区画)はいつも開いているはず。前センサが壁を見ていたら、向きか位置が思っているのと違うので帰らない
+	 * (区画の中心で前壁があれば約530。Move.c の ALIGN_FRONT_MIN と同じ200で見る) */
+	if (Wall_Flont_Av() > 200) {
+		LED_Path_Error();
+		return 0;
+	}
 	if (flags & SEARCH_SUCTION) {
 		Suction_Start(35);
 	}

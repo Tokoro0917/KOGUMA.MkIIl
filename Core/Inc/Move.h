@@ -32,6 +32,7 @@ void Short_NANAME_MoveTurnV(int, int);
 
 void Short_Dijkstra_Move2000(int, int);
 extern int G_Short_Reached;	//Short_Dijkstra_Move2000 がゴールまで走りきったら1
+extern int G_Short_End_OK, G_Short_End_X, G_Short_End_Y, G_Short_End_Dir;	//最短走行で止まる区画と向き(走る前に求める)
 void Short_Dijkstra_Move2400(int, int);
 void Short_Dijkstra_MoveTurnV(int, int);
 void TurnV_Test(int kind);	/* モード10 No.1〜7: ターン単体を TurnV_Table の速度で */
