@@ -245,6 +245,27 @@ void Buzzer_Enter() {
 	HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_4);
 }
 
+/* 全部走り終えてスタートに戻ったときの曲(2026-10-20、モード0 No.11)。
+ * ブザーは TIM4(1MHz)で、周波数 f のとき AUTORELOAD = 1000000 / f - 1。音量はほかの音と同じ COMPARE 20 */
+void Buzzer_Finish() {
+	static const uint16_t freq[] = { 392, 523, 659, 784, 0, 659, 784, 0, 1047 };	//ソ ド ミ ソ - ミ ソ - ド
+	static const uint16_t ms[] = { 150, 150, 150, 300, 80, 150, 450, 80, 700 };
+	for (unsigned i = 0; i < sizeof(freq) / sizeof(freq[0]); i++) {
+		if (freq[i] == 0) {
+			HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_4);
+			LED_Reset();
+		} else {
+			HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4);
+			__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_4, 20);
+			__HAL_TIM_SET_AUTORELOAD(&htim4, 1000000 / freq[i] - 1);
+			LED_ALL_ON();
+		}
+		HAL_Delay(ms[i]);
+	}
+	HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_4);
+	LED_Reset();
+}
+
 void Buzzer_Start() {
 	HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4);
 	__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_4, 20);

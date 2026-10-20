@@ -31,5 +31,6 @@ void Buzzer_Mode_Change() ;
 
 void Buzzer_Enter();
 void Buzzer_Start();
+void Buzzer_Finish();	//全部走り終えてスタートに戻ったときの曲
 
 #endif /* INC_UI_H_ */
