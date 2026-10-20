@@ -1,0 +1,21 @@
+#BEGIN EDGE border=-1 v=-1 off_r_wall=99.0 off_r_pillar=94.5 off_l_wall=87.0 off_l_pillar=96.0 tan=0.58 vk=0.0060 min_high=90 high_len=30 pillar=0 fast=0 cut_l=80 cut_r=80
+fall,R,wall,185.9,298.1,204
+st,R,188.7,10
+st_cut,1,209.1,298.1
+end,-,443.7,75
+fall,L,wall,513.8,614.2,243
+end_cut,0,519.2
+st,L,519.2,5
+st_cut,2,523.3,614.2
+fall,R,pillar,711.3,817.6,387
+fall,L,wall,838.2,913.9,1061
+end,-,1114.6,80
+end_cut,0,1195.7
+fall,R,wall,1361.3,1477.8,180
+st,R,1376.1,5
+st_cut,1,1386.1,1477.8
+end,-,1766.8,73
+end_cut,0,1840.3
+fall,R,wall,2359.8,2477.4,197
+fall,R,wall,2544.6,2663.3,148
+#END EDGE
