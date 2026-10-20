@@ -366,20 +366,25 @@ static int run_tokens(void) {
 			return 0;
 		}
 	}
-	/* 最後は Motor_trapezoid_PID(.., 180) で1区画直進して止まる */
+	/* 最後は Motor_trapezoid_PID(.., Short_Goal_X()) で止まる(Move.c、2026-10-20)。
+	 * 命令列が境目で終わる(Short_Pass_Ends_At_Boundary)なら 1.5区画、区画の中心で終わるなら 1区画進み、
+	 * どちらもゴールの区画の中心で止まる */
 	if (ph & 1)
 		return snprintf(g_msg, sizeof(g_msg), "ends diagonal"), 0;
-	for (int k = 0; k < 2; k++) {
+	int at_center = (px & 1) && (py & 1);
+	if (at_center == Short_Pass_Ends_At_Boundary())
+		return snprintf(g_msg, sizeof(g_msg),
+				"ends at (%d,%d) but Short_Pass_Ends_At_Boundary()=%d", px, py,
+				Short_Pass_Ends_At_Boundary()), 0;
+	for (int k = 0; k < (at_center ? 2 : 3); k++)
 		if (!go_local(1, 0))
 			return 0;
-		if ((px & 1) && (py & 1)) {
-			if (!in_goal(px / 2, py / 2))
-				return snprintf(g_msg, sizeof(g_msg),
-						"stops at cell (%d,%d), not goal", px / 2, py / 2), 0;
-			return 1;
-		}
-	}
-	return snprintf(g_msg, sizeof(g_msg), "no cell center at end"), 0;
+	if (!((px & 1) && (py & 1)))
+		return snprintf(g_msg, sizeof(g_msg), "stops at (%d,%d), not a cell center", px, py), 0;
+	if (!in_goal(px / 2, py / 2))
+		return snprintf(g_msg, sizeof(g_msg),
+				"stops at cell (%d,%d), not goal", px / 2, py / 2), 0;
+	return 1;
 }
 
 /* 圧縮前の G_Short_Pass(直進と小回り-2/-3だけ)をそのまま走らせる。

@@ -1645,6 +1645,20 @@ void Shortest_Pass_Compression() {
 	G_Short_Pass_CP[term_idx] = 0;
 }
 
+/* 最短走行の命令列(G_Short_Pass_NANAME)が、区画の境目で終わるか(2026-10-20)。
+ * 経路はゴールに入ったところで終わる。最後が直進(-1 を除いた最後の命令が正)なら、ゴールに入る境目で終わる。
+ * 最後がターン(大回り・斜め出)なら、そのターンがゴールの区画の中心で終わる。
+ * 最短走行の最後に止まるまでの距離を決めるのに使う(Move.c の Short_Goal_X)。test/test_shortpath.c で確かめている */
+int Short_Pass_Ends_At_Boundary(void) {
+	int16_t last = 0;
+	for (int k = 0; k < MAX_STEP && G_Short_Pass_NANAME[k] != 0; k++) {
+		if (G_Short_Pass_NANAME[k] != -1) {
+			last = G_Short_Pass_NANAME[k];
+		}
+	}
+	return last > 0;
+}
+
 void Shortest_Pass_Compression_NANAME() {
 	for (i = 0; G_Short_Pass_CP[i] != 0; i++) {
 		G_Short_Pass_NANAME[i] = G_Short_Pass_CP[i];
