@@ -227,6 +227,7 @@ RAMに残っているデータを全部、迷路 → 壁切れのログ → 走�
 | `Pillar_X_Scale` / `Pillar_X_Offs` / `Pillar_Wait_Ofs` | `motor.c` | 0.5 / −5 / 25 | 柱のとき、前距離の X を X × Scale + Offs に読み替える(X は従来に合わせて調整した値のため)。境目が見つからないときは 区画中心 + 読み替えた X + 25 まで待つ |
 | `Search_WallCut` / `Search_Edge_Ref` / `Search_Edge_Win` / `Search_Corr_Max` | `motor.c` | 1 / 0 / 20 / 10 | 探索の1区画の直進の壁切れ(`docs/search_wallcut_design.md`)。0 使わない、**1 記録だけ(走りは今までどおり)**、2 直す。2 のときは、区画の4割を過ぎたら次の境目の柱の端を探し、dc(推定 − 予想)と基準のずれ `Search_Edge_Ref`(記録で測った dc の中央値)の差を ± 10mm まで直す |
 | `Front_Wall_Map` / `Front_Wall_Min_Ratio` | `motor.c` / `Wallsensor.c` | 1 / 0.33 | 迷路に書く前壁。0 今までどおり(左右とも閾値を超えたら壁)、**1 記録だけ**(左右が分かれたときを `FWALL` に残す)、2 左右の平均でも壁ありにする(低いほうも閾値 × 0.33 を超えたとき) |
+| `Alignment_TIME` / `Align_Min_Time` / `Align_Still_Time` / `Align_Still_V` | `motor.c` | 0.5 / 0.10 / 0.05 / 10 | 止まったときの前壁合わせ。左右の車輪が `Align_Still_V`[mm/s]未満の状態が `Align_Still_Time`[s]続いたら終わる(`Align_Min_Time` より早くは終わらない、上限 `Alignment_TIME`) |
 | `Gyro_Deadband` | `lsm6dsr.c` | 0.15 | ジャイロのゼロ点を測れたあとの不感帯[dps](まだなら 0.5)。ゼロ点は `Motor_Setup` のたびに 0.3 秒止まって測る(`Gyro_Calibrate`。ばらつき 1.5 dps 超・平均 5 dps 超なら前の値のまま。吸引を回すとばらつき 4〜5 dps なので、吸引の前に測った値を使う) |
 | `Pillar_Short_X` | `motor.c` | 5 | 柱のとき、X がこれより小さい前距離(2400の斜め入り)は曲がる側の境目だけを使い、見つからなければ 区画中心 + X(従来と同じ)で曲がる |
 | `ac_nn` | `main.c`(モード1の番号ごと) | 上の表 | 最短走行の斜めの直線の加速度(0なら直線の加速度-5000) |

@@ -93,7 +93,16 @@ int Fun_Flag = 0;
 int Sula_Flag = 0;
 static int Suction_Duty = 0;	//今の吸引のduty(Suction_Start/Suction_changeで指定した値)
 
-float Alignment_TIME = 0.5;
+float Alignment_TIME = 0.5;	//前壁合わせの上限[s]
+/* 前壁合わせを早く終える(2026-10-20)。前壁合わせは比例制御だけなので、目標の近くでは出力が小さく摩擦で止まり、
+ * 止まったあとは待っても良くならない。それでも毎回0.5秒続けていた。車輪が止まった状態が Align_Still_Time 続いたら終わる
+ * (はじめは止まっているので Align_Min_Time までは終わらない)。ジャイロは吸引の振動で揺れるので、車輪の速度で見る */
+float Align_Min_Time = 0.10f;	//これより早くは終わらない[s]
+float Align_Still_Time = 0.05f;	//止まっている状態がこれだけ続いたら終わる[s]
+float Align_Still_V = 10.0f;	//左右の車輪の速さがこれより小さければ止まっている[mm/s]
+int G_Align_Count = 0;	//前壁合わせの回数(電源を入れてから)
+int G_Align_Timeout = 0;	//そのうち上限まで続いた回数
+float G_Align_Time_Sum = 0;	//かかった時間の合計[s]
 
 
 float Cut_R = 80;
@@ -838,10 +847,11 @@ void Search_Cut_Print(void) {
 	}
 	printf("#END FWALL\r\n");
 
-	printf("\r\n#BEGIN SCUT n=%d lost=%d mode=%d ref=%.1f win=%.0f rec_win=%.0f max=%.0f gain=%.2f look=%.2f gyro_ofs=%.3f gyro_sd=%.3f gyro_rej=%d gyro_torn=%lu gyro_try=",
+	printf("\r\n#BEGIN SCUT n=%d lost=%d mode=%d ref=%.1f win=%.0f rec_win=%.0f max=%.0f gain=%.2f look=%.2f align_n=%d align_ms=%.0f align_to=%d gyro_ofs=%.3f gyro_sd=%.3f gyro_rej=%d gyro_torn=%lu gyro_try=",
 			Scut_Count, Scut_Lost, Search_WallCut, Search_Edge_Ref, Search_Edge_Win, Search_Rec_Win, Search_Corr_Max,
-			Search_Corr_Gain, Search_Look_From, gyro_z_offset, G_Gyro_Offset_SD, G_Gyro_Cal_Reject,
-			(unsigned long) G_Gyro_Torn);
+			Search_Corr_Gain, Search_Look_From, G_Align_Count,
+			G_Align_Count ? 1000.0f * G_Align_Time_Sum / G_Align_Count : 0.0f, G_Align_Timeout, gyro_z_offset,
+			G_Gyro_Offset_SD, G_Gyro_Cal_Reject, (unsigned long) G_Gyro_Torn);
 	/* 最近測った順に「ばらつき:平均」(使わなかったものも) */
 	int k0 = (G_Gyro_Cal_Count > GYRO_CAL_TRY_N) ? G_Gyro_Cal_Count - GYRO_CAL_TRY_N : 0;
 	for (int k = k0; k < G_Gyro_Cal_Count; k++) {
@@ -1709,11 +1719,21 @@ void Motor_Robot_Alignment() {
 	Gyro_Sigma_error = 0;
 	Enc_Sigma_error = 0;
 	G_Motor_Count = 0;
+	float still_from = 0;	//止まり始めた時刻
 	while (1) {
-		if (G_Motor_Count > Alignment_TIME) {
+		float t = G_Motor_Count;
+		if (t > Alignment_TIME) {
+			G_Align_Timeout++;
+			break;
+		}
+		if (fabsf(G_Tire_Speed_L) >= Align_Still_V || fabsf(G_Tire_Speed_R) >= Align_Still_V) {
+			still_from = t;
+		} else if (t >= Align_Min_Time && t - still_from >= Align_Still_Time) {
 			break;
 		}
 	}
+	G_Align_Count++;
+	G_Align_Time_Sum += G_Motor_Count;
 	Enc_Sigma_error = 0;
 	Gyro_Sigma_error = 0;
 	PID_Mode = 0;
