@@ -59,7 +59,7 @@ float Ksi_Fun = 0.0015; //0.005
 float Ksd_Fun = 0.1; //0.01
 
 float Ksp_AT = 0.3; //0.3
-float Ksi_AT = 0.003; ////
+float Ksi_AT = 0.0045; //2026-10-21: 0.003 から 1.5倍。ターン後の直線で向きのずれ(約0.5°)を戻しきれなかった
 float Ksd_AT = 0.01;
 
 float Ktp = 0.7; //
