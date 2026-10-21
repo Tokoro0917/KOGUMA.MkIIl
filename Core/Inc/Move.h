@@ -77,6 +77,11 @@ void Turn2000_Test(int kind);	/* モード6 No.1〜7 */
 extern Turn2000_Param G_Turn2400[T2000_NUM];
 void Turn2400_Run(int kind, int dir);
 void Turn2400_Test(int kind);	/* モード7 No.1〜7 */
+/* 1000のターンの値(Move.c の G_Turn1000、2026-10-21)。吸引探索の既知区間の斜め(モード0 No.12)・モード5で共通。形と並びは G_Turn2000 と同じ */
+extern Turn2000_Param G_Turn1000[T2000_NUM];
+void Turn1000_Run(int kind, int dir);
+void Turn1000_Test(int kind);	/* モード5 No.1〜7 */
+extern int G_Known_Naname;	/* 1: 吸引探索の既知区間を斜めで走る(Known_Pass_NANAME、G_Turn1000。モード0 No.12) */
 
 /* 2200のターン(Move.c の G_Turn2200、Turn-Sim_KOGUMA の「Cの表をコピー」をそのまま貼る)。並びはシミュレーターと同じ */
 enum {

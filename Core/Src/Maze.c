@@ -715,31 +715,58 @@ static void Known_Pass_Generation_Body(void) {
  *   Known_Pass_NANAME[]を消費しない(有効化するにはMove.cの対応ブロックの
  *   コメントアウトを外し、実行ループの参照先をKnown_Pass_NANAMEへ切り替える必要がある)。
  */
+/* 斜めの区間を、斜めに入る前の形に戻す。from: 斜め入りで1つ減らした直進の位置、from_val: 減らす前のその値、
+ * to: 戻す範囲の終わり(含まない)。直進は、前の斜め出で減らしてあることがあるので Known_Pass_CP ではなく減らす前の値に戻す */
+static void Known_Naname_Revert(int from, int from_val, int to) {
+	Known_Pass_NANAME[from] = from_val;
+	for (int k = from + 1; k < to; k++) {
+		Known_Pass_NANAME[k] = Known_Pass_CP[k];
+	}
+}
+
 void Known_Pass_Compression_NANAME() {
 	NANAME_Flag = 0;
+	int naname_from = 0;	//今の斜めの区間を戻すときの始まり(斜め入りの前の直進)
+	int naname_from_val = 0;	//その直進の、斜め入りで減らす前の値
 
 	for (i = 0; Known_Pass_CP[i] != 0; i++) {
 		Known_Pass_NANAME[i] = Known_Pass_CP[i];
 	}
-	/* Known_Pass_CPの終端(0)自体はコピーされないので、この位置の
-	 * Known_Pass_NANAMEは前回実行時の値が残ったまま。末尾コーナー判定の
-	 * 先読み用に1を置き(CP側と同じ手法)、処理後に必ず0へ戻す。
-	 * これをしないと下のループが終端を見失い前回の残骸を読み進めてしまう */
+	/* 終端の先を0にしておく(下の先読み [i+1]・[i+2] が前回の残りを読まないように)。
+	 * 2026-10-21: 以前は終端に1を置いて「直進が続く」ことにしていたが、既知区間は未探索の区画の手前の
+	 * 境目で終わり、その先に直進はない。最後の曲がりが斜め出になると、その半区画を先読みの1から取ってしまい、
+	 * 半区画手前で終わっていた。斜め出は、後ろに本当の直進(> 0)があるときだけにする */
 	int naname_term_idx = i;
-	Known_Pass_NANAME[i] = 1;
+	for (int k = naname_term_idx; k < naname_term_idx + 3 && k < MAX_STEP; k++) {
+		Known_Pass_NANAME[k] = 0;
+	}
 	for (i = 0; i < naname_term_idx; i++) {
+		if ((Known_Pass_NANAME[i] == -8) && (NANAME_Flag == 1)) {
+			/* 斜めのまま行き止まりのUターンには入れない(Uターンは直進の向きで、区画の境目から)。
+			 * 斜め出できなかった斜めの区間は、小回りに戻す */
+			Known_Naname_Revert(naname_from, naname_from_val, i);
+			NANAME_Flag = 0;
+			continue;
+		}
 		if ((Known_Pass_NANAME[i] == -2) || (Known_Pass_NANAME[i] == -3)) {
 			if (Known_Pass_NANAME[i - 1] > 0) { //斜め入り
+				/* 既知区間は大回りにしない(KNOWN_PASS_BIG_TURN 0)ので、直進 → 同じ向きに2回 → 直進(大回り180の形)が残っている。
+				 * 135 は、そのあとも曲がり続けるときだけ(最短では先に大回り180になるので、この形は来ない) */
+				int turn2 = (Known_Pass_NANAME[i + 2] == -2) || (Known_Pass_NANAME[i + 2] == -3);
 				if (Known_Pass_NANAME[i] == -2) { //左
 
 					if (Known_Pass_NANAME[i + 1] == -3) {
 						//入り４５
+						naname_from = i - 1;
+						naname_from_val = Known_Pass_NANAME[i - 1];
 						Known_Pass_NANAME[i - 1] -= 1;
 						Known_Pass_NANAME[i] = -51;
 						NANAME_Flag = 1;
 						Pass_zero_act();
-					} else if (Known_Pass_NANAME[i + 1] == -2) {
+					} else if ((Known_Pass_NANAME[i + 1] == -2) && turn2) {
 						//入り135
+						naname_from = i - 1;
+						naname_from_val = Known_Pass_NANAME[i - 1];
 						Known_Pass_NANAME[i - 1] -= 1;
 						Known_Pass_NANAME[i] = -52;
 						Known_Pass_NANAME[i + 1] = -1;
@@ -750,12 +777,16 @@ void Known_Pass_Compression_NANAME() {
 
 					if (Known_Pass_NANAME[i + 1] == -2) {
 						//入り４５
+						naname_from = i - 1;
+						naname_from_val = Known_Pass_NANAME[i - 1];
 						Known_Pass_NANAME[i - 1] -= 1;
 						Known_Pass_NANAME[i] = -53;
 						NANAME_Flag = 1;
 						Pass_zero_act();
-					} else if (Known_Pass_NANAME[i + 1] == -3) {
+					} else if ((Known_Pass_NANAME[i + 1] == -3) && turn2) {
 						//入り135
+						naname_from = i - 1;
+						naname_from_val = Known_Pass_NANAME[i - 1];
 						Known_Pass_NANAME[i - 1] -= 1;
 						Known_Pass_NANAME[i] = -54;
 						Known_Pass_NANAME[i + 1] = -1;
@@ -763,7 +794,7 @@ void Known_Pass_Compression_NANAME() {
 						Pass_zero_act();
 					}
 				}
-			} else if ((Known_Pass_NANAME[i + 1] >= 0) && (NANAME_Flag == 1)) { //斜め出 45
+			} else if ((Known_Pass_NANAME[i + 1] > 0) && (NANAME_Flag == 1)) { //斜め出 45
 				if (Known_Pass_NANAME[i] == -3) {
 					//右４５
 					Known_Pass_NANAME[i] = -63;
@@ -776,7 +807,7 @@ void Known_Pass_Compression_NANAME() {
 					Pass_zero_act();
 				}
 				NANAME_Flag = 0;
-			} else if ((Known_Pass_NANAME[i + 2] >= 0) && (NANAME_Flag == 1)) {
+			} else if ((Known_Pass_NANAME[i + 2] > 0) && (NANAME_Flag == 1)) {
 				if (Known_Pass_NANAME[i] == Known_Pass_NANAME[i + 1]) {
 					if (Known_Pass_NANAME[i] == -3) {
 						//右135
@@ -826,6 +857,11 @@ void Known_Pass_Compression_NANAME() {
 			}
 		}
 	}
+	if (NANAME_Flag == 1) {
+		/* 斜めのまま既知区間が終わった: 未探索の区画の手前の境目で、直進の向きで終わらないといけないので、小回りに戻す */
+		Known_Naname_Revert(naname_from, naname_from_val, naname_term_idx);
+		NANAME_Flag = 0;
+	}
 	for (i = 0; i < naname_term_idx; i++) {
 		if (Known_Pass_NANAME[i] == -50) {
 			for (int j = 1; Known_Pass_NANAME[i + j] == -50; j++) {
@@ -835,7 +871,7 @@ void Known_Pass_Compression_NANAME() {
 		}
 	}
 
-	/* 先読み用の1を正式な0終端に戻す */
+	/* 正式な0終端(Pass_zero_act が終端の0を-1にしていることがある) */
 	Known_Pass_NANAME[naname_term_idx] = 0;
 }
 

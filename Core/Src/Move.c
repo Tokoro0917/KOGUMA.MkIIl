@@ -286,6 +286,12 @@ void Robot_Maze_Suction_Action() {
 
 }
 
+/* 1: 既知区間を斜めの命令列(Known_Pass_NANAME)で走る。斜め入り・斜め出・V90 は G_Turn1000、斜めの直線は Motor_NANAME_PID。
+ * 0: 今までどおり(G_Known_Pass、直進と小回りだけ)。main.c の Maze_Search_Action がモード0 No.12 のときだけ 1 にする(2026-10-21) */
+int G_Known_Naname = 0;
+
+static int Turn2000_Naname_Kind(int code, int *kind, int *dir);
+
 void Robot_Maze_Pass_Action() {
 	int Known_X = G_Robot_MAZE_X;
 	int Known_Y = G_Robot_MAZE_Y;
@@ -304,50 +310,55 @@ void Robot_Maze_Pass_Action() {
 	}
 	if (G_MAZE_Explored[Known_X][Known_Y] == 1) {
 		Known_Pass_Generation();
-		for (int i = 0; G_Known_Pass[i] != 0; i++) {
+		/* 斜めで走るときは Known_Pass_NANAME。直進・小回り・Uターン・大回りの命令の意味は G_Known_Pass と同じで、
+		 * 斜めの命令(-50の倍数、-51〜-54、-61〜-66)が増える。斜め入りの前・斜め出のあとの直進は半区画減っている(奇数) */
+		const int16_t *pass = G_Known_Naname ? Known_Pass_NANAME : G_Known_Pass;
+		for (int i = 0; pass[i] != 0; i++) {
 			if (Failsafe_Flag() == 1) {
 				break;
 			}
-			if (G_Known_Pass[i] > 0) {			//1区間前進
+			int kind, dir;
+			if (pass[i] > 0) {			//半区画 pass[i] 個前進
 				Motor_trapezoid_PID(1000, 4000, 1000, 15000,
-						90 * G_Known_Pass[i]);
-			} else if (G_Known_Pass[i] == -2) {			//左
+						90 * pass[i]);
+			} else if (G_Known_Naname && (pass[i] <= -50)
+					&& Turn2000_Naname_Kind(pass[i], &kind, &dir)) {	//斜め入り・斜め出・V90
+				Turn1000_Run(kind, dir);
+			} else if (G_Known_Naname && (pass[i] <= -50) && (pass[i] % 50 == 0)) {	//斜めの直線
+				Motor_NANAME_PID(1000, 3000, 1000, 10000, 127.3 * pass[i] / -50);
+			} else if (pass[i] == -2) {			//左
 				Motor_Sula_ST(1000, 1000, 1000, 5000, 20);
 				Motor_Sula_COS(1000, 90, 1640, 60000);
 				Motor_trapezoid_PID(1000, 1000, 1000, 5000, 48);
-			} else if (G_Known_Pass[i] == -3) {			//右
+			} else if (pass[i] == -3) {			//右
 				Motor_Sula_ST(1000, 1000, 1000, 5000, 20);
 				Motor_Sula_COS(1000, -90, 1640, 60000);
 				Motor_trapezoid_PID(1000, 1000, 1000, 5000, 48);
-			} else if (G_Known_Pass[i] == -8) {			//行き止まりUターン
+			} else if (pass[i] == -8) {			//行き止まりUターン
 				Motor_trapezoid(1000, 1000, 0, 10000, 75);
 				Motor_Stop();
 				Stop_Hook_Run();	//既知区間の残りはこのまま走る(Uターンは変えない)
 				G_Just_UTurned = 1;
 				Robot_adjustment();
 				Motor_trapezoid_PID(0, 1000, 1000, 10000, 90);
-			} else if (G_Known_Pass[i] == -4) {			//左大廻９０
+			} else if (pass[i] == -4) {			//左大廻９０
 				Motor_Wallcut_ST(1000, 50, 0);
 				Motor_Sula_COS(1000, 90, 750, 20000);
 				Motor_Wallcut_END(1000, 85, 0);
-			} else if (G_Known_Pass[i] == -6) {			//右大廻９０
+			} else if (pass[i] == -6) {			//右大廻９０
 				Motor_Wallcut_ST(1000, 50, 1);
 				Motor_Sula_COS(1000, -90, 750, 20000);
 				Motor_Wallcut_END(1000, 85, 1);
-			} else if (G_Known_Pass[i] == -5) {			//左大廻１８０
+			} else if (pass[i] == -5) {			//左大廻１８０
 				Motor_Wallcut_ST(1000, 40, 0);
 				Motor_Sula_COS(1000, 180, 680, 13000);
 				Motor_Wallcut_END(1000, 70, 0);
-			} else if (G_Known_Pass[i] == -7) {			//右大廻１８０
+			} else if (pass[i] == -7) {			//右大廻１８０
 				Motor_Wallcut_ST(1000, 40, 1);
 				Motor_Sula_COS(1000, -180, 680, 13000);
 				Motor_Wallcut_END(1000, 70, 1);
 			}
-			// 斜め(NANAME)区間の実行は未実装・未チューニングのためコメントアウトのまま。
-			// 有効化する際は (1) このforループの走査対象をG_Known_Pass[]ではなく
-			// Known_Pass_NANAME[]に切り替え、(2) 下記の速度・距離・角度の各定数を
-			// 実機で再チューニングすること。生成側はKnown_Pass_Compression_NANAME()
-			// (Maze.c)で既にKnown_Pass_NANAME[]として計算済み。
+			// 2026-10-21: 斜めは上の G_Known_Naname の分岐(G_Turn1000)で走る。下は以前の 600mm/s の値(使わない)
 			/* else if (Known_Pass_NANAME[i] == -51) {			//入り　左４５
 			 Motor_Wallcut_ST(600, 35, 0);
 			 Motor_Sula_COS(600, 45, 450, 8000);
@@ -813,7 +824,22 @@ Turn2000_Param G_Turn2400[T2000_NUM] = {
 	[T2000_V90]    = { WC2000_NANAME,  11,  90, 2600, 150000, WC2000_NANAME, 110 },	//V90
 };
 
-/* ターンを1つ走る(壁切れあり)。p: G_Turn2000 / G_Turn2400 の行、V: 速度、dir: 0 左 / 1 右 */
+/* ---- 1000のターンの値(2026-10-21) ----
+ * 吸引探索の既知区間を斜めで走るとき(モード0 No.12)に使う。値はモード5(ターン単体テスト)に書かれていた値のまま
+ * (大回り90・180 は Robot_Maze_Pass_Action の既知区間の大回りと同じ)。角度が 45/135/90 でないのは、そのときの調整の結果。
+ * モード5 No.1〜7(Turn1000_Test)で合わせて、ここを直す */
+Turn2000_Param G_Turn1000[T2000_NUM] = {
+	//          前の壁切れ   前距離 角度  最大角速度 角加速度  後の壁切れ   後距離
+	[T2000_BIG90]  = { WC2000_NORMAL, 50,  90,  750,  20000, WC2000_NORMAL, 85 },	//大回り90
+	[T2000_BIG180] = { WC2000_NORMAL, 40, 180,  680,  13000, WC2000_NORMAL, 70 },	//大回り180
+	[T2000_IN45]   = { WC2000_NORMAL, 15,  44,  750,  10000, WC2000_NANAME, 42 },	//斜め入り45
+	[T2000_IN135]  = { WC2000_NORMAL, 38, 134,  800,  10000, WC2000_NANAME, 8 },	//斜め入り135
+	[T2000_OUT45]  = { WC2000_NANAME, 73, 41.5, 700,  20000, WC2000_NORMAL, 30 },	//斜め出45
+	[T2000_OUT135] = { WC2000_NANAME, 25, 132,  700,  14000, WC2000_NORMAL, 25 },	//斜め出135
+	[T2000_V90]    = { WC2000_NANAME, 37, 88.5, 800,  20000, WC2000_NANAME, 27 },	//V90
+};
+
+/* ターンを1つ走る(壁切れあり)。p: G_Turn1000 / G_Turn2000 / G_Turn2400 の行、V: 速度、dir: 0 左 / 1 右 */
 static void Turn_Run(const Turn2000_Param *p, float V, int dir) {
 	if (p->st_kind == WC2000_NANAME) {
 		Motor_Wallcut_ST_NANAME(V, p->st, dir);
@@ -831,6 +857,11 @@ static void Turn_Run(const Turn2000_Param *p, float V, int dir) {
 /* 2000のターンを1つ走る(壁切れあり)。kind: T2000_*、dir: 0 左 / 1 右 */
 void Turn2000_Run(int kind, int dir) {
 	Turn_Run(&G_Turn2000[kind], 2000, dir);
+}
+
+/* 1000のターンを1つ走る(壁切れあり)。kind: T2000_*、dir: 0 左 / 1 右 */
+void Turn1000_Run(int kind, int dir) {
+	Turn_Run(&G_Turn1000[kind], 1000, dir);
 }
 
 /* 2400のターンを1つ走る(壁切れあり)。kind: T2000_*、dir: 0 左 / 1 右 */
@@ -885,6 +916,28 @@ void Turn2000_Test(int kind) {
 		Motor_trapezoid(2000, 2000, 0, 25000, 127.3);
 	} else {
 		Motor_trapezoid(2000, 2000, 0, 20000, 180);
+	}
+}
+
+/* モード5 No.1〜7: ターンを1つ、G_Turn1000 の値で走る(左旋回)。壁切れを使わず、前距離・後距離は決まった距離。
+ * Turn2000_Test と同じ置き方: 区画中心から入るターンはスタート位置から1区画先の区画の中心(180mm)まで、
+ * 斜めから入るターン(斜め出45/135・V90)は機体を斜めに置いて斜め1区間(127.3mm)で1000まで上げる(10000 で 79mm)。
+ * 止まるのは、まっすぐ出るターンは1区画(180mm)、斜めに出るターンは斜め1区間(127.3mm)。どちらも 15000(52mm) */
+void Turn1000_Test(int kind) {
+	const Turn2000_Param *p = &G_Turn1000[kind];
+	if (p->st_kind == WC2000_NANAME) {
+		Motor_trapezoid(0, 1000, 1000, 10000, 127.3);
+		Motor_trapezoid(1000, 1000, 1000, 15000, p->st);
+	} else {
+		Motor_trapezoid_PID(0, 1000, 1000, 15000, 90 + 90);
+		Motor_trapezoid_PID(1000, 1000, 1000, 15000, p->st);
+	}
+	Motor_Sula_COS(1000, p->ang, p->w, p->w_ac);
+	Motor_trapezoid(1000, 1000, 1000, 15000, p->end);
+	if (p->end_kind == WC2000_NANAME) {
+		Motor_trapezoid(1000, 1000, 0, 15000, 127.3);
+	} else {
+		Motor_trapezoid(1000, 1000, 0, 15000, 180);
 	}
 }
 
