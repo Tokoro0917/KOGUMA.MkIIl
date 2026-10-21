@@ -813,7 +813,22 @@ Turn2000_Param G_Turn2400[T2000_NUM] = {
 	[T2000_V90]    = { WC2000_NANAME,  5,  87, 2600, 150000, WC2000_NANAME, 90 },	//V90
 };
 
-/* ターンを1つ走る(壁切れあり)。p: G_Turn2000 / G_Turn2400 の行、V: 速度、dir: 0 左 / 1 右 */
+/* ---- 1000のターンの値(2026-10-21) ----
+ * 吸引探索の既知区間を斜めで走るとき(モード0 No.12)に使う。値はモード5(ターン単体テスト)に書かれていた値のまま
+ * (大回り90・180 は Robot_Maze_Pass_Action の既知区間の大回りと同じ)。角度が 45/135/90 でないのは、そのときの調整の結果。
+ * モード5 No.1〜7(Turn1000_Test)で合わせて、ここを直す */
+Turn2000_Param G_Turn1000[T2000_NUM] = {
+	//          前の壁切れ   前距離 角度  最大角速度 角加速度  後の壁切れ   後距離
+	[T2000_BIG90]  = { WC2000_NORMAL, 50,  90,  750,  20000, WC2000_NORMAL, 85 },	//大回り90
+	[T2000_BIG180] = { WC2000_NORMAL, 40, 180,  680,  13000, WC2000_NORMAL, 70 },	//大回り180
+	[T2000_IN45]   = { WC2000_NORMAL, 15,  44,  750,  10000, WC2000_NANAME, 42 },	//斜め入り45
+	[T2000_IN135]  = { WC2000_NORMAL, 38, 134,  800,  10000, WC2000_NANAME, 8 },	//斜め入り135
+	[T2000_OUT45]  = { WC2000_NANAME, 73, 41.5, 700,  20000, WC2000_NORMAL, 30 },	//斜め出45
+	[T2000_OUT135] = { WC2000_NANAME, 25, 132,  700,  14000, WC2000_NORMAL, 25 },	//斜め出135
+	[T2000_V90]    = { WC2000_NANAME, 37, 88.5, 800,  20000, WC2000_NANAME, 27 },	//V90
+};
+
+/* ターンを1つ走る(壁切れあり)。p: G_Turn1000 / G_Turn2000 / G_Turn2400 の行、V: 速度、dir: 0 左 / 1 右 */
 static void Turn_Run(const Turn2000_Param *p, float V, int dir) {
 	if (p->st_kind == WC2000_NANAME) {
 		Motor_Wallcut_ST_NANAME(V, p->st, dir);
@@ -831,6 +846,11 @@ static void Turn_Run(const Turn2000_Param *p, float V, int dir) {
 /* 2000のターンを1つ走る(壁切れあり)。kind: T2000_*、dir: 0 左 / 1 右 */
 void Turn2000_Run(int kind, int dir) {
 	Turn_Run(&G_Turn2000[kind], 2000, dir);
+}
+
+/* 1000のターンを1つ走る(壁切れあり)。kind: T2000_*、dir: 0 左 / 1 右 */
+void Turn1000_Run(int kind, int dir) {
+	Turn_Run(&G_Turn1000[kind], 1000, dir);
 }
 
 /* 2400のターンを1つ走る(壁切れあり)。kind: T2000_*、dir: 0 左 / 1 右 */
@@ -885,6 +905,28 @@ void Turn2000_Test(int kind) {
 		Motor_trapezoid(2000, 2000, 0, 25000, 127.3);
 	} else {
 		Motor_trapezoid(2000, 2000, 0, 20000, 180);
+	}
+}
+
+/* モード5 No.1〜7: ターンを1つ、G_Turn1000 の値で走る(左旋回)。壁切れを使わず、前距離・後距離は決まった距離。
+ * Turn2000_Test と同じ置き方: 区画中心から入るターンはスタート位置から1区画先の区画の中心(180mm)まで、
+ * 斜めから入るターン(斜め出45/135・V90)は機体を斜めに置いて斜め1区間(127.3mm)で1000まで上げる(10000 で 79mm)。
+ * 止まるのは、まっすぐ出るターンは1区画(180mm)、斜めに出るターンは斜め1区間(127.3mm)。どちらも 15000(52mm) */
+void Turn1000_Test(int kind) {
+	const Turn2000_Param *p = &G_Turn1000[kind];
+	if (p->st_kind == WC2000_NANAME) {
+		Motor_trapezoid(0, 1000, 1000, 10000, 127.3);
+		Motor_trapezoid(1000, 1000, 1000, 15000, p->st);
+	} else {
+		Motor_trapezoid_PID(0, 1000, 1000, 15000, 90 + 90);
+		Motor_trapezoid_PID(1000, 1000, 1000, 15000, p->st);
+	}
+	Motor_Sula_COS(1000, p->ang, p->w, p->w_ac);
+	Motor_trapezoid(1000, 1000, 1000, 15000, p->end);
+	if (p->end_kind == WC2000_NANAME) {
+		Motor_trapezoid(1000, 1000, 0, 15000, 127.3);
+	} else {
+		Motor_trapezoid(1000, 1000, 0, 15000, 180);
 	}
 }
 
