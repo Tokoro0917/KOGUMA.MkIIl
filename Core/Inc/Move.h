@@ -73,6 +73,10 @@ typedef struct {
 extern Turn2000_Param G_Turn2000[T2000_NUM];
 void Turn2000_Run(int kind, int dir);
 void Turn2000_Test(int kind);	/* モード6 No.1〜7 */
+/* 2400のターンの値(Move.c の G_Turn2400、2026-10-21)。Short_NANAME_Move2400(BFS・ダイクストラ)・モード7で共通。形と並びは G_Turn2000 と同じ */
+extern Turn2000_Param G_Turn2400[T2000_NUM];
+void Turn2400_Run(int kind, int dir);
+void Turn2400_Test(int kind);	/* モード7 No.1〜7 */
 
 /* 2200のターン(Move.c の G_Turn2200、Turn-Sim_KOGUMA の「Cの表をコピー」をそのまま貼る)。並びはシミュレーターと同じ */
 enum {

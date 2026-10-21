@@ -798,20 +798,44 @@ Turn2000_Param G_Turn2000[T2000_NUM] = {
 	[T2000_V90]    = { WC2000_NANAME, 24,  90, 2000, 130000, WC2000_NANAME, 92},	//V90
 };
 
+/* ---- 2400のターンの値(2026-10-21) ----
+ * 以前は Short_NANAME_Move2400 とモード7(テスト)に別々に書かれていて、斜め出135 の角度がテストだけ 134 だった。
+ * Short_NANAME_Move2400 の値で、G_Turn2000 と同じ形の1つの表にまとめた。モード7 No.1〜7(Turn2400_Test)で合わせて、ここを直す。
+ * TurnV_Table(ターンごとの通過速度、モード1 No.10・11)は別の表のまま */
+Turn2000_Param G_Turn2400[T2000_NUM] = {
+	//          前の壁切れ   前距離 角度  最大角速度 角加速度  後の壁切れ   後距離
+	[T2000_BIG90]  = { WC2000_NORMAL, 25,  90, 1600,  80000, WC2000_NORMAL, 100 },	//大回り90
+	[T2000_BIG180] = { WC2000_NORMAL, 15, 180, 1500,  70000, WC2000_NORMAL, 88 },	//大回り180
+	[T2000_IN45]   = { WC2000_NORMAL,  3,  45, 2500, 160000, WC2000_NANAME, 113 },	//斜め入り45
+	[T2000_IN135]  = { WC2000_NORMAL, 15, 135, 2000,  55000, WC2000_NANAME, 85 },	//斜め入り135
+	[T2000_OUT45]  = { WC2000_NANAME,  8,  45, 1550,  70000, WC2000_NORMAL, 40 },	//斜め出45
+	[T2000_OUT135] = { WC2000_NANAME, 17, 135, 2100,  80000, WC2000_NORMAL, 123 },	//斜め出135
+	[T2000_V90]    = { WC2000_NANAME,  5,  87, 2600, 150000, WC2000_NANAME, 90 },	//V90
+};
+
+/* ターンを1つ走る(壁切れあり)。p: G_Turn2000 / G_Turn2400 の行、V: 速度、dir: 0 左 / 1 右 */
+static void Turn_Run(const Turn2000_Param *p, float V, int dir) {
+	if (p->st_kind == WC2000_NANAME) {
+		Motor_Wallcut_ST_NANAME(V, p->st, dir);
+	} else {
+		Motor_Wallcut_ST(V, p->st, dir);
+	}
+	Motor_Sula_COS(V, dir == 0 ? p->ang : -p->ang, p->w, p->w_ac);
+	if (p->end_kind == WC2000_NANAME) {
+		Motor_Wallcut_END_NANAME(V, p->end, dir);
+	} else {
+		Motor_Wallcut_END(V, p->end, dir);
+	}
+}
+
 /* 2000のターンを1つ走る(壁切れあり)。kind: T2000_*、dir: 0 左 / 1 右 */
 void Turn2000_Run(int kind, int dir) {
-	const Turn2000_Param *p = &G_Turn2000[kind];
-	if (p->st_kind == WC2000_NANAME) {
-		Motor_Wallcut_ST_NANAME(2000, p->st, dir);
-	} else {
-		Motor_Wallcut_ST(2000, p->st, dir);
-	}
-	Motor_Sula_COS(2000, dir == 0 ? p->ang : -p->ang, p->w, p->w_ac);
-	if (p->end_kind == WC2000_NANAME) {
-		Motor_Wallcut_END_NANAME(2000, p->end, dir);
-	} else {
-		Motor_Wallcut_END(2000, p->end, dir);
-	}
+	Turn_Run(&G_Turn2000[kind], 2000, dir);
+}
+
+/* 2400のターンを1つ走る(壁切れあり)。kind: T2000_*、dir: 0 左 / 1 右 */
+void Turn2400_Run(int kind, int dir) {
+	Turn_Run(&G_Turn2400[kind], 2400, dir);
 }
 
 /* 斜めの命令(-51〜-54、-61〜-66)をターンの種類と向きにする。ターンでなければ0 */
@@ -861,6 +885,43 @@ void Turn2000_Test(int kind) {
 		Motor_trapezoid(2000, 2000, 0, 25000, 127.3);
 	} else {
 		Motor_trapezoid(2000, 2000, 0, 20000, 180);
+	}
+}
+
+/* 大回りの命令(-4 左90、-6 右90、-5 左180、-7 右180)を2400で */
+static void Turn2400_Big(int code) {
+	if (code == -4) {
+		Turn2400_Run(T2000_BIG90, 0);
+	} else if (code == -6) {
+		Turn2400_Run(T2000_BIG90, 1);
+	} else if (code == -5) {
+		Turn2400_Run(T2000_BIG180, 0);
+	} else if (code == -7) {
+		Turn2400_Run(T2000_BIG180, 1);
+	}
+}
+
+/* モード7 No.1〜7: ターンを1つ、G_Turn2400 の値で走る(左旋回)。壁切れを使わず、前距離・後距離は決まった距離。
+ * Turn2000_Test と同じく、ターンを1つずつ単体で走る(以前は斜め出・V90 を斜め入り45 のあとにつなげていた)。
+ *  - 区画中心から入るターン: スタート位置から2区画先の区画の中心(360mm)までで2400まで上げる(25000 で 181mm)。2000 と同じ置き方
+ *  - 斜めから入るターン(斜め出45/135・V90): 機体を斜めに置き、斜め2区間(254.6mm)で2400まで上げる。
+ *    斜め1区間(127.3mm)で上げるには加速度 35500 がいる(モーターが張り付く)ので、2000 より斜め1区間ぶん後ろに置く
+ *  - 止まるのは、まっすぐ出るターンは1区画(180mm、30000 で 151mm)、斜めに出るターンは斜め2区間(254.6mm、25000 で 181mm) */
+void Turn2400_Test(int kind) {
+	const Turn2000_Param *p = &G_Turn2400[kind];
+	if (p->st_kind == WC2000_NANAME) {
+		Motor_trapezoid(0, 2400, 2400, 25000, 127.3 * 2);
+		Motor_trapezoid(2400, 2400, 2400, 15000, p->st);
+	} else {
+		Motor_trapezoid_PID(0, 2400, 2400, 25000, 90 + 90 + 180);
+		Motor_trapezoid_PID(2400, 2400, 2400, 15000, p->st);
+	}
+	Motor_Sula_COS(2400, p->ang, p->w, p->w_ac);
+	Motor_trapezoid(2400, 2400, 2400, 15000, p->end);
+	if (p->end_kind == WC2000_NANAME) {
+		Motor_trapezoid(2400, 2400, 0, 25000, 127.3 * 2);
+	} else {
+		Motor_trapezoid(2400, 2400, 0, 30000, 180);
 	}
 }
 
@@ -1037,67 +1098,11 @@ void Short_NANAME_Move2400(int MAX, int AC) {
 			}
 		} else if ((G_Short_Pass_NANAME[i] <= -4)
 				&& (G_Short_Pass_NANAME[i] > -50)) {
-			if (G_Short_Pass_CP[i] == -4) {			//左大廻９０
-				Motor_Wallcut_ST(2400, 25, 0);
-				Motor_Sula_COS(2400, 90, 1600, 80000);
-				Motor_Wallcut_END(2400, 100, 0);
-			} else if (G_Short_Pass_CP[i] == -6) {			//右大廻９０
-				Motor_Wallcut_ST(2400, 25, 1);
-				Motor_Sula_COS(2400, -90, 1600, 80000);
-				Motor_Wallcut_END(2400, 100, 1);
-			} else if (G_Short_Pass_CP[i] == -5) {			//左大廻１８０
-				Motor_Wallcut_ST(2400, 15, 0);
-				Motor_Sula_COS(2400, 180, 1500, 70000);
-				Motor_Wallcut_END(2400, 88, 0);
-			} else if (G_Short_Pass_CP[i] == -7) {			//右大廻１８０
-				Motor_Wallcut_ST(2400, 15, 1);
-				Motor_Sula_COS(2400, -180, 1500, 70000);
-				Motor_Wallcut_END(2400, 88, 1);
-
-			}
+			Turn2400_Big(G_Short_Pass_CP[i]);	//大回り(G_Turn2400)
 		} else if (G_Short_Pass_NANAME[i] <= -50) {			//斜め
-			if (G_Short_Pass_NANAME[i] == -51) {			//入り　左４５
-				Motor_Wallcut_ST(2400, 3, 0);
-				Motor_Sula_COS(2400, 45, 2500, 160000);
-				Motor_Wallcut_END_NANAME(2400, 113, 0);
-			} else if (G_Short_Pass_NANAME[i] == -52) {			//入り　左１３５
-				Motor_Wallcut_ST(2400, 15, 0);
-				Motor_Sula_COS(2400, 135, 2000, 55000);
-				Motor_Wallcut_END_NANAME(2400, 85, 0);
-			} else if (G_Short_Pass_NANAME[i] == -53) {			//入り　右４５
-				Motor_Wallcut_ST(2400, 3, 1);
-				Motor_Sula_COS(2400, -45, 2500, 160000);
-				Motor_Wallcut_END_NANAME(2400, 113, 1);
-			} else if (G_Short_Pass_NANAME[i] == -54) {			//入り　右１３５
-				Motor_Wallcut_ST(2400, 15, 1);
-				Motor_Sula_COS(2400, -135, 2000, 55000);
-				Motor_Wallcut_END_NANAME(2400, 85, 1);
-			} else if (G_Short_Pass_NANAME[i] == -61) {			//出　左４５
-				Motor_Wallcut_ST_NANAME(2400, 8, 0);
-				Motor_Sula_COS(2400, 45, 1550, 70000);
-				Motor_Wallcut_END(2400, 40, 0);
-			} else if (G_Short_Pass_NANAME[i] == -62) {			//出　左１３５
-				Motor_Wallcut_ST_NANAME(2400, 17, 0);
-				Motor_Sula_COS(2400, 135, 2100, 80000);
-				Motor_Wallcut_END(2400, 123, 0);
-			} else if (G_Short_Pass_NANAME[i] == -63) {			//出　右４５
-				Motor_Wallcut_ST_NANAME(2400, 8, 1);
-				Motor_Sula_COS(2400, -45, 1550, 70000);
-				Motor_Wallcut_END(2400, 40, 1);
-			} else if (G_Short_Pass_NANAME[i] == -64) {			//出　右１３５
-				Motor_Wallcut_ST_NANAME(2400, 17, 1);
-				Motor_Sula_COS(2400, -135, 2100, 80000);
-				Motor_Wallcut_END(2400, 123, 1);
-			} else if (G_Short_Pass_NANAME[i] == -65) {			//V90左
-				Motor_Wallcut_ST_NANAME(2400, 5, 0);
-				//Motor_NANAME_PID(500, 500, 500, 5000, 10);
-				Motor_Sula_COS(2400, 87, 2600, 150000);
-				Motor_Wallcut_END_NANAME(2400, 90, 0);
-			} else if (G_Short_Pass_NANAME[i] == -66) {			//V90右
-				Motor_Wallcut_ST_NANAME(2400, 5, 1);
-				//Motor_NANAME_PID(500, 500, 500, 5000, 10);
-				Motor_Sula_COS(2400, -87, 2600, 150000);
-				Motor_Wallcut_END_NANAME(2400, 90, 1);
+			int kind, dir;
+			if (Turn2000_Naname_Kind(G_Short_Pass_NANAME[i], &kind, &dir)) {
+				Turn2400_Run(kind, dir);	//斜め入り・斜め出・V90(G_Turn2400)
 			} else if (G_Short_Pass_NANAME[i] % 50 == 0) {			//直線
 				{
 					float rest = Short_Catchup(vs, 2400, 127.3 * G_Short_Pass_NANAME[i] / -50, 1);

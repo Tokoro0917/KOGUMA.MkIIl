@@ -793,8 +793,12 @@ int main(void) {
 					Sensor_Start();
 
 				}
-			} else if (Encorder_number_out() == 1) {		//90
+			} else if ((Encorder_number_out() >= 1)
+					&& (Encorder_number_out() <= 7)) {	//2400のターン単体(G_Turn2400、左旋回)
+				/* No.1 大回り90、2 大回り180、3 斜め入り45、4 斜め入り135、5 斜め出45、6 斜め出135、7 V90。
+				 * 値は Move.c の G_Turn2400(Short_NANAME_Move2400 と共通、2026-10-21)。1つずつ単体で走る(Turn2400_Test) */
 				if (Sensor_Enter() == 1) {
+					int n = Encorder_number_out();
 					Buzzer_Enter();
 					Sensor_Start();
 
@@ -803,190 +807,7 @@ int main(void) {
 
 					HAL_Delay(1000);
 					LOG_get_start();
-					Motor_trapezoid_PID(0, 2400, 2400, 30000, 90 + 90 + 180);
-					Motor_trapezoid_PID(2400, 2400, 2400, 15000, 25);
-					//Motor_Wallcut_ST(1000, 60, 0);
-					Motor_Sula_COS(2400, 90, 1600, 80000);
-					Motor_trapezoid(2400, 2400, 2400, 15000, 100);
-					Motor_trapezoid(2400, 2400, 0, 25000, 180);
-
-					Motor_Stop();
-
-					HAL_Delay(500);
-					Suction_Stop();
-					LOG_get_end();
-
-					Encorder_count_reset();
-				}
-			} else if (Encorder_number_out() == 2) {		//180
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-
-					Motor_Setup();
-					Suction_Start(70);
-
-					HAL_Delay(1000);
-					LOG_get_start();
-					Motor_trapezoid_PID(0, 2400, 2400, 30000, 90 + 90 + 180);
-					Motor_trapezoid_PID(2400, 2400, 2400, 15000, 15);
-					//Motor_Wallcut_ST(1000, 60, 0);
-					Motor_Sula_COS(2400, 180, 1500, 70000);
-					Motor_trapezoid(2400, 2400, 2400, 15000, 88);
-					Motor_trapezoid(2400, 2400, 0, 30000, 180);
-
-					Motor_Stop();
-
-					HAL_Delay(500);
-					Suction_Stop();
-					LOG_get_end();
-
-					Encorder_count_reset();
-				}
-			} else if (Encorder_number_out() == 3) {		//in45
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-
-					Motor_Setup();
-					Suction_Start(70);
-
-					HAL_Delay(1000);
-					LOG_get_start();
-					Motor_trapezoid_PID(0, 2400, 2400, 25000, 90 + 90 + 180);
-					Motor_trapezoid_PID(2400, 2400, 2400, 15000, 3);//8
-					Motor_Sula_COS(2400, 45, 2500, 160000);
-					Motor_trapezoid(2400, 2400, 2400, 15000, 113);
-					Motor_trapezoid(2400, 2400, 0, 30000, 127.3 * 2);
-
-					Motor_Stop();
-
-					HAL_Delay(500);
-					Suction_Stop();
-					LOG_get_end();
-
-					Encorder_count_reset();
-				}
-			} else if (Encorder_number_out() == 4) {		//in135
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-
-					Motor_Setup();
-					Suction_Start(70);
-
-					HAL_Delay(1000);
-					LOG_get_start();
-					Motor_trapezoid_PID(0, 2400, 2400, 25000, 90 + 90 + 180);
-					Motor_trapezoid_PID(2400, 2400, 2400, 15000, 15);
-					Motor_Sula_COS(2400, 135, 2000, 55000);
-					Motor_trapezoid(2400, 2400, 2400, 15000, 85);
-					Motor_trapezoid(2400, 2400, 0, 25000, 127.3 * 2);
-
-					Motor_Stop();
-
-					HAL_Delay(500);
-					Suction_Stop();
-					LOG_get_end();
-
-					Encorder_count_reset();
-				}
-			} else if (Encorder_number_out() == 5) {		//out45
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-
-					Motor_Setup();
-					Suction_Start(70);
-
-					HAL_Delay(1000);
-					LOG_get_start();
-
-					//					Motor_trapezoid(0, 2400, 2400, 25000, 127.3);
-					//					Motor_trapezoid(2400, 2400, 2400, 15000, 31);
-					//					Motor_Sula_COS(2400, 41, 1550, 60000);
-					//					Motor_trapezoid(2400, 2400, 2400, 15000, 18);
-					//					Motor_trapezoid(2400, 2400, 0, 25000, 180);
-
-					Motor_trapezoid_PID(0, 2400, 2400, 25000, 90 + 90 + 180);
-					Motor_trapezoid_PID(2400, 2400, 2400, 15000, 8);
-					Motor_Sula_COS(2400, 45, 2500, 160000);
-					Motor_trapezoid(2400, 2400, 2400, 15000, 113);
-
-					Motor_trapezoid(2400, 2400, 2400, 15000, 8);
-					Motor_Sula_COS(2400, -45, 1550, 70000);
-					Motor_trapezoid(2400, 2400, 2400, 15000, 40);
-					Motor_trapezoid(2400, 2400, 0, 35000, 180);
-
-					Motor_Stop();
-
-					HAL_Delay(500);
-					Suction_Stop();
-					LOG_get_end();
-
-					Encorder_count_reset();
-				}
-			} else if (Encorder_number_out() == 6) {		//out135
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-
-					Motor_Setup();
-					Suction_Start(70);
-
-					//					HAL_Delay(1000);
-					//					LOG_get_start();
-					//					Motor_NANAME_PID(0, 2400, 2400, 30000, 127.3);
-					//					Motor_NANAME_PID(2400, 2400, 2400, 15000, 20);
-					//					Motor_Sula_COS(2400, 123, 2300, 70000);
-					//					Motor_trapezoid(2400, 2400, 2400, 15000, 80);
-					//					Motor_trapezoid(2400, 2400, 0, 30000, 180);
-
-					Motor_trapezoid_PID(0, 2400, 2400, 25000, 90 + 90 + 180);
-					Motor_trapezoid_PID(2400, 2400, 2400, 15000, 8);
-					Motor_Sula_COS(2400, 45, 2500, 160000);
-					Motor_trapezoid(2400, 2400, 2400, 15000, 113);
-					Motor_NANAME_PID(2400, 2400, 2400, 30000, 127.3);
-
-					Motor_NANAME_PID(2400, 2400, 2400, 15000, 17);
-					Motor_Sula_COS(2400, 134, 2100, 80000);
-					Motor_trapezoid(2400, 2400, 2400, 15000, 123);
-					Motor_trapezoid(2400, 2400, 0, 30000, 180);
-
-					Motor_Stop();
-
-					HAL_Delay(500);
-					Suction_Stop();
-					LOG_get_end();
-
-					Encorder_count_reset();
-				}
-			} else if (Encorder_number_out() == 7) {		//v90
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-
-					Motor_Setup();
-					Suction_Start(70);
-
-					HAL_Delay(1000);
-					LOG_get_start();
-					//					Motor_trapezoid(0, 2400, 2400, 40000, 127.3);
-					//					Motor_trapezoid(2400, 2400, 2400, 15000, 19);
-					//					Motor_Sula_COS(2400, 83, 2500, 100000);
-					//					Motor_trapezoid(2400, 2400, 2400, 15000, 29);
-					//					Motor_trapezoid(2400, 2400, 0, 25000, 127.3);
-
-					Motor_trapezoid_PID(0, 2400, 2400, 25000, 90 + 90 + 180);
-					Motor_trapezoid_PID(2400, 2400, 2400, 15000, 8);
-					Motor_Sula_COS(2400, 45, 2500, 160000);
-					Motor_trapezoid(2400, 2400, 2400, 15000, 113);
-					Motor_NANAME_PID(2400, 2400, 2400, 30000, 127.3);
-
-					Motor_trapezoid(2400, 2400, 2400, 15000, 5);
-					Motor_Sula_COS(2400, 87, 2600, 150000);
-					Motor_trapezoid(2400, 2400, 2400, 15000, 90);
-					Motor_trapezoid(2400, 2400, 0, 25000, 127.3 * 2);
+					Turn2400_Test(n - 1);
 
 					Motor_Stop();
 
