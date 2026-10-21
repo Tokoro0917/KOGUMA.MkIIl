@@ -61,6 +61,7 @@
 #define SEARCH_SHORTEST		0x20	//スタートに戻ったあと最短走行(モード1 No.5と同じ)
 #define SEARCH_REPEAT		0x40	//最短走行を SEARCH_REPEAT_N 回(SEARCH_SHORTEST と一緒に。2回目からは、前の最短のゴールからスタートへ帰ってから走る)
 #define SEARCH_REPEAT_N		4
+#define SEARCH_KNOWN_NANAME	0x80	//既知区間を斜めで走る(SEARCH_KNOWN と一緒に。Move.c の G_Known_Naname、G_Turn1000)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -166,7 +167,7 @@ int main(void) {
 		Motor_Setup_Voltage();
 		if (Encorder_mode_out() == 0) {		//大会用
 			/* 探索の組み合わせは Maze_Search() の引数で指定する(下の SEARCH_*)。
-			 * No.0 と No.12〜15 は何もしない */
+			 * No.0 と No.13〜15 は何もしない */
 			int n = Encorder_number_out();
 			int flags = -1;
 			if (n == 1) {			//スラローム探索 往復
@@ -193,6 +194,9 @@ int main(void) {
 			} else if (n == 11) {	//No.10 の最短を4回(最短のあとはゴールから、帰りもダイクストラ誘導で探索しながらスタートへ帰る)
 				flags = SEARCH_SUCTION | SEARCH_DIJKSTRA | SEARCH_KNOWN
 						| SEARCH_SHORTEST | SEARCH_REPEAT;
+			} else if (n == 12) {	//No.10 の既知区間を斜めで走る(お遊び。G_Turn1000、2026-10-21)
+				flags = SEARCH_SUCTION | SEARCH_DIJKSTRA | SEARCH_KNOWN
+						| SEARCH_KNOWN_NANAME | SEARCH_SHORTEST;
 			}
 			if ((flags >= 0) && (Sensor_Enter() == 1)) {
 				Maze_Search(flags);
@@ -574,8 +578,12 @@ int main(void) {
 					Encorder_count_reset();
 
 				}
-			} else if (Encorder_number_out() == 1) {		//90
+			} else if ((Encorder_number_out() >= 1)
+					&& (Encorder_number_out() <= 7)) {	//1000のターン単体(G_Turn1000、左旋回)
+				/* No.1 大回り90、2 大回り180、3 斜め入り45、4 斜め入り135、5 斜め出45、6 斜め出135、7 V90。
+				 * 値は Move.c の G_Turn1000(吸引探索の既知区間の斜め、モード0 No.12 と共通、2026-10-21)。吸引は探索と同じ35 */
 				if (Sensor_Enter() == 1) {
+					int n = Encorder_number_out();
 					Buzzer_Enter();
 					Sensor_Start();
 
@@ -584,155 +592,10 @@ int main(void) {
 
 					HAL_Delay(1000);
 					LOG_get_start();
-					Motor_trapezoid_PID(0, 1000, 1000, 15000, 90 + 90);
-					Motor_trapezoid_PID(1000, 1000, 1000, 15000, 50);
-					//Motor_Wallcut_ST(1000, 48, 0);
-					Motor_Sula_COS(1000, 90, 750, 20000);
-					Motor_trapezoid(1000, 1000, 1000, 15000, 85);
-					Motor_trapezoid(1000, 1000, 0, 15000, 180);
+					Turn1000_Test(n - 1);
 
 					Motor_Stop();
 
-					HAL_Delay(500);
-					Suction_Stop();
-					LOG_get_end();
-
-					Encorder_count_reset();
-
-				}
-			} else if (Encorder_number_out() == 2) {		//180
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-
-					Motor_Setup();
-					Suction_Start(35);
-
-					HAL_Delay(1000);
-					LOG_get_start();
-					Motor_trapezoid_PID(0, 1000, 1000, 15000, 90 + 90);
-					Motor_trapezoid_PID(1000, 1000, 1000, 15000, 40);
-					//Motor_Wallcut_ST(1000, 60, 0);
-					Motor_Sula_COS(1000, 180, 680, 13000);
-					Motor_trapezoid(1000, 1000, 1000, 15000, 70);
-					Motor_trapezoid(1000, 1000, 0, 15000, 180);
-
-					Motor_Stop();
-					HAL_Delay(500);
-					Suction_Stop();
-					LOG_get_end();
-
-					Encorder_count_reset();
-				}
-			} else if (Encorder_number_out() == 3) {		//in45
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-
-					Motor_Setup();
-					Suction_Start(15);
-
-					HAL_Delay(1000);
-					LOG_get_start();
-					Motor_trapezoid_PID(0, 1000, 1000, 15000, 90 + 90);
-					Motor_trapezoid_PID(1000, 1000, 1000, 15000, 15);
-					Motor_Sula_COS(1000, 44, 750, 10000);
-					Motor_trapezoid(1000, 1000, 1000, 15000, 42);
-					Motor_trapezoid(1000, 1000, 0, 15000, 127.3);
-
-					Motor_Stop();
-					HAL_Delay(500);
-					Suction_Stop();
-					LOG_get_end();
-
-					Encorder_count_reset();
-				}
-			} else if (Encorder_number_out() == 4) {		//in135
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-
-					Motor_Setup();
-					Suction_Start(15);
-
-					HAL_Delay(1000);
-					LOG_get_start();
-					Motor_trapezoid_PID(0, 1000, 1000, 15000, 90 + 90);
-					Motor_trapezoid_PID(1000, 1000, 1000, 15000, 38);
-					Motor_Sula_COS(1000, 134, 800, 10000);
-					Motor_trapezoid(1000, 1000, 1000, 15000, 8);
-					Motor_trapezoid(1000, 1000, 0, 15000, 127.3);
-
-					Motor_Stop();
-					HAL_Delay(500);
-					Suction_Stop();
-					LOG_get_end();
-
-					Encorder_count_reset();
-				}
-			} else if (Encorder_number_out() == 5) {		//out45
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-
-					Motor_Setup();
-					Suction_Start(15);
-
-					HAL_Delay(1000);
-					LOG_get_start();
-					Motor_trapezoid(0, 1000, 1000, 10000, 127.3);
-					Motor_trapezoid(1000, 1000, 1000, 5000, 73);
-					Motor_Sula_COS(1000, 41.5, 700, 20000);
-					Motor_trapezoid(1000, 1000, 1000, 5000, 30);
-					Motor_trapezoid(1000, 1000, 0, 10000, 180);
-
-					Motor_Stop();
-					HAL_Delay(500);
-					Suction_Stop();
-					LOG_get_end();
-
-					Encorder_count_reset();
-				}
-			} else if (Encorder_number_out() == 6) {		//out135
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-
-					Motor_Setup();
-					Suction_Start(15);
-
-					HAL_Delay(1000);
-					LOG_get_start();
-					Motor_trapezoid(0, 1000, 1000, 10000, 127.3);
-					Motor_trapezoid(1000, 1000, 1000, 5000, 25);
-					Motor_Sula_COS(1000, 132, 700, 14000);
-					Motor_trapezoid(1000, 1000, 1000, 5000, 25);
-					Motor_trapezoid(1000, 1000, 0, 10000, 180);
-
-					Motor_Stop();
-					HAL_Delay(500);
-					Suction_Stop();
-					LOG_get_end();
-
-					Encorder_count_reset();
-				}
-			} else if (Encorder_number_out() == 7) {		//V90
-				if (Sensor_Enter() == 1) {
-					Buzzer_Enter();
-					Sensor_Start();
-
-					Motor_Setup();
-					Suction_Start(15);
-
-					HAL_Delay(1000);
-					LOG_get_start();
-					Motor_trapezoid(0, 1000, 1000, 10000, 127.3);
-					Motor_trapezoid(1000, 1000, 1000, 5000, 37);
-					Motor_Sula_COS(1000, 88.5, 800, 20000);
-					Motor_trapezoid(1000, 1000, 1000, 5000, 27);
-					Motor_trapezoid(1000, 1000, 0, 10000, 127.3);
-
-					Motor_Stop();
 					HAL_Delay(500);
 					Suction_Stop();
 					LOG_get_end();
@@ -1180,7 +1043,9 @@ void SystemClock_Config(void) {
 /* 1区画ぶんの探索動作。flags で走り方を選ぶ */
 static void Maze_Search_Action(int flags) {
 	if (flags & SEARCH_KNOWN) {
+		G_Known_Naname = (flags & SEARCH_KNOWN_NANAME) ? 1 : 0;
 		Robot_Maze_Pass_Action();
+		G_Known_Naname = 0;
 	} else if (flags & SEARCH_SUCTION) {
 		Robot_Maze_Suction_Action();
 	} else {
