@@ -244,6 +244,7 @@ RAMに残っているデータを全部、迷路 → 壁切れのログ → 走�
 | `Alignment_TIME` / `Align_Min_Time` / `Align_Still_Time` / `Align_Still_V` | `motor.c` | 0.5 / 0.10 / 0.05 / 10 | 止まったときの前壁合わせ。左右の車輪が `Align_Still_V`[mm/s]未満の状態が `Align_Still_Time`[s]続いたら終わる(`Align_Min_Time` より早くは終わらない、上限 `Alignment_TIME`) |
 | `Align_Use_mm` / `Kp_FW_mm` / `Kp_FW_dire_mm` | `Wallsensor.c` | 1 / 1.8 / 1.8 | 止まったときの前壁合わせを、感度合わせした距離で行う(前後は左右の平均が84mm、向きは左右の距離の差が0)。0 で今までの生の値(`FlontWall_Distance` 636、`Kp_FW` / `Kp_FW_dire` 0.1) |
 | `Gyro_Deadband` | `lsm6dsr.c` | 0.15 | ジャイロのゼロ点を測れたあとの不感帯[dps](まだなら 0.5)。ゼロ点は `Motor_Setup` のたびに 0.3 秒止まって測る(`Gyro_Calibrate`。ばらつき 1.5 dps 超・平均 5 dps 超なら前の値のまま。吸引を回すとばらつき 4〜5 dps なので、吸引の前に測った値を使う) |
+| `G_Heading_Keep` | `motor.c` | 1 | 直線から直線へ続けて走るとき、向きの基準(`Gyro_Sigma_error`)を引き継ぐ。ターン・壁合わせ・後退・止まったあとは 0 から。0 で今までどおり(直線の関数を呼ぶたびに 0。2026-10-21) |
 | `Pillar_Short_X` | `motor.c` | 5 | 柱のとき、X がこれより小さい前距離(2400の斜め入り)は曲がる側の境目だけを使い、見つからなければ 区画中心 + X(従来と同じ)で曲がる |
 | `ac_nn` | `main.c`(モード1の番号ごと) | 上の表 | 最短走行の斜めの直線の加速度(0なら直線の加速度-5000) |
 | `G_WallCtrl_Use_mm` | `Wallsensor.c` | 1 | 横壁制御。1=距離版、0=センサ値版 |

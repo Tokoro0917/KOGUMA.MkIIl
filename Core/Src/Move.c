@@ -313,11 +313,11 @@ void Robot_Maze_Pass_Action() {
 						90 * G_Known_Pass[i]);
 			} else if (G_Known_Pass[i] == -2) {			//左
 				Motor_Sula_ST(1000, 1000, 1000, 5000, 20);
-				Motor_Sula_COS(1000, 90, 1630, 60000);
+				Motor_Sula_COS(1000, 90, 1640, 60000);
 				Motor_trapezoid_PID(1000, 1000, 1000, 5000, 48);
 			} else if (G_Known_Pass[i] == -3) {			//右
 				Motor_Sula_ST(1000, 1000, 1000, 5000, 20);
-				Motor_Sula_COS(1000, -90, 1630, 60000);
+				Motor_Sula_COS(1000, -90, 1640, 60000);
 				Motor_trapezoid_PID(1000, 1000, 1000, 5000, 48);
 			} else if (G_Known_Pass[i] == -8) {			//行き止まりUターン
 				Motor_trapezoid(1000, 1000, 0, 10000, 75);

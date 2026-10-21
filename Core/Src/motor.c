@@ -59,7 +59,7 @@ float Ksi_Fun = 0.0015; //0.005
 float Ksd_Fun = 0.1; //0.01
 
 float Ksp_AT = 0.3; //0.3
-float Ksi_AT = 0.003; ////
+float Ksi_AT = 0.0045; //2026-10-21: 0.003 から 1.5倍。ターン後の直線で向きのずれ(約0.5°)を戻しきれなかった(0.5° → 0.39°)
 float Ksd_AT = 0.01;
 
 float Ktp = 0.7; //
@@ -87,6 +87,20 @@ float Motor_Voltage_L = 0;
 float Motor_Voltage_R = 0;
 
 int PID_Mode = 0;
+
+/* 直線の向きの基準(Gyro_Sigma_error、向きのずれの積分)を、直線から直線へ続けて走るときは引き継ぐ(2026-10-21)。
+ * 今までは直線の関数を呼ぶたびに 0 に戻していた。ずれた向きを戻すのに 0.5 秒ほどかかるので、区間に分けて走ると
+ * 戻しきる前に基準が変わっていた(モード5 No.0 のターン後、後距離 50mm と減速 180mm で合わせて -0.9°)。
+ * ターン・壁合わせ・後退(G_Motor_Flag >= 2)のあとは今までどおり 0 から始める(ターン中の積分は直線の向きの基準ではない)。
+ * 止まったとき(Motor_Stop)と Motor_Setup も今までどおり 0 にする。0 にすると今までどおり(直線の関数を呼ぶたびに 0) */
+int G_Heading_Keep = 1;
+static volatile int s_heading_turned = 1;	//前の直線のあとに G_Motor_Flag >= 2 の動きがあったか(割り込みで立てる)
+static void Straight_Heading_Start(void) {
+	if (!G_Heading_Keep || s_heading_turned) {
+		Gyro_Sigma_error = 0;
+	}
+	s_heading_turned = 0;
+}
 int Turn_Mode = 0;
 int Fun_Flag = 0;
 
@@ -391,6 +405,9 @@ void Motor_Speed_PID_ST(int V, int Ac) { // mm/s
 
 void Motor_Speed_PID_Turn(float W, float W_Ac) {
 	float w = 0;
+	if (G_Motor_Flag >= 2) {	//ターン・壁合わせ・後退: 次の直線は向きの基準を 0 から始める
+		s_heading_turned = 1;
+	}
 	if (PID_Mode == 1) {
 		W = calWallConrol() * 0.4;
 	} else if (PID_Mode == 2) {
@@ -466,7 +483,7 @@ void Motor_trapezoid(float Vst, float Vmax, float Vend, float Ac, float X) {
 	G_Motor_W_Target = 0;
 
 	Enc_Sigma_error = 0;
-	Gyro_Sigma_error = 0;
+	Straight_Heading_Start();
 
 	G_Motor_Count = 0;
 
@@ -647,7 +664,7 @@ void Motor_trapezoid_Asymmetric_PID(float Vst, float Vmax, float Vend, float Ac,
 	G_Motor_W_Target = 0;
 
 	Enc_Sigma_error = 0;
-	Gyro_Sigma_error = 0;
+	Straight_Heading_Start();
 
 	G_Motor_Count = 0;
 
@@ -890,7 +907,7 @@ void Motor_Search_Straight(float V, float X) {
 	G_Motor_W_Target = 0;
 
 	Enc_Sigma_error = 0;
-	Gyro_Sigma_error = 0;
+	Straight_Heading_Start();
 	G_Motor_Count = 0;
 
 	int correct = (Search_WallCut == 2);
@@ -950,7 +967,7 @@ void Motor_Sula_before(float Vst, float Vmax, float Vend, float Ac, float X) {
 	G_Motor_W_Ac = 0;
 	G_Motor_W_Target = 0;
 
-	Gyro_Sigma_error = 0;
+	Straight_Heading_Start();
 	//Enc_Sigma_error = 0;
 
 	float X0 = X;
@@ -993,7 +1010,7 @@ void Motor_Sula_ST(float Vst, float Vmax, float Vend, float Ac, float X) {
 	G_Motor_W_Ac = 0;
 	G_Motor_W_Target = 0;
 
-	Gyro_Sigma_error = 0;
+	Straight_Heading_Start();
 	//Enc_Sigma_error = 0;
 
 	float X0 = X;
@@ -1345,7 +1362,7 @@ void Motor_Wallcut_END(float Vmax, float X, int direction) {
 	G_Motor_Ac = 0;
 
 	Enc_Sigma_error = 0;
-	Gyro_Sigma_error = 0;
+	Straight_Heading_Start();
 
 	Wall_search();
 	G_Motor_X = 0;
@@ -1363,7 +1380,7 @@ void Motor_Wallcut_ST_NANAME(float Vmax, float X, int direction) {
 	G_Motor_Ac = 0;
 
 	Enc_Sigma_error = 0;
-	Gyro_Sigma_error = 0;
+	Straight_Heading_Start();
 	Wall_search();
 	G_Motor_X = 0;
 	if (direction == 0) { //左旋回
@@ -1398,7 +1415,7 @@ void Motor_Wallcut_END_NANAME(float Vmax, float X, int direction) {
 	G_Motor_Ac = 0;
 
 	Enc_Sigma_error = 0;
-	Gyro_Sigma_error = 0;
+	Straight_Heading_Start();
 
 	G_Motor_X = 0;
 
@@ -1457,7 +1474,7 @@ static void Accel_Start(float Vst, int pid_mode) {
 	G_Motor_W_Ac = 0;
 	G_Motor_W_Target = 0;
 	Enc_Sigma_error = 0;
-	Gyro_Sigma_error = 0;
+	Straight_Heading_Start();
 	G_Motor_Count = 0;
 	G_Motor_X = 0;
 }
