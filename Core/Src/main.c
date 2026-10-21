@@ -402,7 +402,7 @@ int main(void) {
 					//Motor_trapezoid_PID(0, 3000, 0, 20000, 180 * 9);
 					//Motor_trapezoid_Asymmetric_PID(0, 4000, 0, 23000, 180 * 9);
 					//Motor_trapezoid_PID(0, 3000, 0, 10000, 180*8);	//2026-10-09 まで(吸引35)
-					Motor_trapezoid_PID(0, 1000, 0, 5000, 180 * 8);
+					Motor_trapezoid_PID(0, 1000, 0, 5000, 180 * 6);
 					Motor_Stop();
 					Motor_Stop();
 					Motor_Stop();
