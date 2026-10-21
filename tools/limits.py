@@ -191,15 +191,20 @@ def fit_rotation(logs):
         y.append(dv[ok])
     a = np.vstack(a)
     y = np.concatenate(y)
+    if len(y) < 100 or np.degrees(abs(a[:, 0])).max() < 500:
+        return None, 0  # ターンのないログ(直進だけ)では求まらない
     c = np.linalg.lstsq(a, y, rcond=None)[0]
     return c, (y - a @ c).std()
 
 
 def report_turns(logs):
-    (kw, kj), sd = fit_rotation(logs)
+    c, sd = fit_rotation(logs)
     print('== 4. ターンごとの電圧の余裕 ==')
-    print('  回転の係数(このログで求め直した値): KW %.4f V/(rad/s)、KJ %.5f V/(rad/s^2)(決めてある値 %.4f、%.5f)、残差 %.2fV'
-          % (kw, kj, KW, KJ, sd))
+    if c is None:
+        print('  回転の係数: このログにはターンがないので求め直さない(決めてある値 KW %.4f、KJ %.5f)' % (KW, KJ))
+    else:
+        print('  回転の係数(このログで求め直した値): KW %.4f V/(rad/s)、KJ %.5f V/(rad/s^2)(決めてある値 %.4f、%.5f)、残差 %.2fV'
+              % (c[0], c[1], KW, KJ, sd))
     print('  必要な電圧 = %.2f + %.2f v + %.3f w + %.4f wdot(外側の車輪、目標の w から)' % (C, KE, KW, KJ))
     for fn, meta, d in logs:
         dt = meta['dt']
