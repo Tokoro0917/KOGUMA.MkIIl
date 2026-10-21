@@ -390,11 +390,13 @@ int main(void) {
 					Buzzer_Enter();
 					Sensor_Start();
 					///
-					/* タイヤ径の測定用(2026-10-09): 本番と同じ吸引で、滑らないようにゆっくり 180mm×8 = 1440mm 走る。
-					 * 実際に進んだ距離を測り、Define.h の TIREDIAMETER = 今の値 × 実際の距離 / 1440 にする。
-					 * 吸引は 2400 などと同じ 70(2000 の 50 で測るときは 50 に変える) */
+					/* タイヤ径の測定用(2026-10-09): 本番と同じ吸引で、滑らないようにゆっくり 180mm×6 = 1080mm 走る。
+					 * 実際に進んだ距離を測り、Define.h の TIREDIAMETER = 今の値 × 実際の距離 / エンコーダの距離 にする。
+					 * エンコーダの距離は走行ログ(モード4 No.7)の最後の x。1080 ではない: 減速は時間で進めるので、
+					 * 速度が目標に遅れた分だけ手前で止まる(2026-10-21 は 1065.1) 
+					 * 吸引は探索(モード0の吸引探索)と同じ 35(2026-10-21。それまでは 2400 などと同じ 70) */
 					Motor_Setup();
-					Suction_Start(70);
+					Suction_Start(35);
 					LOG_get_start();
 					//					Motor_trapezoid_PID(0, 2000, 2000, 60000, 24);
 					//					Motor_trapezoid_PID(2000, 2000, 0, 35000, 90);
@@ -402,7 +404,7 @@ int main(void) {
 					//Motor_trapezoid_PID(0, 3000, 0, 20000, 180 * 9);
 					//Motor_trapezoid_Asymmetric_PID(0, 4000, 0, 23000, 180 * 9);
 					//Motor_trapezoid_PID(0, 3000, 0, 10000, 180*8);	//2026-10-09 まで(吸引35)
-					Motor_trapezoid_PID(0, 1000, 0, 5000, 180 * 8);
+					Motor_trapezoid_PID(0, 1000, 0, 5000, 180 * 6);
 					Motor_Stop();
 					Motor_Stop();
 					Motor_Stop();

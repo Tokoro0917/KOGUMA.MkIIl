@@ -24,7 +24,7 @@
 #define MAX_STEP (MAZE_SIZE * MAZE_SIZE)
 
 
-#define TIREDIAMETER 23.1 //23.5mm
+#define TIREDIAMETER 23.42 //2026-10-21 モード4 No.1(吸引35)で実測。1080mm 指示でエンコーダ 1065.1mm、実際 1080mm。前は 23.1(10-09、吸引70、指示の距離で割っていた)
 #define TIREBETWEEN 55
 #define PI 3.1415
 #define LIMITBATT 15.6
