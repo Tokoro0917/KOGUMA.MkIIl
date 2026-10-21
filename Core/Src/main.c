@@ -61,6 +61,7 @@
 #define SEARCH_SHORTEST		0x20	//スタートに戻ったあと最短走行(モード1 No.5と同じ)
 #define SEARCH_REPEAT		0x40	//最短走行を SEARCH_REPEAT_N 回(SEARCH_SHORTEST と一緒に。2回目からは、前の最短のゴールからスタートへ帰ってから走る)
 #define SEARCH_REPEAT_N		4
+#define SEARCH_KNOWN_NANAME	0x80	//既知区間を斜めで走る(SEARCH_KNOWN と一緒に。Move.c の G_Known_Naname、G_Turn1000)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -166,7 +167,7 @@ int main(void) {
 		Motor_Setup_Voltage();
 		if (Encorder_mode_out() == 0) {		//大会用
 			/* 探索の組み合わせは Maze_Search() の引数で指定する(下の SEARCH_*)。
-			 * No.0 と No.12〜15 は何もしない */
+			 * No.0 と No.13〜15 は何もしない */
 			int n = Encorder_number_out();
 			int flags = -1;
 			if (n == 1) {			//スラローム探索 往復
@@ -193,6 +194,9 @@ int main(void) {
 			} else if (n == 11) {	//No.10 の最短を4回(最短のあとはゴールから、帰りもダイクストラ誘導で探索しながらスタートへ帰る)
 				flags = SEARCH_SUCTION | SEARCH_DIJKSTRA | SEARCH_KNOWN
 						| SEARCH_SHORTEST | SEARCH_REPEAT;
+			} else if (n == 12) {	//No.10 の既知区間を斜めで走る(お遊び。G_Turn1000、2026-10-21)
+				flags = SEARCH_SUCTION | SEARCH_DIJKSTRA | SEARCH_KNOWN
+						| SEARCH_KNOWN_NANAME | SEARCH_SHORTEST;
 			}
 			if ((flags >= 0) && (Sensor_Enter() == 1)) {
 				Maze_Search(flags);
@@ -1039,7 +1043,9 @@ void SystemClock_Config(void) {
 /* 1区画ぶんの探索動作。flags で走り方を選ぶ */
 static void Maze_Search_Action(int flags) {
 	if (flags & SEARCH_KNOWN) {
+		G_Known_Naname = (flags & SEARCH_KNOWN_NANAME) ? 1 : 0;
 		Robot_Maze_Pass_Action();
+		G_Known_Naname = 0;
 	} else if (flags & SEARCH_SUCTION) {
 		Robot_Maze_Suction_Action();
 	} else {

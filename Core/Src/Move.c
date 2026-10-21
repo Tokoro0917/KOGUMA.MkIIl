@@ -286,6 +286,12 @@ void Robot_Maze_Suction_Action() {
 
 }
 
+/* 1: 既知区間を斜めの命令列(Known_Pass_NANAME)で走る。斜め入り・斜め出・V90 は G_Turn1000、斜めの直線は Motor_NANAME_PID。
+ * 0: 今までどおり(G_Known_Pass、直進と小回りだけ)。main.c の Maze_Search_Action がモード0 No.12 のときだけ 1 にする(2026-10-21) */
+int G_Known_Naname = 0;
+
+static int Turn2000_Naname_Kind(int code, int *kind, int *dir);
+
 void Robot_Maze_Pass_Action() {
 	int Known_X = G_Robot_MAZE_X;
 	int Known_Y = G_Robot_MAZE_Y;
@@ -304,50 +310,55 @@ void Robot_Maze_Pass_Action() {
 	}
 	if (G_MAZE_Explored[Known_X][Known_Y] == 1) {
 		Known_Pass_Generation();
-		for (int i = 0; G_Known_Pass[i] != 0; i++) {
+		/* 斜めで走るときは Known_Pass_NANAME。直進・小回り・Uターン・大回りの命令の意味は G_Known_Pass と同じで、
+		 * 斜めの命令(-50の倍数、-51〜-54、-61〜-66)が増える。斜め入りの前・斜め出のあとの直進は半区画減っている(奇数) */
+		const int16_t *pass = G_Known_Naname ? Known_Pass_NANAME : G_Known_Pass;
+		for (int i = 0; pass[i] != 0; i++) {
 			if (Failsafe_Flag() == 1) {
 				break;
 			}
-			if (G_Known_Pass[i] > 0) {			//1区間前進
+			int kind, dir;
+			if (pass[i] > 0) {			//半区画 pass[i] 個前進
 				Motor_trapezoid_PID(1000, 4000, 1000, 15000,
-						90 * G_Known_Pass[i]);
-			} else if (G_Known_Pass[i] == -2) {			//左
+						90 * pass[i]);
+			} else if (G_Known_Naname && (pass[i] <= -50)
+					&& Turn2000_Naname_Kind(pass[i], &kind, &dir)) {	//斜め入り・斜め出・V90
+				Turn1000_Run(kind, dir);
+			} else if (G_Known_Naname && (pass[i] <= -50) && (pass[i] % 50 == 0)) {	//斜めの直線
+				Motor_NANAME_PID(1000, 3000, 1000, 10000, 127.3 * pass[i] / -50);
+			} else if (pass[i] == -2) {			//左
 				Motor_Sula_ST(1000, 1000, 1000, 5000, 20);
 				Motor_Sula_COS(1000, 90, 1640, 60000);
 				Motor_trapezoid_PID(1000, 1000, 1000, 5000, 48);
-			} else if (G_Known_Pass[i] == -3) {			//右
+			} else if (pass[i] == -3) {			//右
 				Motor_Sula_ST(1000, 1000, 1000, 5000, 20);
 				Motor_Sula_COS(1000, -90, 1640, 60000);
 				Motor_trapezoid_PID(1000, 1000, 1000, 5000, 48);
-			} else if (G_Known_Pass[i] == -8) {			//行き止まりUターン
+			} else if (pass[i] == -8) {			//行き止まりUターン
 				Motor_trapezoid(1000, 1000, 0, 10000, 75);
 				Motor_Stop();
 				Stop_Hook_Run();	//既知区間の残りはこのまま走る(Uターンは変えない)
 				G_Just_UTurned = 1;
 				Robot_adjustment();
 				Motor_trapezoid_PID(0, 1000, 1000, 10000, 90);
-			} else if (G_Known_Pass[i] == -4) {			//左大廻９０
+			} else if (pass[i] == -4) {			//左大廻９０
 				Motor_Wallcut_ST(1000, 50, 0);
 				Motor_Sula_COS(1000, 90, 750, 20000);
 				Motor_Wallcut_END(1000, 85, 0);
-			} else if (G_Known_Pass[i] == -6) {			//右大廻９０
+			} else if (pass[i] == -6) {			//右大廻９０
 				Motor_Wallcut_ST(1000, 50, 1);
 				Motor_Sula_COS(1000, -90, 750, 20000);
 				Motor_Wallcut_END(1000, 85, 1);
-			} else if (G_Known_Pass[i] == -5) {			//左大廻１８０
+			} else if (pass[i] == -5) {			//左大廻１８０
 				Motor_Wallcut_ST(1000, 40, 0);
 				Motor_Sula_COS(1000, 180, 680, 13000);
 				Motor_Wallcut_END(1000, 70, 0);
-			} else if (G_Known_Pass[i] == -7) {			//右大廻１８０
+			} else if (pass[i] == -7) {			//右大廻１８０
 				Motor_Wallcut_ST(1000, 40, 1);
 				Motor_Sula_COS(1000, -180, 680, 13000);
 				Motor_Wallcut_END(1000, 70, 1);
 			}
-			// 斜め(NANAME)区間の実行は未実装・未チューニングのためコメントアウトのまま。
-			// 有効化する際は (1) このforループの走査対象をG_Known_Pass[]ではなく
-			// Known_Pass_NANAME[]に切り替え、(2) 下記の速度・距離・角度の各定数を
-			// 実機で再チューニングすること。生成側はKnown_Pass_Compression_NANAME()
-			// (Maze.c)で既にKnown_Pass_NANAME[]として計算済み。
+			// 2026-10-21: 斜めは上の G_Known_Naname の分岐(G_Turn1000)で走る。下は以前の 600mm/s の値(使わない)
 			/* else if (Known_Pass_NANAME[i] == -51) {			//入り　左４５
 			 Motor_Wallcut_ST(600, 35, 0);
 			 Motor_Sula_COS(600, 45, 450, 8000);
