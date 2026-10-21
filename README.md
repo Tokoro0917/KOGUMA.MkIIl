@@ -373,7 +373,7 @@ Core/Src, Core/Inc   本体ファームウェア
 Drivers/             STM32 HAL / CMSIS
 KOGUMA.MkII/          旧バージョン一式(参考用に同梱)
 test/                ホスト(PC)上で走るテスト(迷路・距離変換・速度計画・距離ごとの履歴・柱の端)
-tools/               ビューア(UART出力をグラフ・表・迷路にする)
+tools/               ビューア(UART出力をグラフ・表・迷路にする)、ログからノイズと性能の限界を出すスクリプト(limits.py)
 logs/                ビューアで保存したロボットの出力
 sim/                 PC上の探索シミュレータとブラウザ用の可視化
 docs/                調べたことのメモ(他の人のターン速度の決め方、壁制御・壁切れのやり方など)
@@ -401,3 +401,4 @@ STM32F446RETX_*.ld   リンカスクリプト
 | `docs/turnv_design.md` | ターンごとの通過速度(モード1 No.10・No.11) |
 | `docs/turn_speed_research.md` | ほかの人のターン速度の決め方 |
 | `docs/testing.md` | テストが確かめていること |
+| `docs/noise_limits.md` | ノイズと性能の限界の見積もり(2026-10-21。センサ・ジャイロ・エンコーダのノイズ、電池の内部抵抗、ターンと直線の電圧の上限、改善の計画)。`python3 tools/limits.py` で出し直せる |
