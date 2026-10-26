@@ -10,6 +10,7 @@
 
 #include <stdint.h>
 #include"Define.h"
+#include"ShortParam.h"
 
 typedef struct {
 	int head;
@@ -65,6 +66,7 @@ extern int16_t G_Dijk_Path_X[MAX_STEP];
 extern int16_t G_Dijk_Path_Y[MAX_STEP];
 extern int G_Dijk_Path_Len;
 
+extern int G_Unknown_Target_Lost;	//未知壁探索で、見に行く途中で目標の区画に行けなくなったら1(2026-10-27)
 extern int G_Unknown_Target_X;
 extern int G_Unknown_Target_Y;
 
@@ -108,12 +110,25 @@ void Pass_zero_act();
 
 
 void  Maze_Dijkstra_Calculation();
-/* ダイクストラの区間のコスト(2026-10-26)。1 なら走行時間の表(既定)、0 なら以前の ST_COST/DIAG_COST/CON_COST */
+/* ダイクストラのコスト(2026-10-27)。1 なら最短走行の時間(既定)、0 なら以前の ST_COST/DIAG_COST/CON_COST */
 extern int G_Dijk_Time_Cost;
-extern uint16_t G_Dijk_Inc_O[DIJK_INC_NUM];	//縦横の区間の k 歩目のコスト(0.5ms単位)
-extern uint16_t G_Dijk_Inc_D[DIJK_INC_NUM];	//斜めの区間の k 歩目のコスト(0.5ms単位)
-/* 最短走行の速度から表を作る。v ターンの速度、vmax 直線の最高速度、ac 直線の加速度、ac_naname 斜めの直線の加速度(0 なら ac-5000) */
-void Maze_Dijkstra_Set_Speed(int v, int vmax, int ac, int ac_naname);
+/* 最短走行の時間の表(0.5ms単位。Maze_Dijkstra_Set_Run で作る)。
+ * 経路のコストは、命令列(G_Short_Pass_NANAME)の命令ごとの時間の合計(tools/route_time.py と同じ数え方) */
+#define DIJK_TH_NUM (2 * MAZE_SIZE + 2)
+#define DIJK_TD_NUM (2 * MAZE_SIZE + 2)
+typedef struct {
+	uint16_t th[DIJK_TH_NUM];	//縦横の直線 半区画 n 個
+	uint16_t td[DIJK_TD_NUM];	//斜めの直線 n 区間(-50*n)
+	uint16_t turn[T2000_NUM];	//ターン(並びは T2000_BIG90 など)。理想の始まりの点から終わりの点まで
+	uint16_t start_s;	//走り出し(最初が直線): スタートの区画の中心から境目まで 0 から加速
+	uint16_t start_t;	//走り出し(最初がターン)
+	uint16_t stop_b;	//止まる(最後が直線。境目から270mm)
+	uint16_t stop_c;	//止まる(最後がターン。区画の中心から180mm)
+} DijkCost;
+extern DijkCost G_Dijk_Cost;
+extern int G_Dijk_Best_Cost;	//直近の Maze_Dijkstra_Calculation() の経路のコスト(行けなければ -1)
+/* 最短走行の値からコストの表を作る(ac_naname が 0 なら ac-5000)。作るまでは G_Short_Run_Set[0] */
+void Maze_Dijkstra_Set_Run(const ShortRunParam *p);
 void Maze_Dijkstra_Mapping();
 void Maze_Neighbor_Update(void);	//今いる区画の前後左右の歩数を G_Maze_Flont 等に入れる(移動しない)
 void Maze_Debug_Dump(void);	//保存済みの迷路と最短経路の命令列をシリアルに出す(モード3 No.0)

@@ -593,6 +593,12 @@ static float Short_AC_Naname(int AC, int def_minus) {
 	return (G_Short_AC_NANAME > 0) ? G_Short_AC_NANAME : AC - def_minus;
 }
 
+/* ダイクストラのコストを、これから走る値(ターンの速度 v、直線の最高速度・加速度、ターンの表)の時間にする(2026-10-27) */
+static void Short_Dijkstra_Use(int v, int MAX, int AC, const Turn2000_Param *turn) {
+	ShortRunParam p = { v, MAX, AC, (int) Short_AC_Naname(AC, 5000), turn };
+	Maze_Dijkstra_Set_Run(&p);
+}
+
 /* 最初のターンの直後の直線(vs < V のとき)。vs から V までは加速度 SHORT_FIRST_AC で上げ、
  * 残りの距離を返す(残りはいつもどおり V から走る)。直線全体を強い加速度にすると、
  * 最高速への加速と減速まで強くなるので、V に届くまでの区間だけにする。
@@ -793,36 +799,7 @@ void Short_NANAME_Move1000(int MAX, int AC) {
 
 }
 
-/* ---- 2000のターンの値(2026-10-09) ----
- * 以前は Short_NANAME_Move2000(BFS)・Short_Dijkstra_Move2000(ダイクストラ)・モード6(ターン単体テスト)に
- * 別々に書かれていて、ダイクストラだけ値が違っていた。BFS(=モード6)の値で1つの表にまとめた。
- * モード6 No.1〜7(Turn2000_Test、左旋回、壁切れを使わず決まった距離)で合わせて、ここを直す。
- * 前距離・後距離[mm]、角度[deg]、最大角速度[deg/s]、角加速度[deg/s^2] */
-Turn2000_Param G_Turn2000[T2000_NUM] = {
-	//          前の壁切れ   前距離 角度  最大角速度 角加速度  後の壁切れ   後距離
-	[T2000_BIG90]  = { WC2000_NORMAL, 14,  90, 2000,  40000, WC2000_NORMAL, 75 },	//大回り90
-	[T2000_BIG180] = { WC2000_NORMAL,  5, 180, 1280,  45000, WC2000_NORMAL, 67 },	//大回り180
-	[T2000_IN45]   = { WC2000_NORMAL,  20,  45, 1900, 120000, WC2000_NANAME, 107 },	//斜め入り45
-	[T2000_IN135]  = { WC2000_NORMAL, 37, 135, 1500,  80000, WC2000_NANAME, 80 },	//斜め入り135
-	[T2000_OUT45]  = { WC2000_NANAME, 23,  45, 1100,  50000, WC2000_NORMAL, 45 },	//斜め出45
-	[T2000_OUT135] = { WC2000_NANAME, 5, 135, 1420,  80000, WC2000_NORMAL, 85 },	//斜め出135
-	[T2000_V90]    = { WC2000_NANAME, 24,  90, 2000, 130000, WC2000_NANAME, 92},	//V90
-};
-
-/* ---- 2400のターンの値(2026-10-21) ----
- * 以前は Short_NANAME_Move2400 とモード7(テスト)に別々に書かれていて、斜め出135 の角度がテストだけ 134 だった。
- * Short_NANAME_Move2400 の値で、G_Turn2000 と同じ形の1つの表にまとめた。モード7 No.1〜7(Turn2400_Test)で合わせて、ここを直す。
- * TurnV_Table(ターンごとの通過速度、モード1 No.10・11)は別の表のまま */
-Turn2000_Param G_Turn2400[T2000_NUM] = {
-	//          前の壁切れ   前距離 角度  最大角速度 角加速度  後の壁切れ   後距離
-	[T2000_BIG90]  = { WC2000_NORMAL, 34,  90, 1600,  80000, WC2000_NORMAL, 95 },	//大回り90
-	[T2000_BIG180] = { WC2000_NORMAL, 15, 180, 1470,  70000, WC2000_NORMAL, 85 },	//大回り180
-	[T2000_IN45]   = { WC2000_NORMAL,  17,  45, 2500, 160000, WC2000_NANAME, 113 },	//斜め入り45
-	[T2000_IN135]  = { WC2000_NORMAL, 20, 135, 2000,  55000, WC2000_NANAME, 80 },	//斜め入り135
-	[T2000_OUT45]  = { WC2000_NANAME, 20,  45, 1320,  72000, WC2000_NORMAL, 45 },	//斜め出45
-	[T2000_OUT135] = { WC2000_NANAME, 17, 135, 2100,  80000, WC2000_NORMAL, 125 },	//斜め出135
-	[T2000_V90]    = { WC2000_NANAME,  11,  90, 2600, 150000, WC2000_NANAME, 110 },	//V90
-};
+/* 2000・2400のターンの値(G_Turn2000 / G_Turn2400)は ShortParam.c に移した(2026-10-27) */
 
 /* ---- 1000のターンの値(2026-10-21) ----
  * 吸引探索の既知区間を斜めで走るとき(モード0 No.12)に使う。値はモード5(ターン単体テスト)に書かれていた値のまま
@@ -1120,7 +1097,7 @@ void Short_NANAME_Move2400(int MAX, int AC) {
 	G_MAZE_Explored[G_Gool_X][G_Gool_Y] = 0;
 	Maze_Step_Calculate();
 	if (Short_Use_Dijkstra) {
-		Maze_Dijkstra_Set_Speed(2400, MAX, AC, (int) Short_AC_Naname(AC, 5000));
+		Short_Dijkstra_Use(2400, MAX, AC, G_Turn2400);
 		Maze_Dijkstra_Calculation();
 	} else {
 		Maze_Shortest_Calculation();
@@ -1328,7 +1305,7 @@ void Short_Dijkstra_Move2000(int MAX, int AC) {
 	Maze_Step_Calculate();
 
 	//Maze_Shortest_Calculation();
-	Maze_Dijkstra_Set_Speed(2000, MAX, AC, (int) Short_AC_Naname(AC, 5000));
+	Short_Dijkstra_Use(2000, MAX, AC, G_Turn2000);
 	Maze_Dijkstra_Calculation();
 
 	Shortest_Pass_Compression();
@@ -1545,7 +1522,7 @@ void Short_NANAME_MoveTurnV(int MAX, int AC) {
 	G_MAZE_Explored[G_Gool_X][G_Gool_Y] = 0;
 	Maze_Step_Calculate();
 	if (TurnV_Use_Dijkstra) {
-		Maze_Dijkstra_Set_Speed(2400, MAX, AC, (int) Short_AC_Naname(AC, 5000));
+		Short_Dijkstra_Use(2400, MAX, AC, G_Turn2400);
 		Maze_Dijkstra_Calculation();
 	} else {
 		Maze_Shortest_Calculation();

@@ -6,11 +6,14 @@
  *   - Move.c が何もしない命令(-2,-3など)が残っていないか
  *   - 最後に直進の向きで終わり、ゴール2x2区画に止まるか
  *   - BFS版は最短歩数どおりのマス数を進んでいるか
+ *   - ダイクストラ版は一番速いか(下の「ダイクストラの経路が本当に最短か」)
  * をランダム迷路で確認する。
+ *   /tmp/t --brute 迷路の数 ループの数
+ *     小さい迷路(-DMAZE_SIZE=6 などでビルド)で全部の経路の時間と比べる(2026-10-27)
  *
  * ビルドと実行 (リポジトリ直下で):
- *   gcc -std=c11 -Wall -ICore/Inc -o /tmp/t test/test_shortpath.c Core/Src/Maze.c && /tmp/t
- *   gcc -std=c11 -Wall -DMAZE_SIZE=32 -ICore/Inc -o /tmp/t32 test/test_shortpath.c Core/Src/Maze.c && /tmp/t32
+ *   gcc -std=c11 -Wall -ICore/Inc -o /tmp/t test/test_shortpath.c Core/Src/Maze.c Core/Src/ShortParam.c -lm && /tmp/t
+ *   gcc -std=c11 -Wall -DMAZE_SIZE=32 -ICore/Inc -o /tmp/t32 test/test_shortpath.c Core/Src/Maze.c Core/Src/ShortParam.c -lm && /tmp/t32
  *
  * 実機の迷路の確認:
  *   /tmp/t --dump log.txt
@@ -493,30 +496,14 @@ static int raw_cells(void) {
 }
 
 /* ---- ダイクストラの経路が本当に最短か ---------------------------------
- * Maze.c のコストで、経路のコストを数える。
+ * (1) 以前のコスト(G_Dijk_Time_Cost = 0): Maze.c のコスト(ST_COST / DIAG_COST / CON_COST)で、経路のコストを数える。
  * 経路は壁の中点から壁の中点へのホップの並び。縦横のホップは半区画2つ、斜めのホップは
- * 半区画1つずつ縦横に進む。ゴール側から数えて、同じ向きのホップが続いた数を run とする。
- *   G_Dijk_Time_Cost = 0: ゴール側の次のホップと同じ向きなら CON_COST、
- *     違えば縦横 ST_COST・斜め DIAG_COST(最後のホップはゴールに入る向きと比べる)
- *   G_Dijk_Time_Cost = 1: 縦横 G_Dijk_Inc_O[run]・斜め G_Dijk_Inc_D[run]
- *     (ゴールに入るホップは run 1 から。表より長い run は表の最後の値。2026-10-26)
- * 本当の最短は、状態を「壁の中点 + そこに来た向き(8方向) + run」にして、変化がなくなるまで
- * 見直す素朴な方法で求める(Maze.c とは別に書いた参照実装)。 */
+ * 半区画1つずつ縦横に進む。各ホップのコストは、ゴール側の次のホップと同じ向きなら CON_COST、
+ * 違えば縦横 ST_COST・斜め DIAG_COST(最後のホップはゴールに入る向きと比べる)。
+ * 本当の最短は、状態を「壁の中点 + そこに来た向き(8方向)」にして、変化がなくなるまで
+ * 全部の状態を見直す素朴な方法で求める(Maze.c とは別に書いた参照実装)。 */
 
-#define RUN_NUM DIJK_INC_NUM
-
-/* 向き h のホップを、ゴール側のホップの向き next_h・run のあとに足したときの run */
-static int next_run(int h, int next_h, int run) {
-	if (!G_Dijk_Time_Cost)
-		return 1;	//以前のコストは run を使わない
-	if (h == next_h && run > 0)
-		return (run + 1 < RUN_NUM) ? run + 1 : RUN_NUM - 1;
-	return 1;
-}
-
-static int hop_cost(int h, int next_h, int run) {
-	if (G_Dijk_Time_Cost)
-		return (h % 2 == 0) ? G_Dijk_Inc_O[run] : G_Dijk_Inc_D[run];
+static int hop_cost(int h, int next_h) {
 	if (h == next_h)
 		return CON_COST;
 	return (h % 2 == 0) ? ST_COST : DIAG_COST;
@@ -541,10 +528,8 @@ static int raw_cost(void) {
 	}
 	int cost = 0;
 	int next_h = h;	//ゴールに入る向き
-	int run = 0;
 	for (int i = n - 1; i >= 0; i--) {
-		run = next_run(hops[i], next_h, run);
-		cost += hop_cost(hops[i], next_h, run);
+		cost += hop_cost(hops[i], next_h);
 		next_h = hops[i];
 	}
 	return cost;
@@ -562,31 +547,13 @@ static int ref_open(int cx, int cy) {
 }
 
 #define REF_INF 1000000
-static int ref_cost[2 * N + 1][2 * N + 1][8][RUN_NUM];
-
-/* 状態を順に見直すキュー(同じ状態は同時に1回だけ積む) */
-#define REF_STATE_NUM ((2 * N + 1) * (2 * N + 1) * 8 * RUN_NUM)
-static int ref_queue[REF_STATE_NUM];
-static unsigned char ref_inq[REF_STATE_NUM];
-static int ref_qh, ref_qn;
-
-static void ref_push(int x, int y, int h, int r) {
-	int id = ((x * (2 * N + 1) + y) * 8 + h) * RUN_NUM + r;
-	if (ref_inq[id])
-		return;
-	ref_inq[id] = 1;
-	ref_queue[(ref_qh + ref_qn) % REF_STATE_NUM] = id;
-	ref_qn++;
-}
+static int ref_cost[2 * N + 1][2 * N + 1][8];
 
 static int ref_shortest_cost(void) {
 	for (int x = 0; x <= 2 * N; x++)
 		for (int y = 0; y <= 2 * N; y++)
 			for (int h = 0; h < 8; h++)
-				for (int r = 0; r < RUN_NUM; r++)
-					ref_cost[x][y][h][r] = REF_INF;
-	memset(ref_inq, 0, sizeof(ref_inq));
-	ref_qh = ref_qn = 0;
+				ref_cost[x][y][h] = REF_INF;
 	/* ゴール2x2区画の外側の境界を、外へ向かう向きでコスト0にする */
 	for (int gx = MAZE_GOOL_X; gx <= MAZE_GOOL_X + 1; gx++) {
 		for (int gy = MAZE_GOOL_Y; gy <= MAZE_GOOL_Y + 1; gy++) {
@@ -594,49 +561,118 @@ static int ref_shortest_cost(void) {
 				if (in_goal(gx + DX[d], gy + DY[d]))
 					continue;
 				int ex = 2 * gx + 1 + DX[d], ey = 2 * gy + 1 + DY[d];
-				if (ref_open(ex, ey)) {
-					ref_cost[ex][ey][2 * d][0] = 0;	//run 0: 次のホップはどの向きでも run 1
-					ref_push(ex, ey, 2 * d, 0);
-				}
+				if (ref_open(ex, ey))
+					ref_cost[ex][ey][2 * d] = 0;
 			}
 		}
 	}
-	while (ref_qn > 0) {
-		int id = ref_queue[ref_qh];
-		ref_qh = (ref_qh + 1) % REF_STATE_NUM;
-		ref_qn--;
-		ref_inq[id] = 0;
-		int r = id % RUN_NUM;
-		int h = (id / RUN_NUM) % 8;
-		int y = (id / RUN_NUM / 8) % (2 * N + 1);
-		int x = id / RUN_NUM / 8 / (2 * N + 1);
-		int c = ref_cost[x][y][h][r];
-		/* 通り抜けている向き(横の壁なら北か南、縦の壁なら東か西)の先の区画を通る3本 */
-		int fwd;
-		if (y % 2 == 0)
-			fwd = (HY[h] > 0) ? 0 : 4;
-		else
-			fwd = (HX[h] > 0) ? 2 : 6;
-		for (int k = -1; k <= 1; k++) {
-			int nh = (fwd + k + 8) % 8;
-			int step = (nh % 2 == 0) ? 2 : 1;
-			int nx = x + HX[nh] * step, ny = y + HY[nh] * step;
-			if (!ref_open(nx, ny))
-				continue;
-			int nr = next_run(nh, h, r);
-			int nc = c + hop_cost(nh, h, nr);
-			if (nc < ref_cost[nx][ny][nh][nr]) {
-				ref_cost[nx][ny][nh][nr] = nc;
-				ref_push(nx, ny, nh, nr);
+	int changed = 1;
+	while (changed) {
+		changed = 0;
+		for (int x = 0; x <= 2 * N; x++) {
+			for (int y = 0; y <= 2 * N; y++) {
+				for (int h = 0; h < 8; h++) {
+					int c = ref_cost[x][y][h];
+					if (c >= REF_INF)
+						continue;
+					/* 通り抜けている向き(横の壁なら北か南、縦の壁なら東か西)の先の区画を通る3本 */
+					int fwd;
+					if (y % 2 == 0)
+						fwd = (HY[h] > 0) ? 0 : 4;
+					else
+						fwd = (HX[h] > 0) ? 2 : 6;
+					for (int k = -1; k <= 1; k++) {
+						int nh = (fwd + k + 8) % 8;
+						int step = (nh % 2 == 0) ? 2 : 1;
+						int nx = x + HX[nh] * step, ny = y + HY[nh] * step;
+						if (!ref_open(nx, ny))
+							continue;
+						int nc = c + hop_cost(nh, h);
+						if (nc < ref_cost[nx][ny][nh]) {
+							ref_cost[nx][ny][nh] = nc;
+							changed = 1;
+						}
+					}
+				}
 			}
 		}
 	}
 	/* スタート区画の北の壁(1,2)を、ゴール側から見て南向きに通る状態 */
 	int best = REF_INF;
 	for (int h = 3; h <= 5; h++)
-		for (int r = 0; r < RUN_NUM; r++)
-			if (ref_cost[1][2][h][r] < best)
-				best = ref_cost[1][2][h][r];
+		if (ref_cost[1][2][h] < best)
+			best = ref_cost[1][2][h];
+	return best;
+}
+
+/* (2) 最短走行の時間(G_Dijk_Time_Cost = 1、2026-10-27): 命令列 G_Short_Pass_NANAME の時間を、
+ * tools/route_time.py と同じ数え方で、Maze.c が作った表(G_Dijk_Cost)から数える。
+ * ダイクストラが返したコスト(G_Dijk_Best_Cost)がこれと同じか(ターンとホップの並びが圧縮と合っているか)、
+ * BFS や以前のコストの経路より遅くないか、を確かめる。本当の最短かは、小さい迷路で全部の経路を
+ * 数えて確かめる(--brute)。 */
+static int token_time(const int16_t *pass) {
+	static int16_t t[MAX_STEP];
+	const DijkCost *c = &G_Dijk_Cost;
+	int n = 0, total = 0, f = -1, last = 0;
+	while (n < MAX_STEP && pass[n] != 0) {
+		t[n] = pass[n];
+		n++;
+	}
+	for (int k = 0; k < n; k++)
+		if (t[k] != -1) {
+			f = k;
+			break;
+		}
+	if (f >= 0 && t[f] >= 1) {	//最初が直線: 走り出しで半区画
+		total += c->start_s;
+		t[f] = (t[f] > 1) ? t[f] - 1 : -1;
+	} else {
+		total += c->start_t;
+	}
+	for (int k = 0; k < n; k++) {
+		int v = t[k];
+		if (v == -1)
+			continue;
+		last = v;
+		if (v > 0) {
+			if (v >= DIJK_TH_NUM)
+				return -1;
+			total += c->th[v];
+		} else if (v <= -50 && v % 50 == 0) {
+			if (-v / 50 >= DIJK_TD_NUM)
+				return -1;
+			total += c->td[-v / 50];
+		} else if (v == -4 || v == -6) {
+			total += c->turn[T2000_BIG90];
+		} else if (v == -5 || v == -7) {
+			total += c->turn[T2000_BIG180];
+		} else if (v == -51 || v == -53) {
+			total += c->turn[T2000_IN45];
+		} else if (v == -52 || v == -54) {
+			total += c->turn[T2000_IN135];
+		} else if (v == -61 || v == -63) {
+			total += c->turn[T2000_OUT45];
+		} else if (v == -62 || v == -64) {
+			total += c->turn[T2000_OUT135];
+		} else if (v == -65 || v == -66) {
+			total += c->turn[T2000_V90];
+		} else {
+			return -1;
+		}
+	}
+	return total + ((last > 0) ? c->stop_b : c->stop_c);
+}
+
+/* 今の迷路で、BFS と以前のコストのダイクストラの経路の時間のうち速いほう(ダイクストラはこれより遅くてはいけない) */
+static int alt_best_time(void) {
+	plan(0);
+	int best = token_time(G_Short_Pass_NANAME);
+	G_Dijk_Time_Cost = 0;
+	plan(1);
+	G_Dijk_Time_Cost = 1;
+	int t = token_time(G_Short_Pass_NANAME);
+	if (t >= 0 && (best < 0 || t < best))
+		best = t;
 	return best;
 }
 
@@ -660,12 +696,29 @@ static int run_suite(const char *name, int dijkstra, int count, int loops,
 		}
 		if (ok)
 			ok = check_start_token();
-		if (ok && dijkstra) {
+		if (ok && dijkstra && !G_Dijk_Time_Cost) {
 			int rc = raw_cost(), best = ref_shortest_cost();
-			if (rc != best) {
+			if (rc != best || G_Dijk_Best_Cost != rc) {
 				snprintf(g_msg, sizeof(g_msg),
-						"Dijkstra path cost %d, optimum %d", rc, best);
+						"Dijkstra path cost %d (returned %d), optimum %d", rc,
+						G_Dijk_Best_Cost, best);
 				ok = 0;
+			}
+		}
+		if (ok && dijkstra && G_Dijk_Time_Cost) {
+			int tt = token_time(G_Short_Pass_NANAME);
+			if (tt != G_Dijk_Best_Cost) {
+				snprintf(g_msg, sizeof(g_msg),
+						"path time %d, Dijkstra cost %d", tt, G_Dijk_Best_Cost);
+				ok = 0;
+			} else {
+				int alt = alt_best_time();
+				if (alt >= 0 && alt < tt) {
+					snprintf(g_msg, sizeof(g_msg),
+							"Dijkstra path time %d, BFS / old cost %d", tt, alt);
+					ok = 0;
+				}
+				plan(1);	//表示用に戻す
 			}
 		}
 		if (ok && !dijkstra) {
@@ -778,6 +831,7 @@ static int check_dump(const char *path) {
 	printf("MAZE_SIZE=%d, unknown walls=%d\n", N, unknown);
 
 	int bad = 0;
+	Maze_Dijkstra_Set_Run(&G_Short_Run_Set[0]);
 	for (int dijkstra = 0; dijkstra <= 1; dijkstra++) {
 		const char *name = dijkstra ? "Dijkstra" : "BFS";
 		plan(dijkstra);
@@ -808,15 +862,16 @@ static int check_dump(const char *path) {
 			bad++;
 		}
 	}
-	/* 参考: ほかの表のダイクストラの経路が、上(2000 の表)と同じか。失敗にはしない */
+	/* 参考: ほかの値のダイクストラの経路が、上(G_Short_Run_Set[0]、2000)と同じか。失敗にはしない */
 	static int16_t pass2000[MAX_STEP];
 	memcpy(pass2000, G_Short_Pass_NANAME, sizeof(pass2000));
+	printf("Dijkstra (2000) estimated time: %.3f s\n", G_Dijk_Best_Cost / (double) DIJK_COST_PER_S);
 	for (int m = 0; m < 2; m++) {
 		const char *name = m ? "old cost" : "2400";
 		if (m) {
 			G_Dijk_Time_Cost = 0;
 		} else {
-			Maze_Dijkstra_Set_Speed(2400, 6000, 20000, 15000);
+			Maze_Dijkstra_Set_Run(&G_Short_Run_Set[1]);
 		}
 		plan(1);
 		printf("Dijkstra (%s): %s\n", name,
@@ -825,7 +880,7 @@ static int check_dump(const char *path) {
 			dump_tokens();
 	}
 	G_Dijk_Time_Cost = 1;
-	Maze_Dijkstra_Set_Speed(2000, 6000, 20000, 15000);
+	Maze_Dijkstra_Set_Run(&G_Short_Run_Set[0]);
 	return bad ? 1 : 0;
 }
 
@@ -854,6 +909,100 @@ static void make_dump(unsigned seed, int ratio) {
 	Maze_Debug_Dump();
 }
 
+/* ---- 小さい迷路で、全部の経路の時間と比べる(--brute、2026-10-27) ----------------
+ * スタートからゴールまでの、同じ区画を2回通らない経路を全部作り、Move.c と同じ手順で
+ * 命令列にして時間を数え(token_time)、一番速いものとダイクストラのコストが同じかを確かめる。
+ * 経路の数が多いので、小さい迷路(-DMAZE_SIZE=6 など)で使う */
+static int bf_x[N * N + 2], bf_y[N * N + 2], bf_seen[N][N], bf_best;
+static long bf_paths;
+
+static void bf_eval(int m) {	//区画 0..m(m がゴールの区画)
+	for (int k = 0; k < MAX_STEP; k++)
+		G_Short_Pass[k] = 0;
+	int np = 0;
+	G_Short_Pass[0] = -1;
+	for (int i = 1; i < m; i++) {
+		int din = 0, dout = 0;
+		for (int d = 0; d < 4; d++) {
+			if (bf_x[i] - bf_x[i - 1] == DX[d] && bf_y[i] - bf_y[i - 1] == DY[d])
+				din = d;
+			if (bf_x[i + 1] - bf_x[i] == DX[d] && bf_y[i + 1] - bf_y[i] == DY[d])
+				dout = d;
+		}
+		if (din == dout) {
+			if (G_Short_Pass[np] < 0)
+				np++;
+			G_Short_Pass[np] += 2;
+		} else {
+			np++;
+			G_Short_Pass[np] = (dout == (din + 1) % 4) ? -3 : -2;
+		}
+	}
+	Shortest_Pass_Compression();
+	Shortest_Pass_Compression_NANAME();
+	int t = token_time(G_Short_Pass_NANAME);
+	bf_paths++;
+	if (t >= 0 && (bf_best < 0 || t < bf_best))
+		bf_best = t;
+}
+
+static void bf_dfs(int m) {
+	int x = bf_x[m], y = bf_y[m];
+	if (in_goal(x, y)) {
+		bf_eval(m);
+		return;
+	}
+	for (int d = 0; d < 4; d++) {
+		int nx = x + DX[d], ny = y + DY[d];
+		if (!open_dir(x, y, d) || nx < 0 || ny < 0 || nx >= N || ny >= N || bf_seen[nx][ny])
+			continue;
+		bf_seen[nx][ny] = 1;
+		bf_x[m + 1] = nx;
+		bf_y[m + 1] = ny;
+		bf_dfs(m + 1);
+		bf_seen[nx][ny] = 0;
+	}
+}
+
+static int brute_main(int count, int loops) {
+	int fails = 0, done = 0;
+	long total_paths = 0;
+	printf("MAZE_SIZE=%d, brute force, %d mazes, %d loops\n", N, count, loops);
+	for (int set = 0; set < SHORT_RUN_SET_NUM; set++) {
+		G_Dijk_Time_Cost = 1;
+		Maze_Dijkstra_Set_Run(&G_Short_Run_Set[set]);
+		for (int k = 0; k < count; k++) {
+			gen_maze(5000 + k, loops);
+			if (true_shortest() < 0)
+				continue;
+			plan(1);
+			int dc = G_Dijk_Best_Cost, tt = token_time(G_Short_Pass_NANAME);
+			memset(bf_seen, 0, sizeof(bf_seen));
+			bf_x[0] = 0;
+			bf_y[0] = 0;
+			bf_seen[0][0] = 1;
+			bf_best = -1;
+			bf_paths = 0;
+			bf_dfs(0);
+			done++;
+			total_paths += bf_paths;
+			if (dc != bf_best || tt != dc) {
+				fails++;
+				if (fails <= 5) {
+					printf("  FAIL set %d seed %d: Dijkstra %d (path %d), brute force %d (%ld paths)\n",
+							set, 5000 + k, dc, tt, bf_best, bf_paths);
+					plan(1);
+					dump_tokens();
+				}
+			}
+		}
+	}
+	printf("brute force: %d cases (%ld paths), %d failed\n", done, total_paths, fails);
+	if (fails == 0)
+		printf("ALL PASS\n");
+	return fails ? 1 : 0;
+}
+
 int main(int argc, char **argv) {
 	if (argc > 2 && strcmp(argv[1], "--dump") == 0)
 		return check_dump(argv[2]);
@@ -861,16 +1010,18 @@ int main(int argc, char **argv) {
 		make_dump((unsigned) atoi(argv[2]), (argc > 3) ? atoi(argv[3]) : 3);
 		return 0;
 	}
+	if (argc > 1 && strcmp(argv[1], "--brute") == 0)
+		return brute_main((argc > 2) ? atoi(argv[2]) : 200, (argc > 3) ? atoi(argv[3]) : N);
 	int n = (argc > 1) ? atoi(argv[1]) : 300;	/* 迷路の数(既定300) */
 	printf("MAZE_SIZE=%d\n", N);
 	run_suite("BFS  perfect maze", 0, n, 0, 1000, 3);
 	run_suite("BFS  maze with loops", 0, n, N * 3, 2000, 3);
-	/* 区間のコストを走行時間の表にしたもの(既定。最短走行 2000 と 2400 の表)と、以前のコスト */
+	/* 最短走行の時間(既定。G_Short_Run_Set の 2000 と 2400)と、以前のコスト */
 	G_Dijk_Time_Cost = 1;
-	Maze_Dijkstra_Set_Speed(2000, 6000, 20000, 15000);
+	Maze_Dijkstra_Set_Run(&G_Short_Run_Set[0]);
 	run_suite("Dijkstra perfect maze", 1, n, 0, 1000, 3);
 	run_suite("Dijkstra maze with loops", 1, n, N * 3, 2000, 3);
-	Maze_Dijkstra_Set_Speed(2400, 6000, 20000, 15000);
+	Maze_Dijkstra_Set_Run(&G_Short_Run_Set[1]);
 	run_suite("Dijkstra 2400 perfect maze", 1, n, 0, 1000, 3);
 	run_suite("Dijkstra 2400 maze w/ loops", 1, n, N * 3, 2000, 3);
 	G_Dijk_Time_Cost = 0;

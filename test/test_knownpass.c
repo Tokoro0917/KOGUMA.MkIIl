@@ -8,7 +8,7 @@
  * を確かめる。走らせ方・座標は test_shortpath.c と同じ(このファイルが #include して使う)。
  *
  * ビルドと実行 (リポジトリ直下で):
- *   gcc -std=c11 -Wall -ICore/Inc -o /tmp/k test/test_knownpass.c Core/Src/Maze.c && /tmp/k
+ *   gcc -std=c11 -Wall -ICore/Inc -o /tmp/k test/test_knownpass.c Core/Src/Maze.c Core/Src/ShortParam.c -lm && /tmp/k
  *   /tmp/k -v   失敗した例の命令列も出す
  *
  * 既知区間の命令の意味(Move.c の Robot_Maze_Pass_Action と同じ):
