@@ -219,8 +219,14 @@ unsigned short popStack_walk(STACK_T *stack) {
 #define DIJK_STATE_NUM (2 * DIJK_W * DIJK_W * 2)
 #define DIJK_NO_PRED 0xFFFF
 
+#if DIJK_MAXCOST > 65535
+typedef uint32_t dijk_cost_t;
+#else
+typedef uint16_t dijk_cost_t;
+#endif
+
 typedef struct {
-	uint16_t cost;
+	dijk_cost_t cost;
 	uint16_t pred;		//ゴール側の1つ前の状態番号
 	uint8_t direction;	//この状態に入ったときの向き(0=N,1=NE,...,7=NW。ゴールから外へ向かう向き)
 	uint8_t inQueue;	//SPFA: 現在キューに積まれているか(確定済みフラグではない)
@@ -280,11 +286,16 @@ static int dijk_is_wall(int isRow, int x, int y) {
 	return (G_Maze_Column[x] & (1u << y)) != 0;
 }
 
-/* 表示用: そのノードの2つの向きのうち小さい方のコスト */
+/* 表示用: そのノードの2つの向きのうち小さい方のコスト。
+ * 走行時間の表(G_Dijk_Time_Cost)のときは3桁に収まるように10ms単位にする */
 static int dijk_node_cost(int isRow, int x, int y) {
 	int a = dijk_state[dijk_index(isRow, x, y, 0)].cost;
 	int b = dijk_state[dijk_index(isRow, x, y, 1)].cost;
-	return (a < b) ? a : b;
+	int c = (a < b) ? a : b;
+	if (G_Dijk_Time_Cost) {
+		c = (c >= DIJK_MAXCOST) ? 999 : c / (DIJK_COST_PER_S / 100);
+	}
+	return c;
 }
 
 void Maze_Initialization() {
@@ -1374,7 +1385,88 @@ static const DIJK_EDGE_T* dijk_find_edge(int isRow, int sense, int dir) {
 	return NULL;
 }
 
+/* 区間のコストを走行時間の表にする(2026-10-26)。
+ * 以前のコスト(区間 = 最初の1歩 ST_COST/DIAG_COST + CON_COST*(k-1))は、直線が長くなるほど
+ * 加速して1歩が速くなることを表せず、九州大会(2025全日本の迷路)では南回り(実際に走った経路、
+ * 推定2.987秒)と西回り(推定3.056秒)が同じコスト117になった。
+ * 表は「ターンの速度 v から最高速度まで加速して v に戻る k 歩の直線の時間」に、区間ごとの
+ * 補正(ターンの時間のずれ)を足したもの。縦横の直線は加速 ac・減速 2*ac
+ * (Motor_trapezoid_Asymmetric_PID)、斜めは加速・減速とも ac_naname(Motor_NANAME_PID)。
+ * k 歩目のコストは k-1 歩目より大きくしない(区間を2つに切ったほうが安くならないように。
+ * こうすると、区間ごとに広げる今の方法で本当の最短になる)。
+ * 補正は、510個の迷路で最短走行の時間の見積り(tools/route_time.py)が一番短い経路を選ぶように
+ * 決めた(docs/dijkstra_cost.md)。見積りでの最速からの遅れは、2000 で平均約25ms → 約2ms */
+int G_Dijk_Time_Cost = 1;
+uint16_t G_Dijk_Inc_O[DIJK_INC_NUM];
+uint16_t G_Dijk_Inc_D[DIJK_INC_NUM];
+static int dijk_inc_ready = 0;
+
+#define DIJK_PI 3.14159265f
+
+/* cos型の加減速で、距離 L[mm] を速度 v → (最高 vmax) → v で走る時間[s]。加速 ac、減速 dc */
+static float dijk_run_time(float L, float v, float vmax, float ac, float dc) {
+	float r = DIJK_PI / 4.0f * (1.0f / ac + 1.0f / dc);	//v から vp まで上げて戻る距離 = r*(vp^2 - v^2)
+	float vp = vmax;
+	if (r * (vp * vp - v * v) > L) {	//最高速度まで届かない
+		float lo = v, hi = vmax;
+		for (int n = 0; n < 30; n++) {
+			float m = (lo + hi) / 2;
+			if (r * (m * m - v * v) > L) {
+				hi = m;
+			} else {
+				lo = m;
+			}
+		}
+		vp = lo;
+	}
+	float rest = L - r * (vp * vp - v * v);
+	if (rest < 0) {
+		rest = 0;
+	}
+	return DIJK_PI / 2.0f * (vp - v) * (1.0f / ac + 1.0f / dc) + rest / vp;
+}
+
+/* 1歩 L[mm] の区間の表。mult は時間に掛ける数、offset[s] は区間ごとの補正 */
+static void dijk_make_inc(uint16_t *inc, float L, float v, float vmax, float ac,
+		float dc, float mult, float offset) {
+	int sum = 0;
+	inc[0] = 0;
+	for (int k = 1; k < DIJK_INC_NUM; k++) {
+		float t = offset + dijk_run_time(L * k, v, vmax, ac, dc) * mult;
+		int c = (int) (t * DIJK_COST_PER_S + 0.5f) - sum;
+		if (c < 1) {
+			c = 1;
+		}
+		if (k > 1 && c > inc[k - 1]) {
+			c = inc[k - 1];
+		}
+		inc[k] = (uint16_t) c;
+		sum += c;
+	}
+}
+
+void Maze_Dijkstra_Set_Speed(int v, int vmax, int ac, int ac_naname) {
+	if (ac_naname <= 0) {
+		ac_naname = ac - 5000;
+	}
+	if (vmax < v) {
+		vmax = v;
+	}
+	/* 補正: 2000 は縦横 +15ms・斜め -10ms、2400 は縦横 0ms・斜め -10ms で斜めの時間を1.1倍 */
+	float off_o = 0.015f, off_d = -0.010f, mult_d = 1.0f;
+	if (v >= 2200) {
+		off_o = 0.0f;
+		mult_d = 1.1f;
+	}
+	dijk_make_inc(G_Dijk_Inc_O, 180.0f, v, vmax, ac, 2.0f * ac, 1.0f, off_o);
+	dijk_make_inc(G_Dijk_Inc_D, 127.3f, v, vmax, ac_naname, ac_naname, mult_d, off_d);
+	dijk_inc_ready = 1;
+}
+
 static void Maze_Dijkstra_Calculation_Body(void) {
+	if (!dijk_inc_ready) {	//まだ作っていなければモード1 No.5 と同じ(2000、直線6000、加速20000)
+		Maze_Dijkstra_Set_Speed(2000, 6000, 20000, 0);
+	}
 	for (int s = 0; s < DIJK_STATE_NUM; s++) {	//初期化
 		dijk_state[s].cost = DIJK_MAXCOST;
 		dijk_state[s].pred = DIJK_NO_PRED;
@@ -1437,12 +1529,18 @@ static void Maze_Dijkstra_Calculation_Body(void) {
 		 * (同じ向きの区間を2つ続けるより1つにつなげたほうが必ず安いので、
 		 *  区間と区間の向きが違うという決まりを入れなくても答えは変わらない)
 		 * ゴールの入口(cost 0)から外へ向かう向きにそのまま進むときだけ、
-		 * 最初の1歩もCON_COSTにする(以前と同じ) */
+		 * 最初の1歩もCON_COSTにする(以前と同じ)。
+		 * G_Dijk_Time_Cost のときは、区間のコスト = 表[1] + 表[2] + ... + 表[k]
+		 * (表は区間の長さで1歩が安くなっていく。2026-10-26) */
 		for (int k = 0; k < 3; k++) {
 			const DIJK_EDGE_T *e = &dijk_edges[isRow][sense][k];
 			int dir = e->dir;
+			const uint16_t *inc = (dir & 1) ? G_Dijk_Inc_D : G_Dijk_Inc_O;
+			int step = 1;
 			int cost;
-			if (cur->cost == 0 && dir == cur->direction) {
+			if (G_Dijk_Time_Cost) {
+				cost = cur->cost + inc[1];
+			} else if (cur->cost == 0 && dir == cur->direction) {
 				cost = cur->cost + CON_COST;
 			} else if ((dir & 1) == 0) {
 				cost = cur->cost + ST_COST;
@@ -1464,7 +1562,7 @@ static void Maze_Dijkstra_Calculation_Body(void) {
 				int ns = dijk_index(e->isRow, nx, ny, e->sense);
 				DIJK_STATE_T *next = &dijk_state[ns];
 				if (next->cost > cost) {
-					next->cost = (uint16_t) cost;
+					next->cost = (dijk_cost_t) cost;
 					next->direction = (uint8_t) dir;
 					next->pred = (uint16_t) s;	//区間の始まりの状態
 					if (!next->inQueue) {
@@ -1476,7 +1574,12 @@ static void Maze_Dijkstra_Calculation_Body(void) {
 				ry = ny;
 				rRow = e->isRow;
 				e = dijk_find_edge(rRow, e->sense, dir);
-				cost += CON_COST;
+				step++;
+				if (G_Dijk_Time_Cost) {
+					cost += inc[(step < DIJK_INC_NUM) ? step : DIJK_INC_NUM - 1];
+				} else {
+					cost += CON_COST;
+				}
 			}
 		}
 	}
