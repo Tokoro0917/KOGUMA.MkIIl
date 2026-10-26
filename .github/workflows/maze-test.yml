@@ -40,6 +40,12 @@ jobs:
             test/test_shortpath.c Core/Src/Maze.c
           ./test_shortpath32
 
+      - name: 大会の迷路で最短の経路を確かめる (mazes/)
+        run: |
+          gcc -std=c11 -Wall -I Core/Inc -o test_shortpath_dump \
+            test/test_shortpath.c Core/Src/Maze.c
+          for f in mazes/*.txt; do echo "== $f"; ./test_shortpath_dump --dump "$f"; done
+
       - name: 既知区間加速の命令列の検証 (16x16)
         run: |
           gcc -std=c11 -Wall -I Core/Inc -o test_knownpass \

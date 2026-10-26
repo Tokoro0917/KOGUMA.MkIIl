@@ -108,6 +108,12 @@ void Pass_zero_act();
 
 
 void  Maze_Dijkstra_Calculation();
+/* ダイクストラの区間のコスト(2026-10-26)。1 なら走行時間の表(既定)、0 なら以前の ST_COST/DIAG_COST/CON_COST */
+extern int G_Dijk_Time_Cost;
+extern uint16_t G_Dijk_Inc_O[DIJK_INC_NUM];	//縦横の区間の k 歩目のコスト(0.5ms単位)
+extern uint16_t G_Dijk_Inc_D[DIJK_INC_NUM];	//斜めの区間の k 歩目のコスト(0.5ms単位)
+/* 最短走行の速度から表を作る。v ターンの速度、vmax 直線の最高速度、ac 直線の加速度、ac_naname 斜めの直線の加速度(0 なら ac-5000) */
+void Maze_Dijkstra_Set_Speed(int v, int vmax, int ac, int ac_naname);
 void Maze_Dijkstra_Mapping();
 void Maze_Neighbor_Update(void);	//今いる区画の前後左右の歩数を G_Maze_Flont 等に入れる(移動しない)
 void Maze_Debug_Dump(void);	//保存済みの迷路と最短経路の命令列をシリアルに出す(モード3 No.0)

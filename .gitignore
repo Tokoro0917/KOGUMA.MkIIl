@@ -26,3 +26,6 @@ KOGUMA.MkII/Release/
 # 調べもののメモと報告の下書き(まとめたものは docs/ に置く)
 /research_notes/
 /reports/
+
+# Python のキャッシュ(tools/*.py を import すると作られる)
+__pycache__/

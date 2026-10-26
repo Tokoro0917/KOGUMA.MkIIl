@@ -1120,6 +1120,7 @@ void Short_NANAME_Move2400(int MAX, int AC) {
 	G_MAZE_Explored[G_Gool_X][G_Gool_Y] = 0;
 	Maze_Step_Calculate();
 	if (Short_Use_Dijkstra) {
+		Maze_Dijkstra_Set_Speed(2400, MAX, AC, (int) Short_AC_Naname(AC, 5000));
 		Maze_Dijkstra_Calculation();
 	} else {
 		Maze_Shortest_Calculation();
@@ -1327,6 +1328,7 @@ void Short_Dijkstra_Move2000(int MAX, int AC) {
 	Maze_Step_Calculate();
 
 	//Maze_Shortest_Calculation();
+	Maze_Dijkstra_Set_Speed(2000, MAX, AC, (int) Short_AC_Naname(AC, 5000));
 	Maze_Dijkstra_Calculation();
 
 	Shortest_Pass_Compression();
@@ -1543,6 +1545,7 @@ void Short_NANAME_MoveTurnV(int MAX, int AC) {
 	G_MAZE_Explored[G_Gool_X][G_Gool_Y] = 0;
 	Maze_Step_Calculate();
 	if (TurnV_Use_Dijkstra) {
+		Maze_Dijkstra_Set_Speed(2400, MAX, AC, (int) Short_AC_Naname(AC, 5000));
 		Maze_Dijkstra_Calculation();
 	} else {
 		Maze_Shortest_Calculation();

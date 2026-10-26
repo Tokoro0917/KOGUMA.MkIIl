@@ -1110,6 +1110,9 @@ static void Maze_Search_Unknown_Walls(int flags, int from_stop) {
 		return;
 	}
 	s_unknown_done = 0;
+	/* 探索のあとの最短(Maze_Search の SEARCH_SHORTEST、モード1 No.5)と同じ速度の表で、
+	 * 見に行く経路を決める(2026-10-26。前に 2400 の最短を走っていても 2000 にする) */
+	Maze_Dijkstra_Set_Speed(2000, 6000, 20000, 15000);
 	G_Stop_Hook = Maze_Unknown_Walls_Plan;
 	if (from_stop) {
 		/* 止まっている(最短走行のあと、ゴールの区画の中心。Maze_Return_From_Goal)。ここで計算してから、
