@@ -43,6 +43,17 @@ gcc -std=c11 -Wall -I Core/Inc -o test_speedplan test/test_speedplan.c Core/Src/
 gcc -std=c11 -Wall -I Core/Inc -o test_shortpath test/test_shortpath.c Core/Src/Maze.c && ./test_shortpath
 ```
 
+`mazes/` には大会の迷路を、実機の迷路の出力(モード3 No.0)と同じ形で置いてある。`--dump` で読むと、PCで作った BFS とダイクストラの経路が壁に当たらないか、ファイルに書いた経路(`BFS_NANAME` / `DIJK_NANAME`)と同じかを確かめる。経路の決め方(ダイクストラの重みなど)を変えて経路が変わると失敗するので、変えたときは新しい経路が速いかを確かめてからファイルの経路を書き換える。
+
+| ファイル | 迷路 | 備考 |
+|---|---|---|
+| `mazes/2025_alljapan_classic.txt` | 2025 第46回全日本大会 クラシック | 2026-10-25 の九州地区大会でも使用。`DIJK_NANAME` は実際に走った経路(南回り、最短 2.982 秒) |
+
+```sh
+gcc -std=c11 -Wall -I Core/Inc -o test_shortpath test/test_shortpath.c Core/Src/Maze.c
+for f in mazes/*.txt; do ./test_shortpath --dump "$f"; done
+```
+
 `test/test_disthist.c`は距離ごとのセンサ値の履歴(`DistHist.c`)を検査する(直線の信号なら300〜6000mm/sのどの速度でも5mm前の値が正確に取れること、範囲外、止まっているとき、大きく飛んだとき)。
 
 ```sh
