@@ -37,7 +37,7 @@ gcc -std=c11 -Wall -I Core/Inc -o test_walldist test/test_walldist.c Core/Src/Wa
 gcc -std=c11 -Wall -I Core/Inc -o test_speedplan test/test_speedplan.c Core/Src/SpeedPlan.c -lm && ./test_speedplan
 ```
 
-`test/test_shortpath.c`は最短走行の命令列を検査する。BFS版とダイクストラ版で`G_Short_Pass_NANAME`を作り、`Move.c`と同じ解釈で迷路の上を半区画単位に走らせて、壁や柱を通らないか、`Move.c`が実行しない命令が残っていないか、最後にゴール2×2区画で止まるか、BFS版が最短マス数か、をランダム迷路で確認する。引数で迷路の数を変えられる(既定300)。`--dump`は実機の迷路の出力の確認(`maze_algorithm.md`の「迷路の出力」)。
+`test/test_shortpath.c`は最短走行の命令列を検査する。BFS版とダイクストラ版で`G_Short_Pass_NANAME`を作り、`Move.c`と同じ解釈で迷路の上を半区画単位に走らせて、壁や柱を通らないか、`Move.c`が実行しない命令が残っていないか、最後にゴール2×2区画で止まるか、BFS版が最短マス数か、ダイクストラ版の経路のコストが本当の最短と同じか(状態を「壁の中点 + 来た向き」にして変化がなくなるまで見直す素朴な参照実装と比べる。2026-10-14 追加)、をランダム迷路で確認する。引数で迷路の数を変えられる(既定300)。`--dump`は実機の迷路の出力の確認(`maze_algorithm.md`の「迷路の出力」)。
 
 ```sh
 gcc -std=c11 -Wall -I Core/Inc -o test_shortpath test/test_shortpath.c Core/Src/Maze.c && ./test_shortpath
