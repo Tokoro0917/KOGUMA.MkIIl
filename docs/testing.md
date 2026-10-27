@@ -2,13 +2,13 @@
 
 README から移した(2026-10-12)。README にはテストの一覧だけを残した。
 
-`Core/Src/Maze.c`はHALに依存しないので、ホストのgccにそのままリンクして迷路アルゴリズムを検証できる。
+`Core/Src/Maze.c`はHALに依存しないので、ホストのgccにそのままリンクして迷路アルゴリズムを検証できる。ダイクストラのコストに最短走行のターンの値を使うので、`Core/Src/ShortParam.c`(ターンの表 `G_Turn2000` / `G_Turn2400` と `G_Short_Run_Set`)と `-lm` も一緒にリンクする(2026-10-27)。
 
 ```sh
 # 16×16
-gcc -std=c11 -Wall -I Core/Inc -o test_deadend test/test_deadend.c Core/Src/Maze.c && ./test_deadend
+gcc -std=c11 -Wall -I Core/Inc -o test_deadend test/test_deadend.c Core/Src/Maze.c Core/Src/ShortParam.c -lm && ./test_deadend
 # 32×32
-gcc -std=c11 -Wall -DMAZE_SIZE=32 -I Core/Inc -o test_deadend32 test/test_deadend.c Core/Src/Maze.c && ./test_deadend32
+gcc -std=c11 -Wall -DMAZE_SIZE=32 -I Core/Inc -o test_deadend32 test/test_deadend.c Core/Src/Maze.c Core/Src/ShortParam.c -lm && ./test_deadend32
 ```
 
 `test/test_deadend.c`が行き止まり潰しについて検査する内容:
@@ -37,10 +37,25 @@ gcc -std=c11 -Wall -I Core/Inc -o test_walldist test/test_walldist.c Core/Src/Wa
 gcc -std=c11 -Wall -I Core/Inc -o test_speedplan test/test_speedplan.c Core/Src/SpeedPlan.c -lm && ./test_speedplan
 ```
 
-`test/test_shortpath.c`は最短走行の命令列を検査する。BFS版とダイクストラ版で`G_Short_Pass_NANAME`を作り、`Move.c`と同じ解釈で迷路の上を半区画単位に走らせて、壁や柱を通らないか、`Move.c`が実行しない命令が残っていないか、最後にゴール2×2区画で止まるか、BFS版が最短マス数か、ダイクストラ版の経路のコストが本当の最短と同じか(状態を「壁の中点 + 来た向き + 同じ向きが続いた数」にして変化がなくなるまで見直す素朴な参照実装と比べる。2026-10-14 追加。2026-10-26 に走行時間の表のコストに合わせ、2000 の表・2400 の表・以前のコストの3つで確かめる)、をランダム迷路で確認する。引数で迷路の数を変えられる(既定300)。`--dump`は実機の迷路の出力の確認(`maze_algorithm.md`の「迷路の出力」)。
+`test/test_shortpath.c`は最短走行の命令列を検査する。BFS版とダイクストラ版で`G_Short_Pass_NANAME`を作り、`Move.c`と同じ解釈で迷路の上を半区画単位に走らせて、壁や柱を通らないか、`Move.c`が実行しない命令が残っていないか、最後にゴール2×2区画で止まるか、BFS版が最短マス数か、ダイクストラ版の経路のコストが本当の最短と同じか(状態を「壁の中点 + 来た向き + 同じ向きが続いた数」にして変化がなくなるまで見直す素朴な参照実装と比べる。2026-10-14 追加。2026-10-27 に変更。以前のコストのときはこの参照実装と比べ、最短走行の時間のコスト(既定)のときは、ダイクストラが返したコスト `G_Dijk_Best_Cost` が命令列の時間(`tools/route_time.py` と同じ数え方を、`Maze.c` が作った表 `G_Dijk_Cost` で数える)と同じか、BFS と以前のコストの経路より遅くないかを確かめる。`G_Short_Run_Set` の 2000 と 2400 の両方で)、をランダム迷路で確認する。引数で迷路の数を変えられる(既定300)。`--dump`は実機の迷路の出力の確認(`maze_algorithm.md`の「迷路の出力」)。
 
 ```sh
-gcc -std=c11 -Wall -I Core/Inc -o test_shortpath test/test_shortpath.c Core/Src/Maze.c && ./test_shortpath
+gcc -std=c11 -Wall -I Core/Inc -o test_shortpath test/test_shortpath.c Core/Src/Maze.c Core/Src/ShortParam.c -lm && ./test_shortpath
+```
+
+`--brute 迷路の数 ループの数` は、小さい迷路(`-DMAZE_SIZE=6` などでビルド)で、スタートからゴールまでの同じ区画を2回通らない経路を全部作り、同じ手順で命令列にして時間を数え、一番速いものとダイクストラのコストが同じかを確かめる(2026-10-27)。6×6・ループ40で約13万本、8×8・ループ30で約6万本の経路と比べる。ダイクストラのターンの一つ(斜め入り135)を外す、斜めの直線の表を1つずらす、斜め出45のコストを1減らす、のどれでも失敗することを確かめてある。
+
+```sh
+gcc -std=c11 -O2 -Wall -DMAZE_SIZE=6 -I Core/Inc -o test_shortpath6 test/test_shortpath.c Core/Src/Maze.c Core/Src/ShortParam.c -lm && ./test_shortpath6 --brute 300 40
+```
+
+`test/test_unknown_search.c` はダイクストラ誘導の未知壁探索(モード0 No.6・7・10〜12)を検査する(2026-10-27)。シミュレータ(`sim/sim_main.c` のシナリオB。`main.c` と同じ手順)でランダム迷路を探索させ、探索が終わるか、探索で見た壁だけ(見ていない壁は壁)で求めた最短が、`G_Short_Run_Set` の全部の組で本当の迷路の最短と同じ速さかを確かめる。ランダム迷路では起きにくいことがあるので、大会の迷路でも確かめた: `--mazes 一覧` で、`tools/mazes_to_lines.py` で作った迷路の一覧(1行に1迷路)を読む。micromouseonline/mazefiles の classic(16×16、510個)では、見に行く途中で目標の区画に行けなくなったときに計算し直す直しを外すと、探索が終わらなくなる。
+
+```sh
+gcc -std=c11 -Wall -DSIM_DEBUG -I Core/Inc -I . -I sim -o test_unknown_search test/test_unknown_search.c Core/Src/Maze.c Core/Src/ShortParam.c -lm && ./test_unknown_search
+git clone https://github.com/micromouseonline/mazefiles /tmp/mazefiles
+python3 tools/mazes_to_lines.py /tmp/mazefiles/classic/*.txt > /tmp/mazes.txt
+./test_unknown_search --mazes /tmp/mazes.txt
 ```
 
 `mazes/` には大会の迷路を、実機の迷路の出力(モード3 No.0)と同じ形で置いてある。`--dump` で読むと、PCで作った BFS とダイクストラ(2000 の表)の経路が壁に当たらないか、ファイルに書いた経路(`BFS_NANAME` / `DIJK_NANAME`)と同じかを確かめる。参考に、2400 の表と以前のコストのダイクストラの経路が同じかも出す(失敗にはしない)。経路の決め方(ダイクストラの重みなど)を変えて経路が変わると失敗するので、変えたときは新しい経路が速いかを確かめてからファイルの経路を書き換える。
@@ -50,7 +65,7 @@ gcc -std=c11 -Wall -I Core/Inc -o test_shortpath test/test_shortpath.c Core/Src/
 | `mazes/2025_alljapan_classic.txt` | 2025 第46回全日本大会 クラシック | 2026-10-25 の九州地区大会でも使用。`DIJK_NANAME` は実際に走った経路(南回り、最短 2.982 秒) |
 
 ```sh
-gcc -std=c11 -Wall -I Core/Inc -o test_shortpath test/test_shortpath.c Core/Src/Maze.c
+gcc -std=c11 -Wall -I Core/Inc -o test_shortpath test/test_shortpath.c Core/Src/Maze.c Core/Src/ShortParam.c -lm
 for f in mazes/*.txt; do ./test_shortpath --dump "$f"; done
 ```
 
@@ -66,4 +81,4 @@ gcc -std=c11 -Wall -I Core/Inc -o test_disthist test/test_disthist.c Core/Src/Di
 gcc -std=c11 -Wall -I Core/Inc -o test_pillaredge test/test_pillaredge.c Core/Src/PillarEdge.c Core/Src/DistHist.c -lm && ./test_pillaredge
 ```
 
-CIは`.github/workflows/maze-test.yml`で、masterへのpushとPRのときに行き止まり潰しと最短走行の命令列の検査(それぞれ16×16と32×32)、距離変換の表の検査、速度計画の検査、距離ごとの履歴と柱の端の検出の検査を実行する。ファームウェア本体のARMビルドは対象外。
+CIは`.github/workflows/maze-test.yml`で、masterへのpushとPRのときに行き止まり潰しと最短走行の命令列の検査(それぞれ16×16と32×32)、小さい迷路で全部の経路と比べる検査(6×6・8×8)、未知壁探索の検査、距離変換の表の検査、速度計画の検査、距離ごとの履歴と柱の端の検出の検査を実行する。ファームウェア本体のARMビルドは対象外。

@@ -81,7 +81,7 @@ No.11(2026-10-20)は、最短走行のあと、止まった区画と向きを命
 
 既知区間加速(`Robot_Maze_Pass_Action()`)は、次の区画が探索済みなら、未探索の区画の手前までを`Known_Pass_Generation()`でまとめて経路にし、直線を最大4000mm/sで走る。
 
-ダイクストラ誘導(No.6/No.7/No.10)は往路でゴールに着いたあと、スタート→ゴールのダイクストラ経路上に残っている未確認の壁を、今いる位置から直接見に行く(`Maze_Unknown_Wall_Scan()`)。経路の計算は、未確認の壁を「通れる」として行う。計算し直すのは、ゴールに着いた直後、Uターンしたとき、**見に行った壁が実際にあった(経路がふさがれた)とき**だけで、どれも**機体が区画の中央で止まっているあいだに**計算する。ゴールに着いた直後と、壁があったときは、次の区画の中央で止まり、前に壁があれば壁合わせをしてから計算し、進む向きを決めて発進する(`Robot_Maze_Stop_And_Go()`)。Uターンでは止まっているあいだに計算し(`G_Stop_Hook`)、行き止まりでなければ計算した結果で進む向きを決め直す。見に行った壁がなかった(通れた)ときは、ダイクストラは計算し直さず、止まらずに同じ経路で次の未確認の壁を探す。経路上の未知壁がなくなったらスタートへ帰る。このとき、その経路の壁はすべて確認済みなので、それが本当の最短経路になる。
+ダイクストラ誘導(No.6/No.7/No.10)は往路でゴールに着いたあと、スタート→ゴールのダイクストラ経路上に残っている未確認の壁を、今いる位置から直接見に行く(`Maze_Unknown_Wall_Scan()`)。経路の計算は、未確認の壁を「通れる」として行う。計算し直すのは、ゴールに着いた直後、Uターンしたとき、**見に行った壁が実際にあった・経路のほかの壁が「壁あり」とわかった(経路がふさがれた)とき**、**見に行く途中で目標の区画に行けなくなったとき**(2026-10-27)だけで、どれも**機体が区画の中央で止まっているあいだに**計算する。ゴールに着いた直後と、壁があったときは、次の区画の中央で止まり、前に壁があれば壁合わせをしてから計算し、進む向きを決めて発進する(`Robot_Maze_Stop_And_Go()`)。Uターンでは止まっているあいだに計算し(`G_Stop_Hook`)、行き止まりでなければ計算した結果で進む向きを決め直す。見に行った壁がなかった(通れた)ときは、ダイクストラは計算し直さず、止まらずに同じ経路で次の未確認の壁を探す。経路上の未知壁がなくなったらスタートへ帰る。このとき、その経路の壁はすべて確認済みなので、それが本当の最短経路になる。経路は、よく使う最短走行の値の組(`ShortParam.c` の `G_Short_Run_Set`。今は 2000 と 2400)ごとに、それぞれの時間で一番速いものを求め、全部の組の経路の壁を確認する(2026-10-27。1つ目の組の経路を見終わったら、止まって次の組の経路を計算する)。なので、どの組で最短を走っても本当の最短経路になる。
 
 エセ全面探索(`Maze_Unkown_ALL_ModeSet()`)が有効なのは**No.2・No.5だけ**。したがって**行き止まり潰しが走行に影響するのもこの2つだけ**(`Maze_DeadEnd_Fill()`自体は常に計算されるが、結果を使う`Maze_Gool_Setting()`の分岐がALL_MODE時にしか通らないため)。
 
@@ -202,7 +202,7 @@ RAMに残っているデータを全部、迷路 → 壁切れのログ → 走�
 |---|---|---|
 | 迷路(`MAZE`) | 探索の区間の終わりごと(`Maze_Save()`) | 壁・見た壁、最短走行の命令列(BFS・ダイクストラ)、計算時間。詳しくは`docs/maze_algorithm.md`の「迷路の出力」 |
 | 壁切れのログ(`EDGE`) | 最短走行のあいだ、壁切れのテスト(モード3 No.6〜9) | 柱の端、前距離・後距離の始めと終わり、テストでは1mmごとの横センサの値。詳しくは`docs/pillar_cut_design.md`の付録 |
-| 走行ログ(`LOG`) | 最短走行(4msおき・8秒、走り始めから)、ターンや直進のテスト(1msおき・2秒) | 走った距離、速度、角速度、角度、横の壁までの距離、横壁制御、横センサ、電圧、電池、動作。詳しくは`docs/log_design.md` |
+| 走行ログ(`LOG`) | 最短走行(4msおき・6.4秒、走り始めから)、ターンや直進のテスト(1msおき・1.6秒) | 走った距離、速度、角速度、角度、横の壁までの距離、横壁制御、横センサ、電圧、電池、動作。詳しくは`docs/log_design.md` |
 | 探索の直進の壁切れ(`SCUT`) | 探索(モード0)のあいだ、1区画まっすぐ進むたび | 次の境目の推定と距離から予想した位置の差(dc)、直した量、使った側、直前の行動、区画。ビューアで直前の行動ごとの表とグラフにし、書き写す基準のずれを出す。見出しにジャイロのゼロ点(`gyro_ofs`・`gyro_sd`・`gyro_rej`、測るたびの値 `gyro_try`、読み直した回数 `gyro_torn`) |
 | 前壁の読み分かれ(`FWALL`) | 探索(モード0)の判断位置で、前の左右のセンサの片方だけが閾値を超えたとき | 行動の番号、区画と向き、前の左右の値、左右の平均で見たら壁ありか。本当の迷路と比べて、`Front_Wall_Map` を決める(`docs/search_stability_research.md` の「段階2を入れた結果」) |
 | センサのノイズ(`NOISE`) | モード3 No.10 | 吸引と読み方ごとの、点灯時・消灯時・差のばらつきの表(生の値は測ったそばから出すだけで、ここでは出ない)。`docs/sensor_noise.md` |
@@ -360,8 +360,9 @@ RAMに残っているデータを全部、迷路 → 壁切れのログ → 走�
 
 | テスト | 対象 | 実行 |
 |---|---|---|
-| `test/test_deadend.c` | 行き止まり潰し(16×16 と 32×32) | `gcc -std=c11 -Wall -I Core/Inc -o test_deadend test/test_deadend.c Core/Src/Maze.c && ./test_deadend`(32×32は`-DMAZE_SIZE=32`) |
-| `test/test_shortpath.c` | 最短走行の命令列(16×16 と 32×32)、実機の迷路の出力の確認(`--dump`) | `gcc -std=c11 -Wall -I Core/Inc -o test_shortpath test/test_shortpath.c Core/Src/Maze.c && ./test_shortpath` |
+| `test/test_deadend.c` | 行き止まり潰し(16×16 と 32×32) | `gcc -std=c11 -Wall -I Core/Inc -o test_deadend test/test_deadend.c Core/Src/Maze.c Core/Src/ShortParam.c -lm && ./test_deadend`(32×32は`-DMAZE_SIZE=32`) |
+| `test/test_shortpath.c` | 最短走行の命令列(16×16 と 32×32)、ダイクストラの経路が一番速いか(小さい迷路で全部の経路と比べる `--brute`)、実機の迷路の出力の確認(`--dump`) | `gcc -std=c11 -Wall -I Core/Inc -o test_shortpath test/test_shortpath.c Core/Src/Maze.c Core/Src/ShortParam.c -lm && ./test_shortpath` |
+| `test/test_unknown_search.c` | ダイクストラ誘導の未知壁探索(シミュレータで探索して、見た壁だけの最短が本当の最短と同じ速さか) | `gcc -std=c11 -Wall -DSIM_DEBUG -I Core/Inc -I . -I sim -o test_unknown_search test/test_unknown_search.c Core/Src/Maze.c Core/Src/ShortParam.c -lm && ./test_unknown_search` |
 | `test/test_walldist.c` | 壁センサの距離変換の表 | `gcc -std=c11 -Wall -I Core/Inc -o test_walldist test/test_walldist.c Core/Src/WallDistance.c && ./test_walldist` |
 | `test/test_speedplan.c` | ターンごとの通過速度の速度計画 | `gcc -std=c11 -Wall -I Core/Inc -o test_speedplan test/test_speedplan.c Core/Src/SpeedPlan.c -lm && ./test_speedplan` |
 | `test/test_disthist.c` | 距離ごとのセンサ値の履歴 | `gcc -std=c11 -Wall -I Core/Inc -o test_disthist test/test_disthist.c Core/Src/DistHist.c -lm && ./test_disthist` |
@@ -369,7 +370,7 @@ RAMに残っているデータを全部、迷路 → 壁切れのログ → 走�
 
 ## ビルド・ハードウェア・ディレクトリ
 
-- MCU: STM32F446RE(Cortex-M4, Flash 512KB, RAM 128KB)。今のビルドで RAM 約115KB / Flash 約129KB(Debug、-O0)
+- MCU: STM32F446RE(Cortex-M4, Flash 512KB, RAM 128KB)。今のビルドで RAM 約113KB / Flash 約147KB(Debug、-O0。2026-10-27 に PC で同じ設定でリンクして確認)
 - 開発環境: STM32CubeIDE 1.14.0。本フォルダをワークスペースにインポートしてビルドする
 
 ```

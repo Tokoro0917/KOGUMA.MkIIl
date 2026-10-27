@@ -8,6 +8,8 @@
 #ifndef INC_MOVE_H_
 #define INC_MOVE_H_
 
+#include "ShortParam.h"
+
 extern int G_Pass_before;
 extern int G_Pass_after;
 
@@ -55,26 +57,9 @@ extern FirstTurnParam G_First_Turn[FIRST_TURN_NUM];
 float Short_First_Turn_Run(int kind, int dir, float V);
 extern int G_First_Turn_Accel;	/* 1: 最初のターンを加速しながら曲がる(Move.c) */
 
-/* 2000のターンの値(Move.c の G_Turn2000)。BFS・ダイクストラ・モード6で共通 */
-#define WC2000_NORMAL 0
-#define WC2000_NANAME 1
-enum {
-	T2000_BIG90, T2000_BIG180, T2000_IN45, T2000_IN135, T2000_OUT45, T2000_OUT135, T2000_V90, T2000_NUM
-};
-typedef struct {
-	int st_kind;	/* 前距離の壁切れ: WC2000_NORMAL / WC2000_NANAME */
-	float st;		/* 前距離[mm] */
-	float ang;		/* 角度[deg](左が正) */
-	float w;		/* 最大角速度[deg/s] */
-	float w_ac;		/* 角加速度[deg/s^2] */
-	int end_kind;	/* 後距離の壁切れ */
-	float end;		/* 後距離[mm] */
-} Turn2000_Param;
-extern Turn2000_Param G_Turn2000[T2000_NUM];
+/* 2000・2400のターンの値(G_Turn2000 / G_Turn2400)と Turn2000_Param は ShortParam.h(2026-10-27) */
 void Turn2000_Run(int kind, int dir);
 void Turn2000_Test(int kind);	/* モード6 No.1〜7 */
-/* 2400のターンの値(Move.c の G_Turn2400、2026-10-21)。Short_NANAME_Move2400(BFS・ダイクストラ)・モード7で共通。形と並びは G_Turn2000 と同じ */
-extern Turn2000_Param G_Turn2400[T2000_NUM];
 void Turn2400_Run(int kind, int dir);
 void Turn2400_Test(int kind);	/* モード7 No.1〜7 */
 /* 1000のターンの値(Move.c の G_Turn1000、2026-10-21)。吸引探索の既知区間の斜め(モード0 No.12)・モード5で共通。形と並びは G_Turn2000 と同じ */

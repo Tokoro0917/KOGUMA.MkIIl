@@ -19,37 +19,52 @@ jobs:
       - name: 行き止まり潰しの検証 (16x16)
         run: |
           gcc -std=c11 -Wall -I Core/Inc -o test_deadend \
-            test/test_deadend.c Core/Src/Maze.c
+            test/test_deadend.c Core/Src/Maze.c Core/Src/ShortParam.c -lm
           ./test_deadend
 
       - name: 行き止まり潰しの検証 (32x32)
         run: |
           gcc -std=c11 -Wall -DMAZE_SIZE=32 -I Core/Inc -o test_deadend32 \
-            test/test_deadend.c Core/Src/Maze.c
+            test/test_deadend.c Core/Src/Maze.c Core/Src/ShortParam.c -lm
           ./test_deadend32
 
       - name: 最短走行の命令列の検証 (16x16)
         run: |
           gcc -std=c11 -Wall -I Core/Inc -o test_shortpath \
-            test/test_shortpath.c Core/Src/Maze.c
+            test/test_shortpath.c Core/Src/Maze.c Core/Src/ShortParam.c -lm
           ./test_shortpath
 
       - name: 最短走行の命令列の検証 (32x32)
         run: |
           gcc -std=c11 -Wall -DMAZE_SIZE=32 -I Core/Inc -o test_shortpath32 \
-            test/test_shortpath.c Core/Src/Maze.c
+            test/test_shortpath.c Core/Src/Maze.c Core/Src/ShortParam.c -lm
           ./test_shortpath32
 
       - name: 大会の迷路で最短の経路を確かめる (mazes/)
         run: |
           gcc -std=c11 -Wall -I Core/Inc -o test_shortpath_dump \
-            test/test_shortpath.c Core/Src/Maze.c
+            test/test_shortpath.c Core/Src/Maze.c Core/Src/ShortParam.c -lm
           for f in mazes/*.txt; do echo "== $f"; ./test_shortpath_dump --dump "$f"; done
+
+      - name: ダイクストラが本当に一番速い経路か、小さい迷路で全部の経路と比べる (6x6・8x8)
+        run: |
+          gcc -std=c11 -O2 -Wall -DMAZE_SIZE=6 -I Core/Inc -o test_shortpath6 \
+            test/test_shortpath.c Core/Src/Maze.c Core/Src/ShortParam.c -lm
+          ./test_shortpath6 --brute 300 40
+          gcc -std=c11 -O2 -Wall -DMAZE_SIZE=8 -I Core/Inc -o test_shortpath8 \
+            test/test_shortpath.c Core/Src/Maze.c Core/Src/ShortParam.c -lm
+          ./test_shortpath8 --brute 100 30
+
+      - name: ダイクストラ誘導の未知壁探索の検証 (シミュレータ、16x16)
+        run: |
+          gcc -std=c11 -Wall -DSIM_DEBUG -I Core/Inc -I . -I sim -o test_unknown_search \
+            test/test_unknown_search.c Core/Src/Maze.c Core/Src/ShortParam.c -lm
+          ./test_unknown_search
 
       - name: 既知区間加速の命令列の検証 (16x16)
         run: |
           gcc -std=c11 -Wall -I Core/Inc -o test_knownpass \
-            test/test_knownpass.c Core/Src/Maze.c
+            test/test_knownpass.c Core/Src/Maze.c Core/Src/ShortParam.c -lm
           ./test_knownpass
 
   walldist:
