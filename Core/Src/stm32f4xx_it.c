@@ -227,7 +227,7 @@ void TIM6_DAC_IRQHandler(void)
 		}
 	}
 	/* フェイルセーフで止まったら、解除されるまでモーターと吸引を止め続ける(2026-10-27、ToraNeko.Mk3 と同じ)。
-	 * 解除はここではせず、走りを抜けたあとに main の Failsafe_Wait_Reset() で、前センサに手をかざして離したとき */
+	 * 解除はここではせず、走りを抜けたあとに main の Failsafe_Wait_Reset() で、スイッチを押したとき */
 	if (Failsafe_Flag() == 1) {
 		Motor_Free();
 	}

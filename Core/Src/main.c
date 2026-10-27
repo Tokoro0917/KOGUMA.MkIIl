@@ -135,6 +135,7 @@ int main(void) {
 	//HAL_TIM_Base_Start_IT(&htim6);
 	pl_timer_init();
 	lsm6dsr_init();
+	Switch_Init();	//スイッチ(PB3)。フェイルセーフの解除に使う
 	Maze_Initialization();
 	if (g_V_batt < LIMITBATT) {
 		while (1) {
@@ -161,7 +162,7 @@ int main(void) {
 
 		/* USER CODE BEGIN 3 */
 
-		if (Failsafe_Flag() == 1) {	//走りの途中でフェイルセーフで止まった: 手をかざして離すまで待ち、モード0・No.0 に戻る
+		if (Failsafe_Flag() == 1) {	//走りの途中でフェイルセーフで止まった: スイッチを押すまで待ち、モード0・No.0 に戻る
 			Failsafe_Wait_Reset();
 		}
 		LED_program_number(Encorder_number_out());
@@ -1344,7 +1345,7 @@ static void Maze_Search(int flags) {
 	} else {
 		/* フェイルセーフで止まった(2026-10-27、ToraNeko.Mk3 と同じ): ぶつかる直前はずれた位置・向きで壁を読んだかもしれないので、
 		 * 最後に壁を書いた5区画を書く前の状態に戻してから保存する。電源を切らずに探索をやり直したり最短を走ったりしても、
-		 * その壁は使わない。解除は main の Failsafe_Wait_Reset(手をかざして離す) */
+		 * その壁は使わない。解除は main の Failsafe_Wait_Reset(スイッチを押す) */
 		Maze_Undo_Recent_Cells();
 		Maze_Save();
 	}
