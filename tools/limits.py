@@ -9,7 +9,9 @@ numpy だけを使う。出すもの:
   2. 走っているときの横センサのノイズ(1msおきの走行ログの直線)
   3. 電池の内部抵抗(配線込み)と、モーターの電圧の張り付き
   4. ターンごとの、必要な電圧と電池の電圧の差(マイナスなら張り付く)
-  5. 電圧から決まる直線の加速の上限
+  5. 電圧から決まる直線の加速の上限(「3」で内部抵抗が出れば、その値でも出す)
+  6. 直線で実際に出た加速(張り付いているところ = 今の電池での上限)を速度ごとに。
+     モード6 No.0(加速 40000 で 6000 まで)のように、目標の加速が上限を超える直進のログで測る
 
 モーターのモデル(1輪あたり、電圧[V]):
   並進  V = C + KE*v[m/s] + KA*a[m/s^2]
@@ -148,6 +150,7 @@ def report_battery(logs):
     print('== 3. 電池の内部抵抗(配線込み)とモーターの張り付き ==')
     print('  ログ           E0[V]  内部抵抗[Ω]  R^2  電流の最大[A]  電池の最低[V]  張り付き[ms](直線/ターン/そのほか)')
     rs = []
+    e0s = []
     for fn, meta, d in logs:
         dt = meta['dt']
         w = np.radians(d['w'])
@@ -173,9 +176,13 @@ def report_battery(logs):
               % (fn[-19:-8], c[0], -c[1], r2, cur[s].max(), b[s].min(), st, tu, ot))
         if cur[s].max() > 3 and r2 > 0.85:
             rs.append(-c[1])
+            e0s.append(c[0])
+    print()
     if rs:
         print('  電流が 3A を超えるログ(%d本)の内部抵抗: 中央値 %.2fΩ(%.2f〜%.2f)' % (len(rs), np.median(rs), min(rs), max(rs)))
-    print()
+        print()
+        return float(np.median(e0s)), float(np.median(rs))
+    return None
 
 
 def fit_rotation(logs):
@@ -241,12 +248,52 @@ def accel_max(v, e0, r, margin=1.0):
     return max(0.0, (vb_full(v, e0, r) - margin - C - KE * v) / KA)
 
 
-def report_accel():
-    print('== 5. 電圧から決まる直線の加速の上限(E0 15.8V、FBに1V残す) ==')
-    print('  速度[m/s]  今の電池(0.68Ω)  0.3Ω  内部抵抗0(電圧が下がらない)')
-    for v in range(0, 7):
-        print('  %d   %5.1f  %5.1f  %5.1f   (電池 %.1fV)' % (v, accel_max(v, 15.8, 0.68), accel_max(v, 15.8, 0.3),
-                                                   accel_max(v, 15.8, 1e-4), vb_full(v, 15.8, 0.68)))
+def report_accel(bat=None):
+    print('== 5. 電圧から決まる直線の加速の上限(FBに1V残す) ==')
+    if bat is None:
+        print('  速度[m/s]  今の電池(0.68Ω)  0.3Ω  内部抵抗0(電圧が下がらない)')
+        for v in range(0, 7):
+            print('  %d   %5.1f  %5.1f  %5.1f   (電池 %.1fV)' % (v, accel_max(v, 15.8, 0.68), accel_max(v, 15.8, 0.3),
+                                                       accel_max(v, 15.8, 1e-4), vb_full(v, 15.8, 0.68)))
+    else:
+        e0, r = bat
+        print('  速度[m/s]  このログの電池(E0 %.2fV、%.2fΩ)  以前の電池(15.8V、0.68Ω)  内部抵抗0' % (e0, r))
+        for v in range(0, 7):
+            print('  %d   %5.1f (電池 %.1fV)  %5.1f  %5.1f' % (v, accel_max(v, e0, r), vb_full(v, e0, r),
+                                                    accel_max(v, 15.8, 0.68), accel_max(v, e0, 1e-4)))
+    print()
+
+
+def report_straight_accel(logs, bat=None):
+    """直線(phase 1)で速度が上がっているところの、実際の加速と張り付きを速度 0.5m/s ごとに"""
+    rows = []
+    for fn, meta, d in logs:
+        dt = meta['dt']
+        if 'v_target' not in d:
+            continue
+        v = smooth(d['v'], max(3, int(round(0.009 / dt)))) / 1000
+        a = np.gradient(v, dt)
+        at = np.gradient(d['v_target'] / 1000, dt)
+        sat = (abs(d['volt_L']) >= SAT) & (abs(d['volt_R']) >= SAT)
+        s = (d['phase'] == 1) & (at > 1) & (v > 0.2)
+        for i in np.flatnonzero(s):
+            rows.append((v[i], a[i], at[i], sat[i], d['batt'][i]))
+    if not rows:
+        return
+    print('== 6. 直線で実際に出た加速(速度が上がっているところ。1msおきのログのほうが確か) ==')
+    print('  張り付いているところの加速が、今の電池での上限。「5」の上限(FBに1V残す)より少し上に出るはず')
+    print('  速度[m/s]  点数  張り付き[%]  目標の加速  実際の加速(張り付き)  電池[V]  「5」の上限')
+    r = np.array(rows, dtype=float)
+    for lo in np.arange(0, 7, 0.5):
+        m = (r[:, 0] >= lo) & (r[:, 0] < lo + 0.5)
+        if m.sum() < 5:
+            continue
+        ms = m & (r[:, 3] > 0)
+        act = '%5.1f' % np.median(r[ms, 1]) if ms.sum() >= 3 else '    -'
+        lim = '%5.1f' % accel_max(lo + 0.25, *bat) if bat else '    -'
+        print('  %3.1f〜%3.1f  %4d  %5.0f  %6.1f  %s  %6.2f  %s'
+              % (lo, lo + 0.5, m.sum(), 100 * r[ms, 0].size / m.sum(), np.median(r[m, 2]), act,
+                 np.median(r[m, 4]), lim))
     print()
 
 
@@ -261,11 +308,14 @@ def main():
                 logs.append((f, meta, d))
     if noise:
         report_noise(noise)
+    bat = None
     if logs:
         report_running_noise(logs)
-        report_battery(logs)
+        bat = report_battery(logs)
         report_turns(logs)
-    report_accel()
+    report_accel(bat)
+    if logs:
+        report_straight_accel(logs, bat)
 
 
 if __name__ == '__main__':
