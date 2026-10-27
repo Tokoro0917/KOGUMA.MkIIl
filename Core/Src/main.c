@@ -161,6 +161,9 @@ int main(void) {
 
 		/* USER CODE BEGIN 3 */
 
+		if (Failsafe_Flag() == 1) {	//走りの途中でフェイルセーフで止まった: 手をかざして離すまで待ち、モード0・No.0 に戻る
+			Failsafe_Wait_Reset();
+		}
 		LED_program_number(Encorder_number_out());
 		LED_program_mode(Encorder_mode_out());
 		Maze_Unkown_ALL_ModeOFF();
@@ -1195,7 +1198,7 @@ static void Maze_Search_Unknown_Walls(int flags, int from_stop) {
  * 帰りもダイクストラ誘導の未知壁探索(経路上に見ていない壁があれば見に行き、なければそのまま帰る)。
  * 戻り値: 1 スタートに帰った、0 帰れなかった(最短がゴールまで走れなかった、フェイルセーフなど) */
 static int Maze_Return_From_Goal(int flags) {
-	if (!G_Short_Reached || !G_Short_End_OK) {
+	if (!G_Short_Reached || !G_Short_End_OK || (Failsafe_Flag() == 1)) {
 		return 0;
 	}
 	int x = G_Short_End_X, y = G_Short_End_Y, dir = G_Short_End_Dir;
@@ -1230,7 +1233,9 @@ static int Maze_Return_From_Goal(int flags) {
 		Suction_Stop();
 	}
 	if (Failsafe_Flag() == 1) {
-		Failsafe_Flag_OFF();
+		/* 最後に壁を書いた5区画を戻して保存する(解除は main の Failsafe_Wait_Reset) */
+		Maze_Undo_Recent_Cells();
+		Maze_Save();
 		return 0;
 	}
 	Maze_Save();
@@ -1250,6 +1255,7 @@ static void Maze_Search(int flags) {
 
 	Motor_Setup();
 	Motor_Stop();
+	Maze_Undo_Clear();	//フェイルセーフのときに戻すのは、この探索で書いた壁だけ
 	Search_Cut_Reset();	//探索の直進の壁切れのログ(出力はモード4 No.7)
 	if (flags & SEARCH_SUCTION) {
 		Suction_Start(35);
@@ -1336,7 +1342,11 @@ static void Maze_Search(int flags) {
 			}
 		}
 	} else {
-		Failsafe_Flag_OFF();
+		/* フェイルセーフで止まった(2026-10-27、ToraNeko.Mk3 と同じ): ぶつかる直前はずれた位置・向きで壁を読んだかもしれないので、
+		 * 最後に壁を書いた5区画を書く前の状態に戻してから保存する。電源を切らずに探索をやり直したり最短を走ったりしても、
+		 * その壁は使わない。解除は main の Failsafe_Wait_Reset(手をかざして離す) */
+		Maze_Undo_Recent_Cells();
+		Maze_Save();
 	}
 	G_Log_Next_UTurn = 0;
 	Motor_Free();

@@ -18,6 +18,7 @@
 #include "Maze.h"
 #include "WallDistance.h"
 #include "UI.h"
+#include "Failsafe.h"
 #include "stdlib.h"
 #include <stdio.h>
 
@@ -174,6 +175,9 @@ float Bff = 0.50;
 float FF_offset = 15.0;
 
 void Motor_Setup() {
+	if (Failsafe_Flag() == 1) {	//フェイルセーフで止まっているあいだは、モーターを動かさない(解除は main の Failsafe_Wait_Reset)
+		return;
+	}
 	/* 走り出す前にジャイロのゼロ点を測る(0.3秒。2026-10-19)。動いているときは測らない */
 	if (fabsf(G_Tire_Speed_L) < 20 && fabsf(G_Tire_Speed_R) < 20) {
 		Gyro_Calibrate(300);
@@ -210,6 +214,9 @@ void Motor_Stop() {
 }
 
 void Suction_Start(int duty) {
+	if (Failsafe_Flag() == 1) {	//フェイルセーフで止まっているあいだは、吸引も回さない
+		return;
+	}
 	Suction_Duty = duty;
 	Fun_Flag = 1;
 	if (duty == 50) {
@@ -499,6 +506,9 @@ void Motor_trapezoid(float Vst, float Vmax, float Vend, float Ac, float X) {
 	float Df1 = Vmax - Vst;
 	float t1 = PI * Df1 / 2 / Ac;
 	while (1) {
+		if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+			break;
+		}
 
 		if (Df1 > 0) {
 			G_Motor_V_Target = Df1 / 2 * (1 - cos(2 * Ac / Df1 * G_Motor_Count))
@@ -532,6 +542,9 @@ void Motor_trapezoid(float Vst, float Vmax, float Vend, float Ac, float X) {
 	G_Motor_Ac = 0;
 
 	while (1) {
+		if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+			break;
+		}
 		if (G_Motor_X > Constant_X) {
 			break;
 		}
@@ -542,6 +555,9 @@ void Motor_trapezoid(float Vst, float Vmax, float Vend, float Ac, float X) {
 	float t3 = PI * Df3 / 2 / Ac;
 	G_Motor_Ac = -Ac;
 	while (1) {
+		if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+			break;
+		}
 		//Df3 / 2* (1 - cos(2 * Ac / Df3 * (G_Motor_Count - t1))) + Vend;
 		G_Motor_V_Target = Df3 / 2
 				- (Df3 / 2) * (1 - cos(G_Motor_Count * ((2 * Ac) / Df3))) + Vend
@@ -596,6 +612,9 @@ void Motor_Multistage_PID(float Vst, float Vmax, float Vend, float Ac_base,
 	// 1. 加速フェーズ（3段階切り替え）
 	// ==========================================
 	while (G_Motor_V_Target < Vmax) {
+		if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+			break;
+		}
 		dt = G_Motor_Count - prev_count;
 		prev_count = G_Motor_Count;
 
@@ -624,6 +643,9 @@ void Motor_Multistage_PID(float Vst, float Vmax, float Vend, float Ac_base,
 	// ==========================================
 	G_Motor_Ac = 0;
 	while (1) {
+		if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+			break;
+		}
 		prev_count = G_Motor_Count;
 		Deceleration_X = (Vmax * Vmax - Vend * Vend) / (2 * Ac_De);
 		if (X - G_Motor_X <= Deceleration_X)
@@ -636,6 +658,9 @@ void Motor_Multistage_PID(float Vst, float Vmax, float Vend, float Ac_base,
 	// ==========================================
 	G_Motor_Ac = -Ac_De;
 	while (G_Motor_V_Target > Vend) {
+		if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+			break;
+		}
 		dt = G_Motor_Count - prev_count;
 		prev_count = G_Motor_Count;
 		G_Motor_V_Target += G_Motor_Ac * dt;
@@ -688,6 +713,9 @@ void Motor_trapezoid_Asymmetric_PID(float Vst, float Vmax, float Vend, float Ac,
 
 	// --- 1. 加速フェーズ ---
 	while (1) {
+		if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+			break;
+		}
 		if (Df1 > 0) {
 			G_Motor_V_Target = Df1 / 2 * (1 - cos(2 * Ac / Df1 * G_Motor_Count))
 					+ Vst;
@@ -718,6 +746,9 @@ void Motor_trapezoid_Asymmetric_PID(float Vst, float Vmax, float Vend, float Ac,
 
 	// --- 2. 等速フェーズ ---
 	while (1) {
+		if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+			break;
+		}
 		if (G_Motor_X > Constant_X) {
 			break;
 		}
@@ -729,6 +760,9 @@ void Motor_trapezoid_Asymmetric_PID(float Vst, float Vmax, float Vend, float Ac,
 	float t3 = PI * Df3 / 2 / Ac_dec;
 
 	while (1) {
+		if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+			break;
+		}
 		if (Df3 > 0) {
 			// 減速のcosカーブ。終了点(Vend)に向かって滑らかに着地
 			G_Motor_V_Target = Df3 / 2
@@ -918,6 +952,9 @@ void Motor_Search_Straight(float V, float X) {
 	float corr = 0, dc = 0;
 	int src = 0;
 	while (1) {
+		if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+			break;
+		}
 		if (G_Motor_X >= look) {
 			float cc;
 			int sr;
@@ -978,11 +1015,16 @@ void Motor_Sula_before(float Vst, float Vmax, float Vend, float Ac, float X) {
 
 	Wall_search();
 	Front_Wall_Decide();	//迷路に書く前壁(左右が分かれたら記録する。2026-10-19)
-	Maze_Wall_Update();
+	if (Failsafe_Flag() == 0) {	//止まったあとの、ずれた位置で読んだ壁は書かない
+		Maze_Wall_Update();
+	}
 	G_Maze_Front_Override = -1;
 	Front_Wall_Rec_Cell();
 
 	while (1) {
+		if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+			break;
+		}
 		if (G_Motor_X > X) {
 			break;
 		}
@@ -1020,6 +1062,9 @@ void Motor_Sula_ST(float Vst, float Vmax, float Vend, float Ac, float X) {
 	}
 
 	while (1) {
+		if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+			break;
+		}
 		if (G_Motor_X > X) {
 			break;
 		}
@@ -1070,6 +1115,9 @@ void Motor_trapezoid_Turn(float Angle, float Wmax, float W_Ac) {
 	float t1 = PI * Df1 / 2 / W_Ac;
 	G_Motor_Count = 0;
 	while (1) {
+		if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+			break;
+		}
 		G_Motor_W_Target = Df1 / 2 * (1 - cos(2 * W_Ac / Df1 * G_Motor_Count));
 		if (t1 <= G_Motor_Count) {
 			G_Motor_W_Target = Wmax;
@@ -1089,6 +1137,9 @@ void Motor_trapezoid_Turn(float Angle, float Wmax, float W_Ac) {
 	G_Motor_Angle = 0;
 
 	while (1) {
+		if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+			break;
+		}
 		if (SANKAKU == 1) {
 			SANKAKU = 0;
 			break;
@@ -1102,6 +1153,9 @@ void Motor_trapezoid_Turn(float Angle, float Wmax, float W_Ac) {
 	float Df3 = G_Motor_W_Target;
 	float t3 = PI * Df3 / 2 / W_Ac;
 	while (1) {
+		if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+			break;
+		}
 		G_Motor_W_Target = Df3 / 2
 				* (1 - cos(2 * W_Ac / Df3 * (G_Motor_Count - t1)));
 		if (t3 <= G_Motor_Count) {
@@ -1146,6 +1200,9 @@ void Motor_Sula_COS(float V, float Angle, float Wmax, float W_Ac) {
 	float t1 = PI * Df1 / 2 / W_Ac;
 	G_Motor_Count = 0;
 	while (1) {
+		if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+			break;
+		}
 		//printf("Ac____G_Motor_W_Target:%f----G_Motor_Angle:%f\n\r",
 		//G_Motor_W_Target, G_Motor_Angle);
 		G_Motor_W_Target = Df1 / 2 * (1 - cos(2 * W_Ac / Df1 * G_Motor_Count));
@@ -1167,6 +1224,9 @@ void Motor_Sula_COS(float V, float Angle, float Wmax, float W_Ac) {
 	G_Motor_Angle = 0;
 
 	while (1) {
+		if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+			break;
+		}
 		//printf("Co____G_Motor_W_Target:%f----G_Motor_Angle:%f\n\r",
 		//G_Motor_W_Target, G_Motor_Angle + Acceleration_X);
 		if (SANKAKU == 1) {
@@ -1183,6 +1243,9 @@ void Motor_Sula_COS(float V, float Angle, float Wmax, float W_Ac) {
 	float Df3 = G_Motor_W_Target;
 	float t3 = PI * Df3 / 2 / W_Ac;
 	while (1) {
+		if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+			break;
+		}
 		G_Motor_W_Target = Df3 / 2
 				* (1 - cos(2 * W_Ac / Df3 * (G_Motor_Count - t1)));
 		//printf("%f\n\r",G_Motor_V_Target);
@@ -1216,6 +1279,9 @@ static void Cut_ST_Conv(int direction, float x_center, float X, float X_act, Cut
 	if (direction == 0) { //左旋回
 		if (cut_wall_L) {
 			while (1) {
+				if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+					break;
+				}
 				if (tick) tick();
 				if (Cut_Sensor(2) < Cut_L) {
 					break;
@@ -1229,6 +1295,9 @@ static void Cut_ST_Conv(int direction, float x_center, float X, float X_act, Cut
 	} else if (direction == 1) { //右旋回
 		if (cut_wall_R) {
 			while (1) {
+				if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+					break;
+				}
 				if (tick) tick();
 				if (Cut_Sensor(1) < Cut_R) {
 					break;
@@ -1243,6 +1312,9 @@ static void Cut_ST_Conv(int direction, float x_center, float X, float X_act, Cut
 	LED_Reset();
 	float X0 = G_Motor_X;
 	while (1) {
+		if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+			break;
+		}
 		if (tick) tick();
 		if (G_Motor_X - X0 > X - X_act) {
 			break;
@@ -1272,6 +1344,9 @@ static void Cut_ST_Pillar(int direction, float x_center, float X, CutTick tick) 
 	int src = 0;
 	Edge_Log_Mark(EDGE_LOG_ST, direction, x_center, X, 0);
 	while (1) {
+		if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+			break;
+		}
 		if (tick) tick();
 		float cc;
 		int sr;
@@ -1303,6 +1378,9 @@ static void Cut_END(float X, CutTick tick) {
 	int src = 0;
 	Edge_Log_Mark(EDGE_LOG_END, 0, G_Odo_X, X, 0);
 	while (1) {
+		if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+			break;
+		}
 		if (tick) tick();
 		if (G_Motor_X > X) {
 			break;
@@ -1343,6 +1421,9 @@ void Motor_Wallcut_ST(float Vmax, float X, int direction) {		//壁の有無を�
 		return;
 	}
 	while (1) {
+		if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+			break;
+		}
 		if (G_Motor_X > X * 0.50) {
 			X_act = G_Motor_X;
 			break;
@@ -1385,12 +1466,18 @@ void Motor_Wallcut_ST_NANAME(float Vmax, float X, int direction) {
 	G_Motor_X = 0;
 	if (direction == 0) { //左旋回
 		while (1) {
+			if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+				break;
+			}
 			if (Cut_Sensor(2) < Cut_L_NA) {
 				break;
 			}
 		}
 	} else if (direction == 1) { //右旋回
 		while (1) {
+			if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+				break;
+			}
 			if (Cut_Sensor(1) < Cut_R_NA) {
 				break;
 			}
@@ -1398,6 +1485,9 @@ void Motor_Wallcut_ST_NANAME(float Vmax, float X, int direction) {
 	}
 	G_Motor_X = 0;
 	while (1) {
+		if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+			break;
+		}
 		if (G_Motor_X > X) {
 			break;
 		}
@@ -1420,6 +1510,9 @@ void Motor_Wallcut_END_NANAME(float Vmax, float X, int direction) {
 	G_Motor_X = 0;
 
 	while (1) {
+		if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+			break;
+		}
 		if (G_Motor_X > X) {
 			break;
 		}
@@ -1427,12 +1520,18 @@ void Motor_Wallcut_END_NANAME(float Vmax, float X, int direction) {
 	Wall_search();
 	if (G_Wall_data[2] == 1 && direction == 0) {
 		while (1) {
+			if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+				break;
+			}
 			if (Cut_Sensor(1) < Cut_R_NA) {
 				break;
 			}
 		}
 	} else if (G_Wall_data[1] == 1 && direction == 1) {
 		while (1) {
+			if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+				break;
+			}
 			if (Cut_Sensor(2) < Cut_L_NA) {
 				break;
 			}
@@ -1501,6 +1600,9 @@ void Motor_Wallcut_ST_Accel(float Vst, float Vmax, float Ac, float X_pre,
 	}
 	float X_act = 0;
 	while (1) {
+		if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+			break;
+		}
 		Accel_Target_Update(Vst, Vmax, Ac);
 		if (G_Motor_X > X_pre + X * 0.50) {
 			X_act = G_Motor_X - X_pre;
@@ -1530,6 +1632,9 @@ void Motor_Wallcut_END_NANAME_Accel(float Vst, float Vmax, float Ac, float X,
 	G_Log_Phase = LOG_PH_POST_DIAG;
 	Accel_Start(Vst, 2);
 	while (1) {
+		if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+			break;
+		}
 		Accel_Target_Update(Vst, Vmax, Ac);
 		if (G_Motor_X > X) {
 			break;
@@ -1538,6 +1643,9 @@ void Motor_Wallcut_END_NANAME_Accel(float Vst, float Vmax, float Ac, float X,
 	Wall_search();
 	if (G_Wall_data[2] == 1 && direction == 0) {
 		while (1) {
+			if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+				break;
+			}
 			Accel_Target_Update(Vst, Vmax, Ac);
 			if (Cut_Sensor(1) < Cut_R_NA) {
 				break;
@@ -1545,6 +1653,9 @@ void Motor_Wallcut_END_NANAME_Accel(float Vst, float Vmax, float Ac, float X,
 		}
 	} else if (G_Wall_data[1] == 1 && direction == 1) {
 		while (1) {
+			if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+				break;
+			}
 			Accel_Target_Update(Vst, Vmax, Ac);
 			if (Cut_Sensor(2) < Cut_L_NA) {
 				break;
@@ -1644,6 +1755,9 @@ float Motor_First_Turn_Accel(float X_pre, float pre, float post, float v_ref,
 	} else {
 		float X_act = 0;
 		while (1) {
+			if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+				break;
+			}
 			FT_Target_Update();
 			if (G_Motor_X > X_pre + pre * 0.50) {
 				X_act = G_Motor_X - X_pre;
@@ -1666,6 +1780,9 @@ float Motor_First_Turn_Accel(float X_pre, float pre, float post, float v_ref,
 	G_Motor_Flag = 3;
 	float L = v_ref * r.T;
 	while (1) {
+		if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+			break;
+		}
 		FT_Target_Update();
 		float s = G_Motor_X;
 		if (s >= L) {
@@ -1695,6 +1812,9 @@ float Motor_First_Turn_Accel(float X_pre, float pre, float post, float v_ref,
 	if (naname) {
 		PID_Mode = 2;
 		while (1) {
+			if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+				break;
+			}
 			FT_Target_Update();
 			if (G_Motor_X > post) {
 				break;
@@ -1703,6 +1823,9 @@ float Motor_First_Turn_Accel(float X_pre, float pre, float post, float v_ref,
 		Wall_search();
 		if (G_Wall_data[2] == 1 && direction == 0) {
 			while (1) {
+				if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+					break;
+				}
 				FT_Target_Update();
 				if (Cut_Sensor(1) < Cut_R_NA) {
 					break;
@@ -1710,6 +1833,9 @@ float Motor_First_Turn_Accel(float X_pre, float pre, float post, float v_ref,
 			}
 		} else if (G_Wall_data[1] == 1 && direction == 1) {
 			while (1) {
+				if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+					break;
+				}
 				FT_Target_Update();
 				if (Cut_Sensor(2) < Cut_L_NA) {
 					break;
@@ -1742,6 +1868,9 @@ void Motor_Robot_Alignment() {
 	G_Motor_Count = 0;
 	float still_from = 0;	//止まり始めた時刻
 	while (1) {
+		if (Failsafe_Flag() == 1) {	//フェイルセーフで止まったら、すぐに抜ける
+			break;
+		}
 		float t = G_Motor_Count;
 		if (t > Alignment_TIME) {
 			G_Align_Timeout++;

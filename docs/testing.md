@@ -58,6 +58,12 @@ python3 tools/mazes_to_lines.py /tmp/mazefiles/classic/*.txt > /tmp/mazes.txt
 ./test_unknown_search --mazes /tmp/mazes.txt
 ```
 
+`test/test_maze_undo.c` は、フェイルセーフで止まったときに最後に壁を書いた5区画を戻す処理(`Maze.c` の `Maze_Undo_Recent_Cells()`)を検査する(2026-10-27)。同じシミュレータでランダム迷路をいろいろな歩数まで探索させて止め、戻したあとの壁・見たかどうか・`G_MAZE_Explored` が、最後の5回の `Maze_Wall_Update()` の前と同じか、2回呼んでも2回目は何も戻さないか、`Maze_Undo_Clear()`(探索の始め)より前の壁は戻さないかを確かめる。
+
+```
+gcc -std=c11 -Wall -DSIM_DEBUG -I Core/Inc -I . -I sim -o test_maze_undo test/test_maze_undo.c Core/Src/Maze.c Core/Src/ShortParam.c -lm && ./test_maze_undo
+```
+
 `mazes/` には大会の迷路を、実機の迷路の出力(モード3 No.0)と同じ形で置いてある。`--dump` で読むと、PCで作った BFS とダイクストラ(2000 の表)の経路が壁に当たらないか、ファイルに書いた経路(`BFS_NANAME` / `DIJK_NANAME`)と同じかを確かめる。参考に、2400 の表と以前のコストのダイクストラの経路が同じかも出す(失敗にはしない)。経路の決め方(ダイクストラの重みなど)を変えて経路が変わると失敗するので、変えたときは新しい経路が速いかを確かめてからファイルの経路を書き換える。
 
 | ファイル | 迷路 | 備考 |

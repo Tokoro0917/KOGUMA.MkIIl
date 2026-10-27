@@ -11,6 +11,7 @@
 void LED_Reset();
 
 void LED_ALL_ON();
+void LED_Loading();
 
 void LED_Setup_Robot();
 void LED_batt_error();

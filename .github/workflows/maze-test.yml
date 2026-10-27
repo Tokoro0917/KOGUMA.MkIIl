@@ -61,6 +61,12 @@ jobs:
             test/test_unknown_search.c Core/Src/Maze.c Core/Src/ShortParam.c -lm
           ./test_unknown_search
 
+      - name: フェイルセーフで最後の5区画の壁を戻す検証 (シミュレータ、16x16)
+        run: |
+          gcc -std=c11 -Wall -DSIM_DEBUG -I Core/Inc -I . -I sim -o test_maze_undo \
+            test/test_maze_undo.c Core/Src/Maze.c Core/Src/ShortParam.c -lm
+          ./test_maze_undo
+
       - name: 既知区間加速の命令列の検証 (16x16)
         run: |
           gcc -std=c11 -Wall -I Core/Inc -o test_knownpass \

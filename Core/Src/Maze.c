@@ -2677,8 +2677,98 @@ void Maze_Debug_Dump(void) {
  * 探索中は計算のあいだも機体は前の速度のまま進むので、計算が長いとその分だけ
  * 直線が伸びる。最大時間はファイル先頭の G_Time_Max_* に記録する */
 
+/* ---- フェイルセーフで止まったときに、最後に壁を書いた区画を戻す(2026-10-27、ToraNeko.Mk3 と同じ) ----
+ * 壁を書く前に「その区画と、書く前の4枚の壁・見たかどうか・G_MAZE_Explored」を覚えておく(新しい MAZE_UNDO_CELLS 回ぶん)。
+ * ぶつかる直前の区画は、ずれた位置・向きで壁を読んだかもしれないので、フェイルセーフで止まったら
+ * 新しいほうから順に、書く前の状態に戻す(その走行で初めて入った区画は「まだ見ていない」に戻る)。
+ * Uターンで同じ区画に2回入ると、その区画は2回と数える */
+#define MAZE_UNDO_CELLS 5
+typedef struct {
+	uint8_t x, y;
+	uint8_t wall;		//bit0 北 bit1 東 bit2 南 bit3 西(1 = 壁あり)
+	uint8_t look;		//同じ並び(1 = 見た)
+	uint8_t explored;
+} Maze_Undo_Cell;
+static Maze_Undo_Cell s_undo[MAZE_UNDO_CELLS];
+static int s_undo_n = 0;
+
+/* 区画 (x, y) の北・東・南・西の壁を、row・column の並びから4ビットにする */
+static uint8_t Maze_Undo_Bits(const uint32_t *row, const uint32_t *col, int x, int y) {
+	uint8_t b = 0;
+	if (row[y + 1] & (1u << x)) {
+		b |= 1;
+	}
+	if (col[x + 1] & (1u << y)) {
+		b |= 2;
+	}
+	if (row[y] & (1u << x)) {
+		b |= 4;
+	}
+	if (col[x] & (1u << y)) {
+		b |= 8;
+	}
+	return b;
+}
+
+/* 4ビットの壁を、row・column の並びの区画 (x, y) に書き戻す */
+static void Maze_Undo_Put(uint32_t *row, uint32_t *col, int x, int y, uint8_t b) {
+	row[y + 1] = (b & 1) ? (row[y + 1] | (1u << x)) : (row[y + 1] & ~(1u << x));
+	col[x + 1] = (b & 2) ? (col[x + 1] | (1u << y)) : (col[x + 1] & ~(1u << y));
+	row[y] = (b & 4) ? (row[y] | (1u << x)) : (row[y] & ~(1u << x));
+	col[x] = (b & 8) ? (col[x] | (1u << y)) : (col[x] & ~(1u << y));
+}
+
+/* 覚えている区画を忘れる。探索を始めるときに呼ぶ(その走行で書いた壁だけを戻すため) */
+void Maze_Undo_Clear(void) {
+	s_undo_n = 0;
+}
+
+/* 壁を書く区画 (x, y) の、書く前の状態を覚える。いっぱいなら、いちばん古いものを捨てる */
+static void Maze_Undo_Record(int x, int y) {
+	if ((x < 0) || (x >= MAZE_SIZE) || (y < 0) || (y >= MAZE_SIZE)) {
+		return;
+	}
+	if (s_undo_n == MAZE_UNDO_CELLS) {
+		for (int k = 0; k + 1 < MAZE_UNDO_CELLS; k++) {
+			s_undo[k] = s_undo[k + 1];
+		}
+		s_undo_n = MAZE_UNDO_CELLS - 1;
+	}
+	Maze_Undo_Cell *c = &s_undo[s_undo_n];
+	c->x = x;
+	c->y = y;
+	c->wall = Maze_Undo_Bits(G_Maze_Row, G_Maze_Column, x, y);
+	c->look = Maze_Undo_Bits(Maze_Row_Look, Maze_Column_Look, x, y);
+	c->explored = G_MAZE_Explored[x][y];
+	s_undo_n++;
+}
+
+/* 最後に壁を書いた区画(MAZE_UNDO_CELLS 回まで)を、新しいほうから順に書く前の状態に戻す。
+ * 戻したら忘れる(2回呼んでも1回ぶんしか戻さない)。戻した回数を返す。
+ * 保存した迷路(Maze_Save)は変えないので、戻したあとに Maze_Save() する */
+int Maze_Undo_Recent_Cells(void) {
+	int n = s_undo_n;
+	for (int k = s_undo_n - 1; k >= 0; k--) {
+		Maze_Undo_Cell *c = &s_undo[k];
+		Maze_Undo_Put(G_Maze_Row, G_Maze_Column, c->x, c->y, c->wall);
+		Maze_Undo_Put(Maze_Row_Look, Maze_Column_Look, c->x, c->y, c->look);
+		G_MAZE_Explored[c->x][c->y] = c->explored;
+	}
+	s_undo_n = 0;
+	return n;
+}
+
 void Maze_Wall_Update() {
 	uint32_t t = Maze_Time_Start();
+	if (Known_Flag == 0) {
+		static const int dx[4] = { 0, 1, 0, -1 };
+		static const int dy[4] = { 1, 0, -1, 0 };
+		int d = G_Robot_Direction % 4;	//Maze_Wall_Update_Body と同じ: 0 北、1 東、2 南、それ以外は西
+		if ((d < 0) || (d > 2)) {
+			d = 3;
+		}
+		Maze_Undo_Record(G_Robot_MAZE_X + dx[d], G_Robot_MAZE_Y + dy[d]);
+	}
 	Maze_Wall_Update_Body();
 	Maze_Time_End(&G_Time_Max_WallUpdate_us, t);
 }

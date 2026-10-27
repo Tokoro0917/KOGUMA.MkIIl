@@ -32,6 +32,21 @@ void LED_ALL_ON() {
 	HAL_GPIO_WritePin(LED8_GPIO_Port, LED8_Pin, 1);
 }
 
+/* ロード中(2026-10-27、ToraNeko.Mk3 と同じ)。LED1 から LED8 へ1個ずつ順に点けていき、全部点いたら消す(約1秒)。
+ * フェイルセーフを解除してモード選択に戻るときに出す。このあいだは何をしても何も起きない */
+void LED_Loading() {
+	static GPIO_TypeDef *const port[8] = { LED1_GPIO_Port, LED2_GPIO_Port, LED3_GPIO_Port, LED4_GPIO_Port,
+			LED5_GPIO_Port, LED6_GPIO_Port, LED7_GPIO_Port, LED8_GPIO_Port };
+	static const uint16_t pin[8] = { LED1_Pin, LED2_Pin, LED3_Pin, LED4_Pin, LED5_Pin, LED6_Pin, LED7_Pin, LED8_Pin };
+	LED_Reset();
+	for (int i = 0; i < 8; i++) {
+		HAL_GPIO_WritePin(port[i], pin[i], 1);
+		HAL_Delay(120);
+	}
+	HAL_Delay(120);
+	LED_Reset();
+}
+
 void LED_Setup_Robot() {
 	HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, 0);
 	HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, 0);
