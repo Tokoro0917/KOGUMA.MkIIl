@@ -99,6 +99,8 @@ void Known_Pass_Compression_NANAME();
 void Maze_Mapping();
 void Maze_Save();
 void Maze_Road();
+void Maze_Undo_Clear(void);
+int Maze_Undo_Recent_Cells(void);
 void Maze_Look_Mapping();
 void Maze_Wall_fill();
 void Maze_Shortest_Calculation();

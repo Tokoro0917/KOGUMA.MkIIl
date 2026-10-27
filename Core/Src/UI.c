@@ -32,6 +32,37 @@ void LED_ALL_ON() {
 	HAL_GPIO_WritePin(LED8_GPIO_Port, LED8_Pin, 1);
 }
 
+/* スイッチ(基板の S2、PB3。2026-10-27)。CubeMX では設定していないので、ここで入力にする(main の USER CODE 2 で呼ぶ)。
+ * 外の 10k(R31)で 3.3V に引き上げてあり、押すと GND につながる(押すと 0) */
+void Switch_Init() {
+	GPIO_InitTypeDef init = { 0 };
+	__HAL_RCC_GPIOB_CLK_ENABLE();
+	init.Pin = SW_Pin;
+	init.Mode = GPIO_MODE_INPUT;
+	init.Pull = GPIO_NOPULL;
+	HAL_GPIO_Init(SW_GPIO_Port, &init);
+}
+
+/* スイッチが押されていれば 1 */
+int Switch_Pressed() {
+	return HAL_GPIO_ReadPin(SW_GPIO_Port, SW_Pin) == GPIO_PIN_RESET;
+}
+
+/* ロード中(2026-10-27、ToraNeko.Mk3 と同じ)。LED1 から LED8 へ1個ずつ順に点けていき、全部点いたら消す(約1秒)。
+ * フェイルセーフを解除してモード選択に戻るときに出す。このあいだは何をしても何も起きない */
+void LED_Loading() {
+	static GPIO_TypeDef *const port[8] = { LED1_GPIO_Port, LED2_GPIO_Port, LED3_GPIO_Port, LED4_GPIO_Port,
+			LED5_GPIO_Port, LED6_GPIO_Port, LED7_GPIO_Port, LED8_GPIO_Port };
+	static const uint16_t pin[8] = { LED1_Pin, LED2_Pin, LED3_Pin, LED4_Pin, LED5_Pin, LED6_Pin, LED7_Pin, LED8_Pin };
+	LED_Reset();
+	for (int i = 0; i < 8; i++) {
+		HAL_GPIO_WritePin(port[i], pin[i], 1);
+		HAL_Delay(120);
+	}
+	HAL_Delay(120);
+	LED_Reset();
+}
+
 void LED_Setup_Robot() {
 	HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, 0);
 	HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, 0);

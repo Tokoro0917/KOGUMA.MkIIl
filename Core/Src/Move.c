@@ -793,9 +793,7 @@ void Short_NANAME_Move1000(int MAX, int AC) {
 
 		Robot_adjustment();
 		LED_Goal();
-	} else {
-		Failsafe_Flag_OFF();
-	}
+	}	//フェイルセーフで止まったときは、main の Failsafe_Wait_Reset() で解除する
 
 }
 
@@ -1076,9 +1074,7 @@ void Short_NANAME_Move2000(int MAX, int AC) {
 
 		Robot_adjustment();
 		LED_Goal();
-	} else {
-		Failsafe_Flag_OFF();
-	}
+	}	//フェイルセーフで止まったときは、main の Failsafe_Wait_Reset() で解除する
 
 }
 
@@ -1153,9 +1149,7 @@ void Short_NANAME_Move2400(int MAX, int AC) {
 
 		Robot_adjustment();
 		LED_Goal();
-	} else {
-		Failsafe_Flag_OFF();
-	}
+	}	//フェイルセーフで止まったときは、main の Failsafe_Wait_Reset() で解除する
 
 }
 
@@ -1283,9 +1277,7 @@ void Short_NANAME_Move2700(int MAX, int AC) {
 
 		Robot_adjustment();
 		LED_Goal();
-	} else {
-		Failsafe_Flag_OFF();
-	}
+	}	//フェイルセーフで止まったときは、main の Failsafe_Wait_Reset() で解除する
 
 }
 
@@ -1361,9 +1353,7 @@ void Short_Dijkstra_Move2000(int MAX, int AC) {
 		Robot_adjustment();
 		LED_Goal();
 		G_Short_Reached = 1;
-	} else {
-		Failsafe_Flag_OFF();
-	}
+	}	//フェイルセーフで止まったときは、main の Failsafe_Wait_Reset() で解除する
 
 }
 
@@ -1612,9 +1602,7 @@ void Short_NANAME_MoveTurnV(int MAX, int AC) {
 
 		Robot_adjustment();
 		LED_Goal();
-	} else {
-		Failsafe_Flag_OFF();
-	}
+	}	//フェイルセーフで止まったときは、main の Failsafe_Wait_Reset() で解除する
 }
 
 /* ダイクストラの経路を、Short_NANAME_MoveTurnV と同じ動きで走る */
