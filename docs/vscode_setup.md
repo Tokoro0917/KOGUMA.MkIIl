@@ -3,6 +3,21 @@
 PC を替えるのに合わせて、STM32CubeIDE をやめて VS Code に移る。ToraNeko.Mk3 と同じく、**CMake + Ninja + arm-none-eabi-gcc** でビルドし、
 VS Code の **STM32Cube for Visual Studio Code** 拡張で書き込み・デバッグする。コマンドラインだけでもビルドでき、CI(`.github/workflows/firmware-build.yml`)でも同じビルドを確かめる。
 
+## 新しい PC で最初にやること(GitHub から取ってくるところから)
+
+Windows の場合。
+
+1. **Git** を入れる(Git for Windows。GitHub Desktop でもよい)
+2. **VS Code** を入れる
+3. VS Code の拡張機能で **STM32Cube for Visual Studio Code** を入れる。足りないツールを入れる案内が出るので、それに従って **STM32CubeCLT** を入れる(arm-none-eabi-gcc・CMake・Ninja・STM32CubeProgrammer・ST-LINK の GDB サーバーがまとめて入る)。入れたら VS Code を開き直す
+4. リポジトリを取ってくる: VS Code で `Ctrl+Shift+P` → **Git: Clone** → `https://github.com/Tokoro0917/KOGUMA.MkIIl` → 置くフォルダを選ぶ(GitHub へのサインインを聞かれたら、ブラウザでサインインする)。コマンドなら `git clone https://github.com/Tokoro0917/KOGUMA.MkIIl`
+   - 置くフォルダの名前(パス)に日本語や空白を入れないほうがよい(ツールによっては読めない)
+5. 「開きますか」と聞かれたら開く。CMake のプリセットを聞かれたら **Debug** を選ぶ
+6. **ビルド**: 下のステータスバーの「Build」か `F7`。出力に `RAM: … / FLASH: …` が出て終われば成功(RAM 約113KB、Flash 約149KB)
+7. **書き込み**: ST-LINK をつなぎ、**機体の電源を入れて**から `F5`。設定を聞かれたら STM32Cube の ST-LINK のデバッグを選ぶ。`main()` で止まるので、もう一度 `F5` で動く。デバッグをやめても、書き込んだプログラムは残る
+8. **ログ**: ビューア(`tools/viewer.html`)を Chrome で開くのは今までどおり。保存先フォルダに、取ってきたリポジトリの `logs/` を選ぶ
+9. **ログを GitHub に上げる**: VS Code の左の「ソース管理」で、増えたファイルにメッセージを書いてコミット → 「変更の同期」(push)
+
 ## 新しい PC に入れるもの
 
 | もの | 内容 |
