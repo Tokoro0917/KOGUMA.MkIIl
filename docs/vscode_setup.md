@@ -1,6 +1,9 @@
 # VS Code でビルド・書き込み・デバッグする(2026-11-10)
 
-PC を替えるのに合わせて、STM32CubeIDE をやめて VS Code に移る。ToraNeko.Mk3 と同じく、**CMake + Ninja + arm-none-eabi-gcc** でビルドし、
+**2026-11-10: 開発は STM32CubeIDE のままにした。** この手順は、VS Code やコマンドでビルドしたくなったとき用に残す(CMake の設定は CI でも使っている)。
+新しい PC が Ubuntu 22.04 なら、apt の `gcc-arm-none-eabi` は gcc 10 でリンカスクリプトの `READONLY` を読めないので使わない。ToraNeko.Mk3 を STM32Cube 拡張でビルドできている PC なら、ツールは拡張が入れたものがあるので、新しく入れずに拡張からビルドする。
+
+もとの方針: PC を替えるのに合わせて、STM32CubeIDE をやめて VS Code に移る。ToraNeko.Mk3 と同じく、**CMake + Ninja + arm-none-eabi-gcc** でビルドし、
 VS Code の **STM32Cube for Visual Studio Code** 拡張で書き込み・デバッグする。コマンドラインだけでもビルドでき、CI(`.github/workflows/firmware-build.yml`)でも同じビルドを確かめる。
 
 ## 新しい PC で最初にやること(GitHub から取ってくるところから)

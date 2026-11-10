@@ -27,12 +27,10 @@
 
 ## 学生大会に向けて
 
-### PC の入れ替えと VS Code(2026-11-10)
+### PC の入れ替え(2026-11-10)
 
-- [x] STM32CubeIDE をやめて、VS Code + CMake でビルドできるようにした(`docs/vscode_setup.md`)
-- [ ] 新しい PC に VS Code・STM32Cube 拡張・arm-none-eabi-gcc・CMake・Ninja・STM32CubeProgrammer を入れて、`Debug` をビルドする
-- [ ] VS Code(F5)か STM32CubeProgrammer で書き込み、モード選択・センサ表示(モード4 No.0)・出力(モード4 No.7)が今までどおり動くか。最短(モード1 No.5)を1回走らせ、走りが変わっていないか(Debug は STM32CubeIDE と同じ -O0)
-- [ ] 問題なければ、STM32CubeIDE 用のファイル(`.cproject`・`.project`・`KOGUMA.MkIIl.launch`)を消す。`.ioc` の Toolchain を CMake にする(生成し直すとき。`docs/vscode_setup.md` の最後)
+- 開発は **STM32CubeIDE のまま**にした(VS Code + CMake も試したが、CubeIDE で行く)。CMake の設定は CI の ARM ビルドに使うので残す。`Core/Src` に `.c` を足したら `CMakeLists.txt` の `USER_SOURCES` にも足す
+- [ ] 新しい PC の CubeIDE でビルドして書き込み、モード選択・センサ表示(モード4 No.0)・出力(モード4 No.7)が今までどおり動くか
 
 ### 第1: 電池を替える(10-27〜10-30)
 

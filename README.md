@@ -271,7 +271,7 @@ RAMに残っているデータを全部、迷路 → 壁切れのログ → 走�
 
 | 項目 | 結果 |
 |---|---|
-| ビルド | 2026-11-10 から CMake(VS Code)。CI でビルドとリンクが通る。新しい PC の VS Code から書き込んだ版はまだ走らせていない |
+| ビルド | STM32CubeIDE。CI(CMake)でビルドとリンクが通る |
 | モード4 No.0(センサ・電圧・ジャイロ) | OK |
 | モード0 No.1〜10 | OK(2026-10-06)。No.4はゴール後のUターンで急に前進していたが、Uターンの位置合わせの修正後にOK。No.6 の「見に行った壁があったら止まって計算し直す」(2026-10-13)は 2026-10-18 に 8×6 の迷路で OK(`docs/test_maze_recompute.md`) |
 | モード1 No.1〜9 | OK(2026-10-07)。2026-10-09 にダイクストラ2000のターンの値・2000の走り出し・タイヤ径を変えたあとは未確認 |
@@ -372,8 +372,8 @@ RAMに残っているデータを全部、迷路 → 壁切れのログ → 走�
 ## ビルド・ハードウェア・ディレクトリ
 
 - MCU: STM32F446RE(Cortex-M4, Flash 512KB, RAM 128KB)。今のビルドで RAM 約113KB / Flash 約147KB(Debug、-O0。2026-10-27 に PC で同じ設定でリンクして確認)
-- 開発環境(2026-11-10 から): **VS Code(STM32Cube for Visual Studio Code 拡張)+ CMake + Ninja + arm-none-eabi-gcc**。ToraNeko.Mk3 と同じ。STM32CubeIDE はやめた。入れるもの・書き込み・CubeMX で生成し直すときは `docs/vscode_setup.md`
-- ビルド: `cmake --preset Debug && cmake --build --preset Debug`(成果物は `build/Debug/KOGUMA.MkIIl.elf`)。`Core/Src` に `.c` を足したら `CMakeLists.txt` の `USER_SOURCES` に足す。CI(`.github/workflows/firmware-build.yml`)でも同じビルドを確かめる
+- 開発環境: **STM32CubeIDE**。本フォルダをワークスペースにインポートしてビルド・書き込みする(2026-11-10 に、ToraNeko.Mk3 のように VS Code に移ることも考えたが、CubeIDE のままにした)
+- CMake のビルド設定(`CMakeLists.txt` など)は CI(`.github/workflows/firmware-build.yml`)で ARM のビルドとリンクを確かめるのに使う。**`Core/Src` に `.c` を足したら `CMakeLists.txt` の `USER_SOURCES` にも足す**(足さないと CI のリンクが失敗する)。VS Code やコマンドでビルドしたくなったときの手順は `docs/vscode_setup.md`
 
 ```
 Core/Src, Core/Inc   本体ファームウェア
@@ -387,7 +387,7 @@ docs/                調べたことのメモ(他の人のターン速度の決�
 .github/workflows/   CI設定
 *.ioc                STM32CubeMX設定
 STM32F446RETX_*.ld   リンカスクリプト
-CMakeLists.txt, CMakePresets.json, cmake/   CMake のビルド設定(VS Code・CI)
+CMakeLists.txt, CMakePresets.json, cmake/   CMake のビルド設定(CI。VS Code でも使える)
 ```
 
 `build/`・`Debug/`(ビルド成果物)、`.vscode/`(個人設定)とホストテストの実行ファイルは`.gitignore`で除外している。
@@ -403,7 +403,7 @@ CMakeLists.txt, CMakePresets.json, cmake/   CMake のビルド設定(VS Code・C
 | `docs/wall_research.md` | 壁制御・壁切れのほかの人のやり方 |
 | `docs/sensor_noise.md` | 吸引のときのセンサのノイズの調べ方(モード3 No.10) |
 | `docs/maze_algorithm.md` | 迷路探索(BFS・ダイクストラ・行き止まり潰し・迷路サイズ)、迷路の出力とPCでの確認 |
-| `docs/vscode_setup.md` | VS Code でビルド・書き込み・デバッグする(2026-11-10、STM32CubeIDE から移った。入れるもの、プリセット、CubeMX で生成し直すとき) |
+| `docs/vscode_setup.md` | VS Code・コマンドでビルド・書き込みする手順(今は使っていない。CubeIDE のまま。CI のビルドは同じ設定) |
 | `docs/search_stability_research.md` | 探索を安定させる方法の調べもの(2026-10-19。壁の読み取り、位置の補正、ジャイロ、フェイルセーフ。大会前に入れるものと大会のあとに回すもの) |
 | `docs/search_wallcut_design.md` | 探索の直進の壁切れ(基準のずれを測って、ばらつきだけ直す。記録だけ → 直す の進め方) |
 | `docs/test_maze_recompute.md` | 「見に行った壁があったら止まって計算し直す」を確かめる8×6の迷路と、正しい動き |

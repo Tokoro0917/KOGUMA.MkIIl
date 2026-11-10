@@ -3,6 +3,7 @@
 README の「直近の主な変更」をここに移した(2026-10-12)。新しいものが上。コミットの履歴(`git log`)も見る。
 
 ## 2026-11-10
+- **開発は STM32CubeIDE のままにした**(下の VS Code + CMake は、CI の ARM ビルドと、使いたくなったとき用に残す)。README・TODO・`docs/vscode_setup.md` の「CubeIDE はやめた」を直した
 - **STM32CubeIDE をやめて、VS Code(STM32Cube 拡張)+ CMake でビルドするようにした**(ToraNeko.Mk3 と同じ形。`docs/vscode_setup.md`)。`CMakeLists.txt`(自分で書いたソースの一覧)、`CMakePresets.json`(Debug -O0 / Release -Os)、`cmake/gcc-arm-none-eabi.cmake`、`cmake/stm32cubemx/CMakeLists.txt`(Core/・Drivers/ の一覧。CubeMX の CMake の形)を足した。Debug は STM32CubeIDE の Debug と同じ -O0 で、RAM 約113KB・Flash 約149KB(今までと同じ)
   - `main.c` の `#include "Motor.h"` を `"motor.h"` にした(Linux では大文字・小文字を区別するので見つからなかった)
   - CI に `firmware-build.yml` を足した(Debug と Release のビルドとリンク)
