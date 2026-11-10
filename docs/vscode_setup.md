@@ -18,6 +18,48 @@ Windows の場合。
 8. **ログ**: ビューア(`tools/viewer.html`)を Chrome で開くのは今までどおり。保存先フォルダに、取ってきたリポジトリの `logs/` を選ぶ
 9. **ログを GitHub に上げる**: VS Code の左の「ソース管理」で、増えたファイルにメッセージを書いてコミット → 「変更の同期」(push)
 
+## コマンドだけでやる(Windows の PowerShell)
+
+VS Code を使わなくても、同じビルドと書き込みができる。
+
+```powershell
+# 1. ツールを入れる(winget。終わったら PowerShell を開き直す)
+winget install --id Git.Git -e
+winget install --id Kitware.CMake -e
+winget install --id Ninja-build.Ninja -e
+winget search "Arm GNU"            # arm-none-eabi-gcc の Id を確かめてから入れる(例: Arm.GnuArmEmbeddedToolchain)
+winget install --id <上で見つけた Id> -e
+#    STM32CubeProgrammer は winget にないので、ST のサイトから入れる(書き込みに使う)
+
+# 2. 入ったか確かめる(どれも版が出ればよい。arm-none-eabi-gcc は 11 以降)
+git --version; cmake --version; ninja --version; arm-none-eabi-gcc --version
+
+# 3. 取ってくる
+cd C:\work                         # 置く場所(日本語・空白のないパス)
+git clone https://github.com/Tokoro0917/KOGUMA.MkIIl
+cd KOGUMA.MkIIl
+
+# 4. ビルド(最後に RAM 約113KB、FLASH 約149KB と出れば成功)
+cmake --preset Debug
+cmake --build --preset Debug
+
+# 5. 書き込み(ST-LINK をつなぎ、機体の電源を入れてから)
+STM32_Programmer_CLI -c port=SWD -w build\Debug\KOGUMA.MkIIl.elf -v -rst
+
+# 6. ログを上げる(ビューアで logs\ に保存したあと)
+git add logs
+git commit -m "ログ: 〇〇を走らせた"
+git push
+
+# 2回目からは、始める前に最新を取ってくる
+git pull
+```
+
+- `arm-none-eabi-gcc` が見つからないと言われたら、インストーラーの「パスを通す(Add path to environment variable)」が外れている。入れ直すか、`bin` のフォルダを環境変数 PATH に足す
+- `STM32_Programmer_CLI` が見つからないときは、STM32CubeProgrammer の `bin` フォルダ(例: `C:\Program Files\STMicroelectronics\STM32Cube\STM32CubeProgrammer\bin`)を PATH に足すか、そのフォルダの中のものをフルパスで呼ぶ
+- 道具を入れ替えたら、`build` フォルダを消してから `cmake --preset Debug` からやり直す
+- `git push` で GitHub のサインインを聞かれたら、出てくる画面(ブラウザ)でサインインする
+
 ## 新しい PC に入れるもの
 
 | もの | 内容 |
