@@ -87,4 +87,4 @@ gcc -std=c11 -Wall -I Core/Inc -o test_disthist test/test_disthist.c Core/Src/Di
 gcc -std=c11 -Wall -I Core/Inc -o test_pillaredge test/test_pillaredge.c Core/Src/PillarEdge.c Core/Src/DistHist.c -lm && ./test_pillaredge
 ```
 
-CIは`.github/workflows/maze-test.yml`で、masterへのpushとPRのときに行き止まり潰しと最短走行の命令列の検査(それぞれ16×16と32×32)、小さい迷路で全部の経路と比べる検査(6×6・8×8)、未知壁探索の検査、距離変換の表の検査、速度計画の検査、距離ごとの履歴と柱の端の検出の検査を実行する。ファームウェア本体のARMビルドは対象外。
+CIは`.github/workflows/maze-test.yml`で、masterへのpushとPRのときに行き止まり潰しと最短走行の命令列の検査(それぞれ16×16と32×32)、小さい迷路で全部の経路と比べる検査(6×6・8×8)、未知壁探索の検査、距離変換の表の検査、速度計画の検査、距離ごとの履歴と柱の端の検出の検査を実行する。ファームウェア本体のARMビルド(CMake、Debug と Release)は`.github/workflows/firmware-build.yml`で確かめる(2026-11-10 から。`docs/vscode_setup.md`)。

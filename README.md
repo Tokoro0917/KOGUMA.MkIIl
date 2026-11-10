@@ -1,6 +1,6 @@
 # KOGUMA MkIIl
 
-STM32F446RE(STM32CubeIDE)をベースにしたマイクロマウス(クラシック、迷路探索ロボット)のファームウェア。
+STM32F446RE をベースにしたマイクロマウス(クラシック、迷路探索ロボット)のファームウェア。
 
 - 大会までの予定とやることは`TODO.md`
 - 詳しい設計・調べたこと・変更の記録は`docs/`(下の「資料」)
@@ -271,7 +271,7 @@ RAMに残っているデータを全部、迷路 → 壁切れのログ → 走�
 
 | 項目 | 結果 |
 |---|---|
-| STM32CubeIDEでのビルド | 2026-10-07 まで OK。それ以降(モード1 No.10・No.11、モード10、柱の壁切れ、ビューア向けの出力)は未確認。ARMのgccではビルドとリンクが通る |
+| ビルド | 2026-11-10 から CMake(VS Code)。CI でビルドとリンクが通る。新しい PC の VS Code から書き込んだ版はまだ走らせていない |
 | モード4 No.0(センサ・電圧・ジャイロ) | OK |
 | モード0 No.1〜10 | OK(2026-10-06)。No.4はゴール後のUターンで急に前進していたが、Uターンの位置合わせの修正後にOK。No.6 の「見に行った壁があったら止まって計算し直す」(2026-10-13)は 2026-10-18 に 8×6 の迷路で OK(`docs/test_maze_recompute.md`) |
 | モード1 No.1〜9 | OK(2026-10-07)。2026-10-09 にダイクストラ2000のターンの値・2000の走り出し・タイヤ径を変えたあとは未確認 |
@@ -357,7 +357,7 @@ RAMに残っているデータを全部、迷路 → 壁切れのログ → 走�
 
 ## テストとCI
 
-ホスト(PC)のgccで、HALに依存しない部分を確かめる。CI(`.github/workflows/maze-test.yml`)が master への push と PR のときに全部実行する。ファームウェア本体のARMビルドはCIの対象外。何を確かめているかは`docs/testing.md`。
+ホスト(PC)のgccで、HALに依存しない部分を確かめる。CI(`.github/workflows/maze-test.yml`)が master への push と PR のときに全部実行する。ファームウェア本体のARMビルドは`.github/workflows/firmware-build.yml`(CMake)。何を確かめているかは`docs/testing.md`。
 
 | テスト | 対象 | 実行 |
 |---|---|---|
@@ -372,7 +372,8 @@ RAMに残っているデータを全部、迷路 → 壁切れのログ → 走�
 ## ビルド・ハードウェア・ディレクトリ
 
 - MCU: STM32F446RE(Cortex-M4, Flash 512KB, RAM 128KB)。今のビルドで RAM 約113KB / Flash 約147KB(Debug、-O0。2026-10-27 に PC で同じ設定でリンクして確認)
-- 開発環境: STM32CubeIDE 1.14.0。本フォルダをワークスペースにインポートしてビルドする
+- 開発環境(2026-11-10 から): **VS Code(STM32Cube for Visual Studio Code 拡張)+ CMake + Ninja + arm-none-eabi-gcc**。ToraNeko.Mk3 と同じ。STM32CubeIDE はやめた。入れるもの・書き込み・CubeMX で生成し直すときは `docs/vscode_setup.md`
+- ビルド: `cmake --preset Debug && cmake --build --preset Debug`(成果物は `build/Debug/KOGUMA.MkIIl.elf`)。`Core/Src` に `.c` を足したら `CMakeLists.txt` の `USER_SOURCES` に足す。CI(`.github/workflows/firmware-build.yml`)でも同じビルドを確かめる
 
 ```
 Core/Src, Core/Inc   本体ファームウェア
@@ -386,9 +387,10 @@ docs/                調べたことのメモ(他の人のターン速度の決�
 .github/workflows/   CI設定
 *.ioc                STM32CubeMX設定
 STM32F446RETX_*.ld   リンカスクリプト
+CMakeLists.txt, CMakePresets.json, cmake/   CMake のビルド設定(VS Code・CI)
 ```
 
-`Debug/`(ビルド成果物)とホストテストの実行ファイルは`.gitignore`で除外している。
+`build/`・`Debug/`(ビルド成果物)、`.vscode/`(個人設定)とホストテストの実行ファイルは`.gitignore`で除外している。
 
 ## 資料
 
@@ -401,6 +403,7 @@ STM32F446RETX_*.ld   リンカスクリプト
 | `docs/wall_research.md` | 壁制御・壁切れのほかの人のやり方 |
 | `docs/sensor_noise.md` | 吸引のときのセンサのノイズの調べ方(モード3 No.10) |
 | `docs/maze_algorithm.md` | 迷路探索(BFS・ダイクストラ・行き止まり潰し・迷路サイズ)、迷路の出力とPCでの確認 |
+| `docs/vscode_setup.md` | VS Code でビルド・書き込み・デバッグする(2026-11-10、STM32CubeIDE から移った。入れるもの、プリセット、CubeMX で生成し直すとき) |
 | `docs/search_stability_research.md` | 探索を安定させる方法の調べもの(2026-10-19。壁の読み取り、位置の補正、ジャイロ、フェイルセーフ。大会前に入れるものと大会のあとに回すもの) |
 | `docs/search_wallcut_design.md` | 探索の直進の壁切れ(基準のずれを測って、ばらつきだけ直す。記録だけ → 直す の進め方) |
 | `docs/test_maze_recompute.md` | 「見に行った壁があったら止まって計算し直す」を確かめる8×6の迷路と、正しい動き |

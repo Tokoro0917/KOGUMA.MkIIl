@@ -1,0 +1,30 @@
+name: firmware-build
+
+# ファームウェアが ARM 向けにビルド・リンクできるか(CMake。VS Code でビルドするのと同じ。2026-11-10、ToraNeko.Mk3 と同じ形)。
+# 迷路などの PC 上のテストは maze-test.yml
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ツールチェーンのインストール
+        run: sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi libnewlib-arm-none-eabi ninja-build
+
+      - name: ビルド (Debug)
+        run: |
+          cmake --preset Debug
+          cmake --build --preset Debug
+
+      - name: ビルド (Release)
+        run: |
+          cmake --preset Release
+          cmake --build --preset Release
+
+      - name: サイズ
+        run: arm-none-eabi-size build/Debug/KOGUMA.MkIIl.elf build/Release/KOGUMA.MkIIl.elf
