@@ -32,7 +32,7 @@
 #include "motor.h"
 #include "PL_encoder.h"
 #include "PL_timer.h"
-#include "Motor.h"
+#include "motor.h"
 #include "LOG.h"
 #include "PL_sensor.h"
 #include "UI.h"

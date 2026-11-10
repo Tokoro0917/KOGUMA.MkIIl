@@ -1,3 +1,6 @@
+# CMake(VS Code)のビルド成果物
+/build/
+
 # STM32CubeIDE build outputs
 Debug/
 Release/
@@ -17,6 +20,9 @@ KOGUMA.MkII/Release/
 
 # Eclipse/IDE local state
 .metadata/
+
+# VS Code の個人設定(STM32Cube 拡張が launch.json などを作る。ToraNeko.Mk3 と同じくコミットしない)
+.vscode/
 
 # ホスト側テストのビルド成果物 (test/test_deadend.c, test/test_walldist.c)
 /test_deadend
