@@ -242,6 +242,7 @@ RAMに残っているデータを全部、迷路 → 壁切れのログ → 走�
 | `Short_WallCut_Pillar` | `main.c` | 1 | 1で、最短走行の壁切れを柱で見る(「壁切れ」)。0で従来 |
 | `Pillar_X_Scale` / `Pillar_X_Offs` / `Pillar_Wait_Ofs` | `motor.c` | 0.5 / −5 / 25 | 柱のとき、前距離の X を X × Scale + Offs に読み替える(X は従来に合わせて調整した値のため)。境目が見つからないときは 区画中心 + 読み替えた X + 25 まで待つ |
 | `Search_WallCut` / `Search_Edge_Ref` / `Search_Edge_Win` / `Search_Corr_Max` | `motor.c` | 1 / 0 / 20 / 10 | 探索の1区画の直進の壁切れ(`docs/search_wallcut_design.md`)。0 使わない、**1 記録だけ(走りは今までどおり)**、2 直す。2 のときは、区画の4割を過ぎたら次の境目の柱の端を探し、dc(推定 − 予想)と基準のずれ `Search_Edge_Ref`(記録で測った dc の中央値)の差を ± 10mm まで直す |
+| `Side_Align_Enable` / `Side_Too_Close_mm` | `motor.c` | 0 / 64 | 探索の横壁合わせ(2026-11-11、ToraNeko.Mk3 と同じ)。区画の入口で、横壁制御が使っている横の壁が 64mm(区画のまん中は 84mm)より近ければ、**0 記録だけ**、1 その区画のまん中で止まり、近い側へ 90° 回って前壁合わせをし、元の向きに戻ってから発進する(Uターンのときはしない)。回数といちばん近かった距離は、出力(モード4 No.7)の探索の直進の壁切れ(SCUT)の見出しの `side_n`・`side_min`(ビューアでは同じカードに出る) |
 | `Front_Wall_Map` / `Front_Wall_Min_Ratio` | `motor.c` / `Wallsensor.c` | 1 / 0.33 | 迷路に書く前壁。0 今までどおり(左右とも閾値を超えたら壁)、**1 記録だけ**(左右が分かれたときを `FWALL` に残す)、2 左右の平均でも壁ありにする(低いほうも閾値 × 0.33 を超えたとき) |
 | `Alignment_TIME` / `Align_Min_Time` / `Align_Still_Time` / `Align_Still_V` | `motor.c` | 0.5 / 0.10 / 0.05 / 10 | 止まったときの前壁合わせ。左右の車輪が `Align_Still_V`[mm/s]未満の状態が `Align_Still_Time`[s]続いたら終わる(`Align_Min_Time` より早くは終わらない、上限 `Alignment_TIME`) |
 | `Align_Use_mm` / `Kp_FW_mm` / `Kp_FW_dire_mm` | `Wallsensor.c` | 1 / 1.8 / 1.8 | 止まったときの前壁合わせを、感度合わせした距離で行う(前後は左右の平均が84mm、向きは左右の距離の差が0)。0 で今までの生の値(`FlontWall_Distance` 636、`Kp_FW` / `Kp_FW_dire` 0.1) |

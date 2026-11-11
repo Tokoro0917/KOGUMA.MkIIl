@@ -90,4 +90,12 @@ void Search_Cut_Reset(void);
 int Search_Cut_Has_Data(void);
 void Search_Cut_Print(void);
 
+/* 探索の横壁合わせ(2026-11-11、ToraNeko.Mk3 と同じ。Move.c の Robot_Maze_Side_Check)。
+ * 区画の入口で横の壁が Side_Too_Close_mm より近ければ、その区画のまん中で止まり、近い側へ 90° 回って前壁合わせをし、元の向きに戻る */
+extern int Side_Align_Enable;		//1 止まって直す、0 記録だけ(走りは今までどおり)
+extern float Side_Too_Close_mm;		//横の壁がこれより近ければ「近すぎる」[mm](区画のまん中で 84mm)
+extern int G_Side_Close_Count;		//近すぎた回数(探索を始めるたびに 0。出力の SCUT の見出しに出す)
+extern float G_Side_Close_Min;		//いちばん近かった距離[mm]
+extern int G_Side_Align_Count;		//止まって直した回数
+
 #endif /* INC_MOTOR_H_ */
