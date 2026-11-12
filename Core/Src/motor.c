@@ -809,6 +809,12 @@ static float Front_Wall_mm(void) {
  *  - 両側とも壁が続くところは端がないので、どの段階でも何もしない
  * 記録は Search_Cut_Print(出力のモード4 No.7、SCUT)。ビューアが基準のずれ(中央値)を出す */
 int Search_WallCut = 1;
+/* 探索の横壁合わせ(motor.h の説明、Move.c の Robot_Maze_Side_Check)。まず記録だけ(0)で、出力の side_n・side_min を見てから 1 にする */
+int Side_Align_Enable = 0;
+float Side_Too_Close_mm = 64;	//区画のまん中(84mm)から 20mm 寄ったところ(ToraNeko はハーフで 42mm → 32mm、10mm 寄ったところ)
+int G_Side_Close_Count = 0;
+float G_Side_Close_Min = 0;
+int G_Side_Align_Count = 0;
 float Search_Edge_Ref = 0;		//基準のずれ[mm](記録で測った dc の中央値を書き写す)
 float Search_Edge_Win = 20;		//直すとき、予想 + Ref ± これの推定だけ使う[mm]
 float Search_Rec_Win = 60;		//記録するとき、予想 ± これの推定を残す[mm](隣の境目までは180mm)
@@ -884,6 +890,9 @@ void Search_Cut_Reset(void) {
 	Scut_Action = 0;
 	Fwall_Count = 0;
 	Fwall_Lost = 0;
+	G_Side_Close_Count = 0;
+	G_Side_Close_Min = 0;
+	G_Side_Align_Count = 0;
 }
 
 int Search_Cut_Has_Data(void) {
@@ -900,11 +909,12 @@ void Search_Cut_Print(void) {
 	}
 	printf("#END FWALL\r\n");
 
-	printf("\r\n#BEGIN SCUT n=%d lost=%d mode=%d ref=%.1f win=%.0f rec_win=%.0f max=%.0f gain=%.2f look=%.2f align_n=%d align_ms=%.0f align_to=%d align_mm=%d align_err=%.1f align_diff=%.1f gyro_ofs=%.3f gyro_sd=%.3f gyro_rej=%d gyro_torn=%lu gyro_try=",
+	printf("\r\n#BEGIN SCUT n=%d lost=%d mode=%d ref=%.1f win=%.0f rec_win=%.0f max=%.0f gain=%.2f look=%.2f align_n=%d align_ms=%.0f align_to=%d align_mm=%d align_err=%.1f align_diff=%.1f side_en=%d side_th=%.0f side_n=%d side_min=%.1f side_done=%d gyro_ofs=%.3f gyro_sd=%.3f gyro_rej=%d gyro_torn=%lu gyro_try=",
 			Scut_Count, Scut_Lost, Search_WallCut, Search_Edge_Ref, Search_Edge_Win, Search_Rec_Win, Search_Corr_Max,
 			Search_Corr_Gain, Search_Look_From, G_Align_Count,
 			G_Align_Count ? 1000.0f * G_Align_Time_Sum / G_Align_Count : 0.0f, G_Align_Timeout, Align_Use_mm,
 			G_Align_Count ? G_Align_Err_Sum / G_Align_Count : 0.0f, G_Align_Count ? G_Align_Diff_Sum / G_Align_Count : 0.0f,
+			Side_Align_Enable, Side_Too_Close_mm, G_Side_Close_Count, G_Side_Close_Min, G_Side_Align_Count,
 			gyro_z_offset,
 			G_Gyro_Offset_SD, G_Gyro_Cal_Reject, (unsigned long) G_Gyro_Torn);
 	/* 最近測った順に「ばらつき:平均」(使わなかったものも) */

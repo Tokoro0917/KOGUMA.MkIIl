@@ -242,6 +242,7 @@ RAMに残っているデータを全部、迷路 → 壁切れのログ → 走�
 | `Short_WallCut_Pillar` | `main.c` | 1 | 1で、最短走行の壁切れを柱で見る(「壁切れ」)。0で従来 |
 | `Pillar_X_Scale` / `Pillar_X_Offs` / `Pillar_Wait_Ofs` | `motor.c` | 0.5 / −5 / 25 | 柱のとき、前距離の X を X × Scale + Offs に読み替える(X は従来に合わせて調整した値のため)。境目が見つからないときは 区画中心 + 読み替えた X + 25 まで待つ |
 | `Search_WallCut` / `Search_Edge_Ref` / `Search_Edge_Win` / `Search_Corr_Max` | `motor.c` | 1 / 0 / 20 / 10 | 探索の1区画の直進の壁切れ(`docs/search_wallcut_design.md`)。0 使わない、**1 記録だけ(走りは今までどおり)**、2 直す。2 のときは、区画の4割を過ぎたら次の境目の柱の端を探し、dc(推定 − 予想)と基準のずれ `Search_Edge_Ref`(記録で測った dc の中央値)の差を ± 10mm まで直す |
+| `Side_Align_Enable` / `Side_Too_Close_mm` | `motor.c` | 0 / 64 | 探索の横壁合わせ(2026-11-11、ToraNeko.Mk3 と同じ)。区画の入口で、横壁制御が使っている横の壁が 64mm(区画のまん中は 84mm)より近ければ、**0 記録だけ**、1 その区画のまん中で止まり、近い側へ 90° 回って前壁合わせをし、元の向きに戻ってから発進する(Uターンのときはしない)。回数といちばん近かった距離は、出力(モード4 No.7)の探索の直進の壁切れ(SCUT)の見出しの `side_n`・`side_min`(ビューアでは同じカードに出る) |
 | `Front_Wall_Map` / `Front_Wall_Min_Ratio` | `motor.c` / `Wallsensor.c` | 1 / 0.33 | 迷路に書く前壁。0 今までどおり(左右とも閾値を超えたら壁)、**1 記録だけ**(左右が分かれたときを `FWALL` に残す)、2 左右の平均でも壁ありにする(低いほうも閾値 × 0.33 を超えたとき) |
 | `Alignment_TIME` / `Align_Min_Time` / `Align_Still_Time` / `Align_Still_V` | `motor.c` | 0.5 / 0.10 / 0.05 / 10 | 止まったときの前壁合わせ。左右の車輪が `Align_Still_V`[mm/s]未満の状態が `Align_Still_Time`[s]続いたら終わる(`Align_Min_Time` より早くは終わらない、上限 `Alignment_TIME`) |
 | `Align_Use_mm` / `Kp_FW_mm` / `Kp_FW_dire_mm` | `Wallsensor.c` | 1 / 1.8 / 1.8 | 止まったときの前壁合わせを、感度合わせした距離で行う(前後は左右の平均が84mm、向きは左右の距離の差が0)。0 で今までの生の値(`FlontWall_Distance` 636、`Kp_FW` / `Kp_FW_dire` 0.1) |
@@ -271,7 +272,7 @@ RAMに残っているデータを全部、迷路 → 壁切れのログ → 走�
 
 | 項目 | 結果 |
 |---|---|
-| ビルド | 2026-11-10 から CMake(VS Code)。CI でビルドとリンクが通る。新しい PC の VS Code から書き込んだ版はまだ走らせていない |
+| ビルド | STM32CubeIDE。CI(CMake)でビルドとリンクが通る |
 | モード4 No.0(センサ・電圧・ジャイロ) | OK |
 | モード0 No.1〜10 | OK(2026-10-06)。No.4はゴール後のUターンで急に前進していたが、Uターンの位置合わせの修正後にOK。No.6 の「見に行った壁があったら止まって計算し直す」(2026-10-13)は 2026-10-18 に 8×6 の迷路で OK(`docs/test_maze_recompute.md`) |
 | モード1 No.1〜9 | OK(2026-10-07)。2026-10-09 にダイクストラ2000のターンの値・2000の走り出し・タイヤ径を変えたあとは未確認 |
@@ -372,8 +373,8 @@ RAMに残っているデータを全部、迷路 → 壁切れのログ → 走�
 ## ビルド・ハードウェア・ディレクトリ
 
 - MCU: STM32F446RE(Cortex-M4, Flash 512KB, RAM 128KB)。今のビルドで RAM 約113KB / Flash 約147KB(Debug、-O0。2026-10-27 に PC で同じ設定でリンクして確認)
-- 開発環境(2026-11-10 から): **VS Code(STM32Cube for Visual Studio Code 拡張)+ CMake + Ninja + arm-none-eabi-gcc**。ToraNeko.Mk3 と同じ。STM32CubeIDE はやめた。入れるもの・書き込み・CubeMX で生成し直すときは `docs/vscode_setup.md`
-- ビルド: `cmake --preset Debug && cmake --build --preset Debug`(成果物は `build/Debug/KOGUMA.MkIIl.elf`)。`Core/Src` に `.c` を足したら `CMakeLists.txt` の `USER_SOURCES` に足す。CI(`.github/workflows/firmware-build.yml`)でも同じビルドを確かめる
+- 開発環境: **STM32CubeIDE**。本フォルダをワークスペースにインポートしてビルド・書き込みする(2026-11-10 に、ToraNeko.Mk3 のように VS Code に移ることも考えたが、CubeIDE のままにした)
+- CMake のビルド設定(`CMakeLists.txt` など)は CI(`.github/workflows/firmware-build.yml`)で ARM のビルドとリンクを確かめるのに使う。**`Core/Src` に `.c` を足したら `CMakeLists.txt` の `USER_SOURCES` にも足す**(足さないと CI のリンクが失敗する)。VS Code やコマンドでビルドしたくなったときの手順は `docs/vscode_setup.md`
 
 ```
 Core/Src, Core/Inc   本体ファームウェア
@@ -387,7 +388,7 @@ docs/                調べたことのメモ(他の人のターン速度の決�
 .github/workflows/   CI設定
 *.ioc                STM32CubeMX設定
 STM32F446RETX_*.ld   リンカスクリプト
-CMakeLists.txt, CMakePresets.json, cmake/   CMake のビルド設定(VS Code・CI)
+CMakeLists.txt, CMakePresets.json, cmake/   CMake のビルド設定(CI。VS Code でも使える)
 ```
 
 `build/`・`Debug/`(ビルド成果物)、`.vscode/`(個人設定)とホストテストの実行ファイルは`.gitignore`で除外している。
@@ -403,7 +404,7 @@ CMakeLists.txt, CMakePresets.json, cmake/   CMake のビルド設定(VS Code・C
 | `docs/wall_research.md` | 壁制御・壁切れのほかの人のやり方 |
 | `docs/sensor_noise.md` | 吸引のときのセンサのノイズの調べ方(モード3 No.10) |
 | `docs/maze_algorithm.md` | 迷路探索(BFS・ダイクストラ・行き止まり潰し・迷路サイズ)、迷路の出力とPCでの確認 |
-| `docs/vscode_setup.md` | VS Code でビルド・書き込み・デバッグする(2026-11-10、STM32CubeIDE から移った。入れるもの、プリセット、CubeMX で生成し直すとき) |
+| `docs/vscode_setup.md` | VS Code・コマンドでビルド・書き込みする手順(今は使っていない。CubeIDE のまま。CI のビルドは同じ設定) |
 | `docs/search_stability_research.md` | 探索を安定させる方法の調べもの(2026-10-19。壁の読み取り、位置の補正、ジャイロ、フェイルセーフ。大会前に入れるものと大会のあとに回すもの) |
 | `docs/search_wallcut_design.md` | 探索の直進の壁切れ(基準のずれを測って、ばらつきだけ直す。記録だけ → 直す の進め方) |
 | `docs/test_maze_recompute.md` | 「見に行った壁があったら止まって計算し直す」を確かめる8×6の迷路と、正しい動き |

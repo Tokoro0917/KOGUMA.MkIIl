@@ -82,8 +82,49 @@ void Robot_adjustment_Back() {
 	Motor_trapezoid_PID(0, 300, 300, 5000, 13);
 }
 
+/* ---- 探索の横壁合わせ(2026-11-11、ToraNeko.Mk3 の sys/explore.c の align_if_too_close と同じ) ----
+ * 区画の入口(Motor_Sula_before のあと)で、横壁制御が使っている横の壁(安定して見えている壁、G_Wall_St)が
+ * Side_Too_Close_mm より近ければ「近すぎる」。記録して(G_Side_Close_Count・G_Side_Close_Min)、
+ * Side_Align_Enable が 1 なら、その区画のまん中で止まり、近い側へ 90° 回って前壁合わせをし、元の向きに戻ってから、
+ * 歩数マップで進む向きを決め直して発進する(Robot_Maze_Go_From_Stop)。前壁合わせで、その壁までの距離(= 左右の位置)と向きが直る。
+ * Uターンするときは、どうせ止まって前・横の壁で合わせる(Robot_adjustment)ので、ここではしない。
+ * 戻り値: 0 近すぎない(か記録だけ)、1 止まって直して、次の区画の境目まで進んだ(この区画の行動はもう済んだ) */
+static int s_front_aligned;	//下で定義(Robot_Maze_Stop_And_Go の前)
+static int Robot_Maze_Side_Check(float v, float ac, float decel_x) {
+	int left = (G_Wall_St & 1) && (G_Wall_dL < Side_Too_Close_mm);
+	int right = !left && (G_Wall_St & 2) && (G_Wall_dR < Side_Too_Close_mm);
+	if (!left && !right) {
+		return 0;
+	}
+	float d = left ? G_Wall_dL : G_Wall_dR;
+	if (G_Side_Close_Count == 0 || d < G_Side_Close_Min) {
+		G_Side_Close_Min = d;
+	}
+	G_Side_Close_Count++;
+	int uturn = !((G_Maze_Flont <= G_Maze_Left) && (G_Maze_Flont <= G_Maze_Right) && (G_Maze_Flont <= G_Maze_Back))
+			&& !((G_Maze_Left <= G_Maze_Right) && (G_Maze_Left <= G_Maze_Back)) && !(G_Maze_Right <= G_Maze_Back);
+	if (!Side_Align_Enable || uturn || (Failsafe_Flag() == 1)) {
+		return 0;
+	}
+	Motor_trapezoid(v, v, 0, ac, decel_x);	//区画のまん中で止まる(Uターンと同じ減速)
+	Motor_Stop();
+	float a = left ? 90 : -90;	//近い壁のほうを向く(90 が左)
+	Motor_trapezoid_Turn(a, 600, 20000);
+	Motor_Stop();
+	Robot_Align_If_Wall(G_Wall_data[0] == 1 && G_Wall_data[3] == 1);	//今の前の壁(近すぎた横の壁)
+	Motor_trapezoid_Turn(-a, 600, 20000);
+	Motor_Stop();
+	G_Side_Align_Count++;
+	s_front_aligned = 0;
+	Robot_Maze_Go_From_Stop(v, ac);
+	return 1;
+}
+
 void Robot_Maze_Sula_Action() {
 	Motor_Sula_before(500, 500, 500, 5000, 20);
+	if (Robot_Maze_Side_Check(500, 5000, 70)) {
+		return;
+	}
 	if ((G_Maze_Flont <= G_Maze_Left) && (G_Maze_Flont <= G_Maze_Right)	//前進
 			&& (G_Maze_Flont <= G_Maze_Back)) {
 		Motor_Search_Straight(500, 160);	//柱の端で残りの距離を直す(Search_WallCut)
@@ -224,6 +265,9 @@ void Robot_Maze_Stop_And_Go(int suction) {
 
 void Robot_Maze_Suction_Action() {
 	Motor_Sula_before(1000, 1000, 1000, 5000, 15);
+	if (Robot_Maze_Side_Check(1000, 10000, 75)) {
+		return;
+	}
 	if ((G_Maze_Flont <= G_Maze_Left) && (G_Maze_Flont <= G_Maze_Right)	//前進
 			&& (G_Maze_Flont <= G_Maze_Back)) {
 		Motor_Search_Straight(1000, 165);	//柱の端で残りの距離を直す(Search_WallCut)
