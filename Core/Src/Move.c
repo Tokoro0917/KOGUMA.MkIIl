@@ -1494,15 +1494,35 @@ static int TurnV_Lookup(int16_t code, int *dir) {
 	}
 }
 
+/* ---- きついターンは2000、ゆるいターンは2400(2026-11-21、モード1 No.14。Short_Dijkstra_MoveMix) ----
+ * Short_NANAME_MoveTurnV と同じ走り方(速度計画 SpeedPlan)で、ターンの値は TurnV_Table ではなく、
+ * 合わせてある G_Turn2000 / G_Turn2400 をそのまま使う(速度で倍率を掛けない)。
+ * ゆるいターン(横加速度に余裕がある 大回り90・大回り180・斜め出45。docs/turnv_design.md)だけ 2400、ほかは 2000。
+ * 直線を挟まずにつながるターンは遅い方(2000)にそろえる(後距離で速度を変えない)ので、ターンの速度は 2000 か 2400 だけになる */
+static int TurnV_Mix = 0;
+#define TURNMIX_V_SLOW 2000.0f
+#define TURNMIX_V_FAST 2400.0f
+static const int8_t TurnMix_Fast[TV_NUM] = { [TV_BIG90] = 1, [TV_BIG180] = 1, [TV_OUT45] = 1 };
+/* TV_* と T2000_* の並びは同じ(大回り90、大回り180、斜め入り45、斜め入り135、斜め出45、斜め出135、V90) */
+static const Turn2000_Param *TurnMix_Param(int k, float V) {
+	return (V >= TURNMIX_V_FAST - 1.0f) ? &G_Turn2400[k] : &G_Turn2000[k];
+}
+
 static float TurnV_Speed(int16_t code) {
 	int dir;
 	int k = TurnV_Lookup(code, &dir);
+	if (TurnV_Mix) {
+		return (k >= 0 && TurnMix_Fast[k]) ? TURNMIX_V_FAST : TURNMIX_V_SLOW;
+	}
 	return (k >= 0) ? TurnV_Table[k].v : TURNV_V_BASE;
 }
 
 static float TurnV_Back(int16_t code) {
 	int dir;
 	int k = TurnV_Lookup(code, &dir);
+	if (TurnV_Mix) {
+		return (k >= 0) ? TurnMix_Param(k, TurnV_Speed(code))->end : 0;
+	}
 	return (k >= 0) ? TurnV_Table[k].offset_end : 0;
 }
 
@@ -1512,6 +1532,27 @@ static void TurnV_Run(int16_t code, float V, float V_out) {
 	int dir;
 	int k = TurnV_Lookup(code, &dir);
 	if (k < 0) {
+		return;
+	}
+	if (TurnV_Mix) {	//G_Turn2000 / G_Turn2400 の値をそのまま(Turn_Run と同じ。後距離で速度を変えるときだけ _Accel)
+		const Turn2000_Param *q = TurnMix_Param(k, V);
+		if (q->st_kind == WC2000_NANAME) {
+			Motor_Wallcut_ST_NANAME(V, q->st, dir);
+		} else {
+			Motor_Wallcut_ST(V, q->st, dir);
+		}
+		Motor_Sula_COS(V, dir == 0 ? q->ang : -q->ang, q->w, q->w_ac);
+		if (V_out == V) {
+			if (q->end_kind == WC2000_NANAME) {
+				Motor_Wallcut_END_NANAME(V, q->end, dir);
+			} else {
+				Motor_Wallcut_END(V, q->end, dir);
+			}
+		} else if (q->end_kind == WC2000_NANAME) {
+			Motor_Wallcut_END_NANAME_Accel(V, V_out, TURNV_AC_BACK, q->end, dir);
+		} else {
+			Motor_Wallcut_END_Accel(V, V_out, TURNV_AC_BACK, q->end, dir);
+		}
 		return;
 	}
 	const TurnV_Param *p = &TurnV_Table[k];
@@ -1555,7 +1596,10 @@ void Short_NANAME_MoveTurnV(int MAX, int AC) {
 	G_Robot_Direction = 0;
 	G_MAZE_Explored[G_Gool_X][G_Gool_Y] = 0;
 	Maze_Step_Calculate();
-	if (TurnV_Use_Dijkstra) {
+	if (TurnV_Mix) {	//経路はモード1 No.5(2000)と同じ
+		Short_Dijkstra_Use(2000, MAX, AC, G_Turn2000);
+		Maze_Dijkstra_Calculation();
+	} else if (TurnV_Use_Dijkstra) {
 		Short_Dijkstra_Use(2400, MAX, AC, G_Turn2400);
 		Maze_Dijkstra_Calculation();
 	} else {
@@ -1577,8 +1621,11 @@ void Short_NANAME_MoveTurnV(int MAX, int AC) {
 	}
 	enum { START_STRAIGHT, START_TURN, START_OTHER } start_mode = START_OTHER;
 	int first_kind = 0, first_dir = 0;
-	float v_start = TURNV_V_START;
-	if (G_Short_Pass_NANAME[f] >= 1) {
+	float v_start = TurnV_Mix ? TURNMIX_V_SLOW : TURNV_V_START;
+	if (TurnV_Mix && G_Short_Pass_NANAME[f] < 1) {
+		/* 最初がターン: モード1 No.5(Short_Start_NoFirstTurn)と同じく、10mm で 2000 にしてから普通のターン。
+		 * 速度計画では、最初のターンはスタート区間の終わりの速度(2000)を超えない */
+	} else if (G_Short_Pass_NANAME[f] >= 1) {
 		start_mode = START_STRAIGHT;
 		if (G_Short_Pass_NANAME[f] == 1) {
 			G_Short_Pass_NANAME[f] = -1;
@@ -1596,19 +1643,21 @@ void Short_NANAME_MoveTurnV(int MAX, int AC) {
 	plan.ac = AC;
 	plan.ac_diag = Short_AC_Naname(AC, 5000);	/* Short_NANAME_Move2400 の斜め直線と同じ */
 	plan.v_start = v_start;
-	plan.v_goal = TURNV_V_GOAL;
-	plan.turn_back = TurnV_Back;
+	plan.v_goal = TurnV_Mix ? TURNMIX_V_SLOW : TURNV_V_GOAL;
+	plan.turn_back = TurnV_Mix ? NULL : TurnV_Back;	//Mix: 直結のターンは遅い方にそろえる
 	plan.ac_back = TURNV_AC_BACK;
 	if (SpeedPlan_Make(G_Short_Pass_NANAME, &plan) != 0) {
 		return;
 	}
 
-	Suction_Start(70);
+	Suction_Start(70);	//2400 の最短と同じ(2000 の最短は 50)
 	HAL_Delay(500);
 
 	Motor_Setup();
 	float v0 = plan.v_start_out;
-	if (start_mode == START_TURN) {
+	if (TurnV_Mix && start_mode == START_OTHER) {
+		Motor_trapezoid_PID(0, v0, v0, 70000, 10);	//Short_Start_NoFirstTurn と同じ
+	} else if (start_mode == START_TURN) {
 		Short_First_Turn_Run(first_kind, first_dir, v0);
 	} else if (start_mode == START_STRAIGHT) {
 		const float d = 90 + SHORT_START_X;
@@ -1640,13 +1689,22 @@ void Short_NANAME_MoveTurnV(int MAX, int AC) {
 	}
 	if (Failsafe_Flag() == 0) {
 		float vg = plan.v_goal_in;
-		Motor_trapezoid_PID(vg, vg, 0, 30000, Short_Goal_X());
+		Motor_trapezoid_PID(vg, vg, 0, TurnV_Mix ? 20000 : 30000, Short_Goal_X());	//Mix: No.5 と同じ減速
 		Motor_Stop();
 		Suction_Stop();
 
 		Robot_adjustment();
 		LED_Goal();
+		G_Short_Reached = 1;
 	}	//フェイルセーフで止まったときは、main の Failsafe_Wait_Reset() で解除する
+}
+
+/* きついターンは2000、ゆるいターン(大回り90・大回り180・斜め出45)は2400 で、ダイクストラの経路(No.5 と同じ)を走る(モード1 No.14) */
+void Short_Dijkstra_MoveMix(int MAX, int AC) {
+	G_Short_Reached = 0;
+	TurnV_Mix = 1;
+	Short_NANAME_MoveTurnV(MAX, AC);
+	TurnV_Mix = 0;
 }
 
 /* ダイクストラの経路を、Short_NANAME_MoveTurnV と同じ動きで走る */

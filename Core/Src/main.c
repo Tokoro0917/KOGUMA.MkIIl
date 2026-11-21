@@ -206,7 +206,7 @@ int main(void) {
 				Maze_Search(flags);
 			}
 		} else if (Encorder_mode_out() == 1) {		//�?短
-			/* 最短走行。No.0 と No.14〜15 は何もしない。
+			/* 最短走行。No.0 と No.15 は何もしない。
 			 * No.12・No.13 は No.8・No.5 と同じ走りを、壁切れだけ従来(Short_WallCut_Pillar = 0)で走る(柱と比べる用) */
 			int n = Encorder_number_out();
 			void (*run)(int, int) = NULL;
@@ -267,6 +267,10 @@ int main(void) {
 				ac = 20000;
 				ac_nn = 15000;
 				conv = 1;
+			} else if (n == 14) {	//ダイクストラ(No.5 と同じ経路)、きついターン2000・ゆるいターン(大回り90・180、斜め出45)2400 直線6000 加速20000(2026-11-21)
+				run = Short_Dijkstra_MoveMix;
+				ac = 20000;
+				ac_nn = 15000;
 			}
 			if ((run != NULL) && (Sensor_Enter() == 1)) {
 				int pillar_prev = Short_WallCut_Pillar;
