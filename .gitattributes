@@ -1,0 +1,3 @@
+# CAD は行末を変換させず、差分も取らせない(STEPはテキストだが数十万行あり差分に意味がない)
+*.step -text -diff
+*.stp  -text -diff
