@@ -1,6 +1,9 @@
 # hardware
 
-次の機体 **KOGUMA Mk3** の 3D データ。設計の狙いは `docs/next_robot.md`(今の機体 MkIIl のよくない点)にある。
+機体のハードウェアのデータ。
+
+- `KOGUMA.Mk3.step` — 次の機体 **KOGUMA Mk3** の 3D(機械)。設計の狙いは `docs/next_robot.md`(今の機体 MkIIl のよくない点)
+- `ecad/` — 回路図と基板(KiCad)
 
 ## KOGUMA.Mk3.step
 
@@ -70,6 +73,78 @@ STEP の部品名(`PRODUCT`)から読めるもの。`(ミラー)` は左右対�
 | 底板v2、全体v2 | |
 | M3*5mmスペーサー、アルミテーパーM3、ナイロンナットM3紫、ボタンビス3*14、3*6平行ピン | 締結部品 |
 
+## ecad/ — 回路図と基板(KiCad)
+
+KiCad 9.0 のプロジェクト。回路図1枚(A3)+ 基板。
+
+| ファイル | 中身 |
+|---|---|
+| `KOGUMA-CHAN.MkII_v2.kicad_sch` | **回路図の元データ**(テキスト。差分が追える) |
+| `KOGUMA-CHAN.MkII_v2.kicad_pcb` | **基板の元データ**。外形は約 61.4 × 94.7mm、板厚1.6mm、2層(F.Cu / B.Cu) |
+| `KOGUMA-CHAN.MkII_v2.kicad_pro` | プロジェクト設定 |
+| `KOGUMA-CHAN.MkII_v2.pdf` | 回路図の PDF(KiCad の Eeschema 書き出し。KiCad がなくても見られる) |
+| `KOGUMA-CHAN.MkII.pdf` | 古い版の回路図(2025-11、Print To PDF のラスタ。文字は選択できない) |
+| `KOGUMA-CHAN.f3z` | Fusion 360 のアーカイブ(2025-04)。中に23個の `.f3d`。何のモデルかは自動では判別できなかったが、元データなので残してある |
+| `fabrication-toolkit-options.json` | 製造データ書き出しプラグインの設定 |
+| `gerber/` | ガーバー + ドリルのジョブファイル |
+| `dxf/` | 基板外形とエンコーダ基板の DXF(機械CAD側で使う) |
+
+**`gerber/` は古い版**(2025-05、ファイル名が `KOGUMA-CHAN`、`_v2` でない)。今の `kicad_pcb` は 2026-02 更新なので中身が一致しない。**作り直してから発注すること**。
+
+`dxf/基板.dxf` と `dxf/基板v2.dxf` は、KiCad が `#U57fa#U677f.dxf` という形(日本語を `#Uxxxx` でエスケープしたもの)で書き出したものを、読める名前に直した。中身は変えていない。
+
+### 開き方
+
+- **KiCad 9.0 以降**で `KOGUMA-CHAN.MkII_v2.kicad_pro` を開く(回路図・基板の両方が開く)
+- 見るだけなら `KOGUMA-CHAN.MkII_v2.pdf`
+
+### 主な部品
+
+回路図の Value から拾ったもの。**ファームウェアと対応している**。
+
+| 役割 | 部品 | 数 | ファーム側 |
+|---|---|---|---|
+| マイコン | STM32F446RET6U | 1 | `Core/` 一式。Flash 512KB / RAM 128KB |
+| IMU | LSM6DSRXTR | 1 | `lsm6dsr.c` |
+| エンコーダ | AS5047P-ATSM | 2 | `PL_encoder.c`(左右)。`KOGUMA.Mk3.step` の 3mm磁石がこれ用 |
+| モータドライバ | MP6550GG-P | 2 | `motor.c`(左右) |
+| 壁センサ(受光) | SFH_229_FA | 4 | `G_Wall_data[4]`(FL・L・R・FR) |
+| センサのアンプ | AD8606ARM 6 / OPV332 4 / NJU6080 2 | | `Wallsensor.c`、`adc.c` |
+| 3.3V | MIC5219-3.3YM5-TR | 1 | `LIMITBATT` 15.6V / `REFERENCE_V` 16.0V(`Define.h`) |
+| 発振子 | CSTNE10M0G52Z000R0(10MHz) | 1 | HSE |
+| ブザー | SMT-0540-S-R | 1 | `Buzzer_Enter()`(`UI.c`) |
+| LED | 13 | | `LED1`〜`LED8` ほか(`gpio.c`) |
+| スイッチ | SSSS810701(スライド)、他2 | | |
+| FET | IRLML6402 / IRLML6344TRPBF / 2N7002 | | 吸引・電源系 |
+| SWD | Conn_02x03_Odd_Even | 1 | 書き込み |
+
+ほかに 22u・10u・1u・0.1u などのコンデンサ38個、抵抗31個、ダイオード19個。
+
+### どの機体の基板か(未確認)
+
+プロジェクト名は `KOGUMA-CHAN.MkII_v2` で、**Mk3 ではなく今の機体(KOGUMA MkIIl)の基板と思われる**。根拠:
+
+- マイコンが **STM32F446RET6U** で、今のファームと同じ
+- IMU・エンコーダ・壁センサの数も今のファーム(`lsm6dsr.c`、`PL_encoder.c`、`G_Wall_data[4]`)と一致
+- `docs/next_robot.md`「8. マイコンと RAM」では、次の機体は **RAM の多いマイコンにする**としている。この基板は F446 なので、その方針とは合わない
+- `kicad_sch` の最終更新は 2026-10-27 で、今の機体を詰めていた時期
+
+ただし zip のフォルダ名は `KOGUMA.Mk3` だった。Mk3 でこの基板を流用するのか、Mk3 用に作り直すのかは**要確認**。
+
+### 除外したファイル
+
+KiCad が作るローカル用のファイルは入れていない(`.gitignore` にも追加済み)。
+
+| ファイル | 理由 |
+|---|---|
+| `~*.kicad_sch.lck` | **PC名とユーザー名が入っていた**(ロックファイル) |
+| `*.kicad_prl` | ローカルの表示状態 |
+| `fp-info-cache` | キャッシュ |
+| `*.kicad_sch-bak` | KiCad の自動バックアップ |
+| `*.pro` | KiCad 5 の遺物(2015年のテンプレの残骸) |
+
+`.kicad_pro` と `.kicad_sch` / `.kicad_pcb` 自体には、ローカルパスも個人情報も入っていないことを確認済み。
+
 ## 入っていないもの
 
-回路図・基板データ(KiCad 等)、部品表(BOM)、図面。ピン割り当ては今の機体のもの(`KOGUMA.MkIIl.ioc`)しかない。
+部品表(BOM)と組立図。Mk3 用の新しい基板データ(上の「どの機体の基板か」を参照)。

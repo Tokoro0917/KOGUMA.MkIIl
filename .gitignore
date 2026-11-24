@@ -35,3 +35,10 @@ KOGUMA.MkII/Release/
 
 # Python のキャッシュ(tools/*.py を import すると作られる)
 __pycache__/
+
+# KiCad のローカル状態・バックアップ・キャッシュ(hardware/ecad)
+*.kicad_prl
+*.kicad_*-bak
+*-backups/
+fp-info-cache
+~*.lck
