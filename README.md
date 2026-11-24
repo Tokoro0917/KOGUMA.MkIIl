@@ -388,7 +388,7 @@ RAMに残っているデータを全部、迷路 → 壁切れのログ → 走�
 - MCU: STM32F446RE(Cortex-M4, Flash 512KB, RAM 128KB)。今のビルドで RAM 約113KB / Flash 約147KB(Debug、-O0。2026-10-27 に PC で同じ設定でリンクして確認)
 - 開発環境: **STM32CubeIDE**。本フォルダをワークスペースにインポートしてビルド・書き込みする(2026-11-10 に、ToraNeko.Mk3 のように VS Code に移ることも考えたが、CubeIDE のままにした)
 - CMake のビルド設定(`CMakeLists.txt` など)は CI(`.github/workflows/firmware-build.yml`)で ARM のビルドとリンクを確かめるのに使う。**`Core/Src` に `.c` を足したら `CMakeLists.txt` の `USER_SOURCES` にも足す**(足さないと CI のリンクが失敗する)。VS Code やコマンドでビルドしたくなったときの手順は `docs/vscode_setup.md`
-- ハードウェアのデータは `hardware/`。次の機体 **KOGUMA Mk3** の 3D(STEP)と、**回路図・基板(KiCad)**を置いてある。部品構成・ファームとの対応・開き方は `hardware/README.md`、設計の狙いは `docs/next_robot.md`
+- ハードウェアのデータは `hardware/`。次の機体 **KOGUMA Mk3** の 3D(STEP)と回路図・基板(KiCad)を置いてある。部品構成・ファームとの対応・開き方は `hardware/README.md`、設計の狙いは `docs/next_robot.md`。Mk3 もマイコンは同じ STM32F446RET6U なので、RAM の制約(32×32 が入らない)は残る
 
 ```
 Core/Src, Core/Inc   本体ファームウェア
@@ -399,7 +399,7 @@ tools/               ビューア(UART出力をグラフ・表・迷路にする
 logs/                ビューアで保存したロボットの出力
 sim/                 PC上の探索シミュレータとブラウザ用の可視化
 docs/                調べたことのメモ(他の人のターン速度の決め方、壁制御・壁切れのやり方など)
-hardware/            機体の3Dデータ(KOGUMA Mk3 の STEP)と回路図・基板(ecad/、KiCad)
+hardware/            次の機体 KOGUMA Mk3 の3Dデータ(STEP)と回路図・基板(ecad/、KiCad)
 .github/workflows/   CI設定
 *.ioc                STM32CubeMX設定
 STM32F446RETX_*.ld   リンカスクリプト
@@ -428,4 +428,4 @@ CMakeLists.txt, CMakePresets.json, cmake/   CMake のビルド設定(CI。VS Cod
 | `docs/testing.md` | テストが確かめていること |
 | `docs/noise_limits.md` | ノイズと性能の限界の見積もり(2026-10-21。センサ・ジャイロ・エンコーダのノイズ、電池の内部抵抗、ターンと直線の電圧の上限、改善の計画)。`python3 tools/limits.py` で出し直せる |
 | `docs/next_robot.md` | 新機体に向けて、今の機体のよくない点(電源の内部抵抗、モーターの電圧・定数、測れないもの、センサのノイズ・感度、滑り、RAM)と、設計の前に今の機体で測っておくもの |
-| `hardware/README.md` | KOGUMA Mk3 の STEP の部品構成(駆動・吸引・センサ・基板)、回路図・基板(KiCad)の主な部品とファームとの対応、開き方 |
+| `hardware/README.md` | 次の機体 KOGUMA Mk3 のハード。STEP の部品構成(駆動・吸引・センサ・基板)、回路図・基板(KiCad)の主な部品とファームとの対応、開き方 |
